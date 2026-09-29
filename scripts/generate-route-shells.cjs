@@ -1,0 +1,1514 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const { projectSubtypeGroupsForBuild } = require("./lib/trends-catalog-build.cjs");
+
+const repoRoot = process.cwd();
+const distDir = path.join(repoRoot, "dist");
+const indexHtmlPath = path.join(distDir, "index.html");
+const seoSourcePath = path.join(repoRoot, "src", "utils", "seo.js");
+const storeSourcePath = path.join(repoRoot, "src", "store", "index.js");
+const subtypeSourcePath = path.join(repoRoot, "src", "utils", "sourceSubtypes.js");
+const sourceLabelsPath = path.join(repoRoot, "src", "utils", "sourceLabels.js");
+const messagesPath = path.join(repoRoot, "src", "i18n", "messages.js");
+const siteMetadataPath = path.join(repoRoot, "src", "config", "site-metadata.mjs");
+const taxonomySourcePath = path.join(repoRoot, "src", "config", "taxonomy-v3.js");
+
+const SYSTEM_ROUTES = [
+  { pathname: "/setting", seoKey: "setting", robots: "noindex,nofollow" },
+  { pathname: "/analytics", seoKey: "analytics", robots: "noindex,nofollow" },
+  { pathname: "/privacy", seoKey: "privacy", robots: "noindex,nofollow" },
+  { pathname: "/test", seoKey: "test", robots: "noindex,nofollow" },
+  { pathname: "/403", seoKey: "forbidden", robots: "noindex,nofollow" },
+  { pathname: "/404", seoKey: "notFound", robots: "noindex,nofollow" },
+  { pathname: "/500", seoKey: "serverError", robots: "noindex,nofollow" },
+];
+
+const normalizeSiteUrl = (value = "") => String(value).replace(/\/+$/, "");
+const siteUrl = normalizeSiteUrl(process.env.VITE_SITE_URL || "");
+const brandNameZh = "吾爱热榜";
+
+const ensureFile = (filePath) => {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`required file not found: ${filePath}`);
+  }
+};
+
+const extractLiteral = (source, constName) => {
+  const marker = `const ${constName} =`;
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex === -1) {
+    throw new Error(`unable to find constant ${constName}`);
+  }
+
+  let index = markerIndex + marker.length;
+  while (index < source.length && /\s/.test(source[index])) {
+    index += 1;
+  }
+
+  const opener = source[index];
+  const closer = opener === "{" ? "}" : opener === "[" ? "]" : null;
+  if (!closer) {
+    throw new Error(`unsupported literal opener for ${constName}: ${opener}`);
+  }
+
+  let depth = 0;
+  let inString = false;
+  let stringQuote = "";
+  let escaped = false;
+
+  for (let cursor = index; cursor < source.length; cursor += 1) {
+    const char = source[cursor];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === stringQuote) {
+        inString = false;
+        stringQuote = "";
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === "`") {
+      inString = true;
+      stringQuote = char;
+      continue;
+    }
+
+    if (char === opener) {
+      depth += 1;
+    } else if (char === closer) {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(index, cursor + 1);
+      }
+    }
+  }
+
+  throw new Error(`unable to extract literal for ${constName}`);
+};
+
+const parseConstant = (source, constName) =>
+  Function(`"use strict"; return (${extractLiteral(source, constName)});`)();
+
+const parseSourceCategoryProjections = (source) =>
+  Function(
+    `"use strict"; const single = (categoryId) => [categoryId]; return (${extractLiteral(
+      source,
+      "SOURCE_CATEGORY_PROJECTIONS",
+    )});`,
+  )();
+
+const mergeOverrideMaps = (...maps) => {
+  const merged = {};
+  maps.forEach((map) => {
+    Object.entries(map || {}).forEach(([key, value]) => {
+      merged[key] = {
+        ...(merged[key] || {}),
+        ...(value || {}),
+      };
+    });
+  });
+  return merged;
+};
+
+const trimTerminalPunctuation = (value = "") =>
+  String(value)
+    .trim()
+    .replace(/[。！？!?,，；;：:]+$/gu, "");
+
+const escapeRegExp = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const stripLeadingPhrases = (value = "", phrases = []) =>
+  phrases
+    .filter(Boolean)
+    .reduce(
+      (result, phrase) =>
+        result.replace(new RegExp(`^${escapeRegExp(String(phrase).trim())}[\\s·:：-]*`, "u"), ""),
+      String(value).trim()
+    )
+    .trim();
+
+const stripLeadingZhPossessive = (value = "") =>
+  String(value)
+    .trim()
+    .replace(/^的[\s·:：-]*/u, "")
+    .trim();
+
+const stripLeadingZhIntentVerb = (value = "") =>
+  String(value)
+    .trim()
+    .replace(
+      /^(?:聚合|追踪|收录|覆盖|精选|汇总|关注|发现|整理|展示|呈现)[\s，,、]*/u,
+      ""
+    )
+    .trim();
+
+const normalizeZhIntent = (value = "") =>
+  stripLeadingZhIntentVerb(stripLeadingZhPossessive(value));
+
+const normalizeTitleLabel = (value = "") =>
+  String(value)
+    .replace(/\s*·\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/gu, "$1$2")
+    .trim();
+
+const combineSourceAndSubtypeLabel = (sourceLabel = "", subtypeLabel = "") => {
+  const source = normalizeTitleLabel(sourceLabel).replace(/榜$/u, "");
+  const subtype = normalizeTitleLabel(subtypeLabel);
+  if (!source || !subtype) return normalizeTitleLabel(source || subtype);
+
+  const maxOverlap = Math.min(source.length, subtype.length);
+  for (let length = maxOverlap; length >= 1; length -= 1) {
+    if (source.slice(-length) === subtype.slice(0, length)) {
+      return normalizeTitleLabel(source + subtype.slice(length));
+    }
+  }
+
+  const maxPrefix = Math.min(source.length, subtype.length);
+  for (let length = maxPrefix; length >= 2; length -= 1) {
+    if (source.slice(0, length) === subtype.slice(0, length)) {
+      return normalizeTitleLabel(source + subtype.slice(length));
+    }
+  }
+
+  return normalizeTitleLabel(`${source} ${subtype}`);
+};
+
+const keywordTokensFrom = (value) =>
+  Array.isArray(value)
+    ? value.flatMap((item) => keywordTokensFrom(item))
+    : String(value || "")
+        .split(/[,\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+const mergeKeywords = (...segments) =>
+  [...new Set(segments.flatMap((segment) => keywordTokensFrom(segment)))].join(",");
+
+const buildZhTitle = (main, detail) =>
+  detail
+    ? `${normalizeTitleLabel(main)} - ${detail} | ${brandNameZh}`
+    : `${normalizeTitleLabel(main)} | ${brandNameZh}`;
+
+const appendZhPageSuffix = (label = "") =>
+  /[A-Za-z0-9]$/u.test(String(label).trim())
+    ? `${String(label).trim()} 页面`
+    : `${String(label).trim()}页面`;
+
+const joinZhVerbObject = (verb, object = "") =>
+  /^[A-Za-z0-9]/u.test(String(object).trim())
+    ? `${verb} ${String(object).trim()}`
+    : `${verb}${String(object).trim()}`;
+
+const getClawHubSubtypeSeoKey = (sourceName, subtypeValue) => {
+  if (!subtypeValue) return "";
+  if (sourceName === "clawhub") return subtypeValue;
+  if (sourceName === "clawhub-skills") return `skills-${subtypeValue}`;
+  if (sourceName === "clawhub-plugins") return `plugins-${subtypeValue}`;
+  return "";
+};
+
+const getClawHubZhRouteSeo = ({
+  sourceName,
+  subtypeValue,
+  clawHubZhBaseSeo,
+  clawHubZhSubtypeSeo,
+}) => {
+  const baseSeo = clawHubZhBaseSeo?.[sourceName];
+  if (!baseSeo) return null;
+
+  const subtypeSeo = clawHubZhSubtypeSeo?.[
+    getClawHubSubtypeSeoKey(sourceName, subtypeValue)
+  ];
+  if (subtypeSeo) {
+    return {
+      titleLabel: normalizeTitleLabel(`ClawHub ${subtypeSeo.titleSegment}`),
+      intent: subtypeSeo.intent,
+    };
+  }
+
+  return baseSeo;
+};
+
+const getDesignArenaZhRouteSeo = ({
+  sourceName,
+  subtypeValue,
+  designArenaZhSubtypeSeo,
+}) => {
+  if (sourceName !== "designarena" || !subtypeValue) return null;
+  const subtypeSeo = designArenaZhSubtypeSeo?.[subtypeValue];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`DesignArena ${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getIthomeZhRouteSeo = ({
+  sourceName,
+  subtypeValue,
+  ithomeZhSubtypeSeo,
+}) => {
+  if (sourceName !== "ithome" || !subtypeValue) return null;
+  const subtypeSeo = ithomeZhSubtypeSeo?.[subtypeValue];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`IT之家${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getBilibiliZhRouteSeo = ({
+  sourceName,
+  subtypeValue,
+  bilibiliZhSubtypeSeo,
+}) => {
+  if (sourceName !== "bilibili" || !subtypeValue) return null;
+  const subtypeSeo = bilibiliZhSubtypeSeo?.[subtypeValue];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`哔哩哔哩${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getArtificialAnalysisZhRouteSeo = ({
+  sourceName,
+  subtypeValue,
+  artificialAnalysisZhSubtypeSeo,
+}) => {
+  if (sourceName !== "artificialanalysis" || !subtypeValue) return null;
+  const subtypeSeo = artificialAnalysisZhSubtypeSeo?.[subtypeValue];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`Artificial Analysis ${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getZhRouteSeo = ({
+  sourceName,
+  subtypeValue,
+  clawHubZhBaseSeo,
+  clawHubZhSubtypeSeo,
+  designArenaZhSubtypeSeo,
+  ithomeZhSubtypeSeo,
+  bilibiliZhSubtypeSeo,
+  artificialAnalysisZhSubtypeSeo,
+}) =>
+  getClawHubZhRouteSeo({
+    sourceName,
+    subtypeValue,
+    clawHubZhBaseSeo,
+    clawHubZhSubtypeSeo,
+  }) ||
+  getDesignArenaZhRouteSeo({
+    sourceName,
+    subtypeValue,
+    designArenaZhSubtypeSeo,
+  }) ||
+  getIthomeZhRouteSeo({
+    sourceName,
+    subtypeValue,
+    ithomeZhSubtypeSeo,
+  }) ||
+  getBilibiliZhRouteSeo({
+    sourceName,
+    subtypeValue,
+    bilibiliZhSubtypeSeo,
+  }) ||
+  getArtificialAnalysisZhRouteSeo({
+    sourceName,
+    subtypeValue,
+    artificialAnalysisZhSubtypeSeo,
+  });
+
+const prettifySlug = (value = "") =>
+  String(value)
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (token) => token.toUpperCase());
+
+const getSubtypeLabelMap = (sourceSubtypeGroups) => {
+  const result = new Map();
+
+  for (const [sourceName, groups] of Object.entries(sourceSubtypeGroups)) {
+    const subtypeMap = new Map();
+    (groups || []).forEach((group) => {
+      (group.items || []).forEach((item) => {
+        if (item?.value) {
+          subtypeMap.set(item.value, item.label || "");
+        }
+      });
+    });
+    result.set(sourceName, subtypeMap);
+  }
+
+  return result;
+};
+
+const getLocalizedSubtypeLabel = (
+  subtypeLabelOverrides,
+  subtypeValue,
+  rawLabel,
+  locale = "zh-CN"
+) => {
+  const valueOverride = subtypeLabelOverrides[subtypeValue];
+  const labelOverride = subtypeLabelOverrides[rawLabel];
+  if (valueOverride?.[locale]) return valueOverride[locale];
+  if (labelOverride?.[locale]) return labelOverride[locale];
+  if (locale === "zh-CN" || locale === "zh-TW") {
+    return rawLabel || prettifySlug(subtypeValue);
+  }
+  if (rawLabel && !/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(rawLabel)) {
+    return rawLabel;
+  }
+  return prettifySlug(subtypeValue);
+};
+
+const getLocalizedSourceLabel = (
+  sourceLabelOverrides,
+  sourceName,
+  fallbackLabel,
+  locale = "zh-CN"
+) => {
+  const overrides = sourceLabelOverrides[sourceName] || null;
+  if (overrides?.[locale]) return overrides[locale];
+  if ((locale === "zh-CN" || locale === "zh-TW") && fallbackLabel) {
+    return fallbackLabel;
+  }
+  if (overrides?.en) return overrides.en;
+  if (fallbackLabel && !/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(fallbackLabel)) {
+    return fallbackLabel;
+  }
+  return prettifySlug(sourceName || fallbackLabel || "rankings");
+};
+
+const normalizeLookupLabel = (value = "") =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const stripDisplaySuffix = (sourceDisplaySuffixes, label = "", locale = "zh-CN") => {
+  const suffixes = sourceDisplaySuffixes?.[locale] || [];
+  const normalizedLabel = normalizeLookupLabel(label);
+  const suffix = suffixes.find(
+    (item) =>
+      normalizedLabel.endsWith(item) &&
+      normalizedLabel.length > item.length + 1
+  );
+  if (!suffix) return normalizedLabel;
+  return normalizeLookupLabel(normalizedLabel.slice(0, -suffix.length));
+};
+
+const getLocalizedSourceDisplayLabel = (
+  sourceLabelOverrides,
+  sourceDisplayLabelOverrides,
+  sourceDisplaySuffixes,
+  sourceName,
+  fallbackLabel,
+  locale = "zh-CN"
+) => {
+  const overrides = sourceDisplayLabelOverrides?.[sourceName] || null;
+  if (overrides?.[locale]) return overrides[locale];
+  if (overrides?.en) return overrides.en;
+  return stripDisplaySuffix(
+    sourceDisplaySuffixes,
+    getLocalizedSourceLabel(
+      sourceLabelOverrides,
+      sourceName,
+      fallbackLabel,
+      locale
+    ),
+    locale
+  );
+};
+
+const getSourceNames = (storeText) => {
+  const newsSectionMatch = storeText.match(
+    /defaultNewsArr:\s*\[(.*?)\n\s*\],\n\s*newsArr:/s
+  );
+  const source = newsSectionMatch?.[1] || storeText;
+  return [
+    ...new Set([...source.matchAll(/name:\s*"([^"]+)"/g)].map((match) => match[1])),
+  ];
+};
+
+const getSubtypeValues = (sourceSubtypeGroups) => {
+  const result = new Map();
+
+  for (const [sourceName, groups] of Object.entries(sourceSubtypeGroups)) {
+    const values = (groups || []).flatMap((group) =>
+      (group.items || []).map((item) => item?.value).filter(Boolean)
+    );
+    result.set(sourceName, values);
+  }
+
+  return result;
+};
+
+const getDefaultSubtypeValues = (subtypeValues) => {
+  const result = new Map();
+  subtypeValues.forEach((values, sourceName) => {
+    if (values?.[0]) {
+      result.set(sourceName, values[0]);
+    }
+  });
+  return result;
+};
+
+const ensureMetaTag = (html, matcher, replacement, insertBefore = "</head>") => {
+  if (matcher.test(html)) {
+    return html.replace(matcher, replacement);
+  }
+  return html.replace(insertBefore, `${replacement}\n  ${insertBefore}`);
+};
+
+const interpolate = (template = "", values = {}) =>
+  String(template).replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+
+const setRouteJsonLd = (html, jsonLd) => {
+  if (!jsonLd) return html;
+  const serialized = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
+  const script = `<script id="dailyhot-route-jsonld" type="application/ld+json">${serialized}</script>`;
+  return ensureMetaTag(
+    html,
+    /<script\s+id="dailyhot-route-jsonld"[\s\S]*?<\/script>/,
+    script
+  );
+};
+
+const setBreadcrumbJsonLd = (html, jsonLd) => {
+  const matcher =
+    /<script\s+id="dailyhot-breadcrumb-jsonld"[\s\S]*?<\/script>/;
+  if (!jsonLd) return html.replace(matcher, "");
+  const serialized = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
+  const script = `<script id="dailyhot-breadcrumb-jsonld" type="application/ld+json">${serialized}</script>`;
+  return ensureMetaTag(html, matcher, script);
+};
+
+const setAlternateLinks = (html, alternateLinks = []) => {
+  const withoutAlternates = html.replace(
+    /\n?\s*<link\s+rel="alternate"\s+hreflang="[^"]+"\s+href="[^"]+"\s*\/?>/g,
+    ""
+  );
+  if (!alternateLinks.length) return withoutAlternates;
+
+  const tags = alternateLinks
+    .map(
+      ({ hreflang, href }) =>
+        `<link rel="alternate" hreflang="${hreflang}" href="${href}" />`
+    )
+    .join("\n  ");
+  const canonicalMatcher = /(<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>)/;
+  if (canonicalMatcher.test(withoutAlternates)) {
+    return withoutAlternates.replace(canonicalMatcher, `$1\n  ${tags}`);
+  }
+  return withoutAlternates.replace("</head>", `  ${tags}\n  </head>`);
+};
+
+const setHtmlMeta = (
+  html,
+  {
+    title,
+    description,
+    keywords,
+    canonical,
+    htmlLang,
+    ogLocale,
+    robots,
+    alternateLinks,
+    jsonLd,
+    breadcrumbJsonLd,
+    ogImage,
+    ogImageType,
+    ogImageWidth,
+    ogImageHeight,
+    ogImageAlt,
+    twitterCard,
+  }
+) => {
+  let next = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
+  if (htmlLang) {
+    next = next.replace(/<html\s+lang="[^"]*"/, `<html lang="${htmlLang}"`);
+  }
+  next = ensureMetaTag(
+    next,
+    /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/,
+    `<meta name="description" content="${description}" />`
+  );
+  next = ensureMetaTag(
+    next,
+    /<meta\s+name="keywords"\s+content="[^"]*"\s*\/?>/,
+    `<meta name="keywords" content="${keywords}" />`
+  );
+  if (robots) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/,
+      `<meta name="robots" content="${robots}" />`
+    );
+  }
+  next = ensureMetaTag(
+    next,
+    /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/,
+    `<meta property="og:title" content="${title}" />`
+  );
+  next = ensureMetaTag(
+    next,
+    /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/,
+    `<meta property="og:description" content="${description}" />`
+  );
+  next = ensureMetaTag(
+    next,
+    /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/,
+    `<meta name="twitter:title" content="${title}" />`
+  );
+  next = ensureMetaTag(
+    next,
+    /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/,
+    `<meta name="twitter:description" content="${description}" />`
+  );
+  if (ogImage) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:image" content="${ogImage}" />`
+    );
+    next = ensureMetaTag(
+      next,
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/,
+      `<meta name="twitter:image" content="${ogImage}" />`
+    );
+  }
+  if (ogImageType) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:image:type"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:image:type" content="${ogImageType}" />`
+    );
+  }
+  if (ogImageWidth) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:image:width"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:image:width" content="${ogImageWidth}" />`
+    );
+  }
+  if (ogImageHeight) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:image:height"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:image:height" content="${ogImageHeight}" />`
+    );
+  }
+  if (ogImageAlt) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:image:alt"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:image:alt" content="${ogImageAlt}" />`
+    );
+    next = ensureMetaTag(
+      next,
+      /<meta\s+name="twitter:image:alt"\s+content="[^"]*"\s*\/?>/,
+      `<meta name="twitter:image:alt" content="${ogImageAlt}" />`
+    );
+  }
+  if (twitterCard) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+name="twitter:card"\s+content="[^"]*"\s*\/?>/,
+      `<meta name="twitter:card" content="${twitterCard}" />`
+    );
+  }
+  if (ogLocale) {
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:locale"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:locale" content="${ogLocale}" />`
+    );
+  }
+
+  if (canonical) {
+    next = ensureMetaTag(
+      next,
+      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/,
+      `<link rel="canonical" href="${canonical}" />`
+    );
+    next = ensureMetaTag(
+      next,
+      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/,
+      `<meta property="og:url" content="${canonical}" />`
+    );
+  }
+
+  next = setAlternateLinks(next, alternateLinks);
+  next = setRouteJsonLd(next, jsonLd);
+  next = setBreadcrumbJsonLd(next, breadcrumbJsonLd);
+  return next;
+};
+
+const buildAbsoluteUrl = (pathname) => {
+  if (!siteUrl) return "";
+  return `${siteUrl}${pathname}`;
+};
+
+const withLocalePrefix = (localeMeta, pathname) => {
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  const prefix = localeMeta?.routePrefix || "";
+  if (!prefix) return normalizedPath;
+  return normalizedPath === "/" ? `${prefix}/` : `${prefix}${normalizedPath}`;
+};
+
+const buildAlternateLinks = (basePathname, supportedLocales) => {
+  if (!siteUrl) return [];
+  const defaultLocale = supportedLocales.find((locale) => !locale.routePrefix);
+  const links = supportedLocales.map((localeMeta) => ({
+    hreflang: localeMeta.htmlLang,
+    href: buildAbsoluteUrl(withLocalePrefix(localeMeta, basePathname)),
+  }));
+  if (defaultLocale) {
+    links.push({
+      hreflang: "x-default",
+      href: buildAbsoluteUrl(withLocalePrefix(defaultLocale, basePathname)),
+    });
+  }
+  return links;
+};
+
+const getSeoMessages = (messages, locale) =>
+  messages[locale]?.seo || messages["zh-CN"]?.seo || {};
+
+const getSiteName = (messages, locale) =>
+  messages[locale]?.common?.siteName || messages["zh-CN"]?.common?.siteName || brandNameZh;
+
+const BREADCRUMB_HOME_LABELS = {
+  "zh-CN": "首页",
+  en: "Home",
+  "zh-TW": "首頁",
+  ja: "ホーム",
+  ko: "홈",
+};
+
+const CATEGORY_HEADING_SUFFIXES = {
+  "zh-CN": "热榜",
+  en: " Rankings",
+  "zh-TW": "熱榜",
+  ja: "ランキング",
+  ko: " 랭킹",
+};
+
+const buildBreadcrumbJsonLd = (items = []) => {
+  const normalized = items.filter((item) => item?.name);
+  if (normalized.length < 2) return undefined;
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: normalized.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      ...(index < normalized.length - 1 && item.item
+        ? { item: item.item }
+        : {}),
+    })),
+  };
+};
+
+const getCategoryTrail = (categoryId, categoryConfigById) => {
+  const trail = [];
+  const seen = new Set();
+  let current = categoryConfigById.get(categoryId);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    trail.unshift(current);
+    current = current.parentId
+      ? categoryConfigById.get(current.parentId)
+      : null;
+  }
+  return trail;
+};
+
+const getCategoryBreadcrumbLabel = (
+  category,
+  localeMeta,
+  isCurrent = false
+) => {
+  const locale = localeMeta.code;
+  const label = category?.labels?.[locale] || category?.name || "";
+  if (!isCurrent || !label) return label;
+  if (locale === "zh-CN" && category?.name === "音乐") return "音乐热榜";
+  if (category?.parentId) return label;
+  return `${label}${CATEGORY_HEADING_SUFFIXES[locale] || ""}`;
+};
+
+const buildCategoryBreadcrumbJsonLd = ({
+  category,
+  localeMeta,
+  categoryConfigById,
+}) => {
+  if (!category) return undefined;
+  const trail = getCategoryTrail(category.id, categoryConfigById);
+  return buildBreadcrumbJsonLd([
+    {
+      name:
+        BREADCRUMB_HOME_LABELS[localeMeta.code] ||
+        BREADCRUMB_HOME_LABELS["zh-CN"],
+      item: buildAbsoluteUrl(withLocalePrefix(localeMeta, "/")),
+    },
+    ...trail.map((item, index) => ({
+      name: getCategoryBreadcrumbLabel(
+        item,
+        localeMeta,
+        index === trail.length - 1
+      ),
+      item: buildAbsoluteUrl(
+        withLocalePrefix(localeMeta, `/category/${item.slug}`)
+      ),
+    })),
+  ]);
+};
+
+const buildRankBreadcrumbJsonLd = ({
+  sourceName,
+  subtypeValue,
+  sourceDisplayLabel,
+  subtypeLabel,
+  localeMeta,
+  categoryConfigById,
+  sourceCategoryProjections,
+  variantCategoryProjections,
+}) => {
+  const projectedCategoryId =
+    variantCategoryProjections.find(
+      (projection) =>
+        projection.sourceName === sourceName &&
+        String(projection.variant || "") === String(subtypeValue || "")
+    )?.categoryIds?.[0] ||
+    sourceCategoryProjections[sourceName]?.[0] ||
+    "general";
+  const trail = getCategoryTrail(projectedCategoryId, categoryConfigById);
+  const items = [
+    {
+      name:
+        BREADCRUMB_HOME_LABELS[localeMeta.code] ||
+        BREADCRUMB_HOME_LABELS["zh-CN"],
+      item: buildAbsoluteUrl(withLocalePrefix(localeMeta, "/")),
+    },
+    ...trail.map((item) => ({
+      name: getCategoryBreadcrumbLabel(item, localeMeta, false),
+      item: buildAbsoluteUrl(
+        withLocalePrefix(localeMeta, `/category/${item.slug}`)
+      ),
+    })),
+    {
+      name: sourceDisplayLabel,
+      item: buildAbsoluteUrl(
+        withLocalePrefix(localeMeta, `/rank/${sourceName}`)
+      ),
+    },
+  ];
+  if (subtypeLabel) {
+    items.push({
+      name: subtypeLabel,
+      item: buildAbsoluteUrl(
+        withLocalePrefix(
+          localeMeta,
+          `/rank/${sourceName}/${subtypeValue}`
+        )
+      ),
+    });
+  }
+  return buildBreadcrumbJsonLd(items);
+};
+
+const buildCollectionJsonLd = ({ title, description, canonical, htmlLang, listName }) => ({
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: title,
+  description,
+  inLanguage: htmlLang || "zh-CN",
+  url: canonical || undefined,
+  mainEntity: {
+    "@type": "ItemList",
+    name: listName,
+    itemListOrder: "Descending",
+  },
+});
+
+const buildWebsiteJsonLd = ({
+  siteName,
+  alternateName,
+  title,
+  description,
+  canonical,
+  htmlLang,
+}) => ({
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: siteName || brandNameZh,
+  ...(alternateName ? { alternateName } : {}),
+  url: canonical || undefined,
+  description,
+  inLanguage: htmlLang || "zh-CN",
+  headline: title,
+});
+
+const buildWebPageJsonLd = ({ title, description, canonical, htmlLang }) => ({
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: title,
+  description,
+  inLanguage: htmlLang || "zh-CN",
+  url: canonical || undefined,
+});
+
+async function main() {
+  ensureFile(indexHtmlPath);
+  ensureFile(seoSourcePath);
+  ensureFile(storeSourcePath);
+  ensureFile(subtypeSourcePath);
+  ensureFile(sourceLabelsPath);
+  ensureFile(messagesPath);
+  ensureFile(siteMetadataPath);
+  ensureFile(taxonomySourcePath);
+
+  const template = fs.readFileSync(indexHtmlPath, "utf8");
+  const seoSource = fs.readFileSync(seoSourcePath, "utf8");
+  const storeSource = fs.readFileSync(storeSourcePath, "utf8");
+  const subtypeSource = fs.readFileSync(subtypeSourcePath, "utf8");
+  const sourceLabelsSource = fs.readFileSync(sourceLabelsPath, "utf8");
+  const messagesSource = fs.readFileSync(messagesPath, "utf8");
+  const siteMetadataSource = fs.readFileSync(siteMetadataPath, "utf8");
+  const taxonomySource = fs.readFileSync(taxonomySourcePath, "utf8");
+
+  const defaultSeo = parseConstant(seoSource, "DEFAULT_SEO");
+  const categorySeoMap = parseConstant(seoSource, "CATEGORY_SEO_MAP");
+  const categoryLocaleSeoMap = parseConstant(seoSource, "CATEGORY_LOCALE_SEO_MAP");
+  const listSeoMap = parseConstant(seoSource, "LIST_SEO_MAP");
+  const clawHubZhBaseSeo = parseConstant(seoSource, "CLAWHUB_ZH_BASE_SEO");
+  const clawHubZhSubtypeSeo = parseConstant(seoSource, "CLAWHUB_ZH_SUBTYPE_SEO");
+  const designArenaZhSubtypeSeo = parseConstant(
+    seoSource,
+    "DESIGNARENA_ZH_SUBTYPE_SEO"
+  );
+  const ithomeZhSubtypeSeo = parseConstant(seoSource, "ITHOME_ZH_SUBTYPE_SEO");
+  const bilibiliZhSubtypeSeo = parseConstant(seoSource, "BILIBILI_ZH_SUBTYPE_SEO");
+  const artificialAnalysisZhSubtypeSeo = parseConstant(
+    seoSource,
+    "ARTIFICIALANALYSIS_ZH_SUBTYPE_SEO"
+  );
+  const staticSourceSubtypeGroups = parseConstant(subtypeSource, "SOURCE_SUBTYPE_GROUPS");
+  const {
+    groups: sourceSubtypeGroups,
+    defaults: catalogDefaultSubtypes,
+    sources: catalogSources,
+  } = await projectSubtypeGroupsForBuild(staticSourceSubtypeGroups, "seo-shell");
+  const aggregateSubtypeSources = new Set(
+    parseConstant(subtypeSource, "AGGREGATE_SUBTYPE_SOURCES")
+  );
+  const sourceLabelOverrides = mergeOverrideMaps(
+    parseConstant(sourceLabelsSource, "SOURCE_LABEL_OVERRIDES"),
+    parseConstant(sourceLabelsSource, "SOURCE_LABEL_LOCALIZATIONS")
+  );
+  const sourceDisplayLabelOverrides = parseConstant(
+    sourceLabelsSource,
+    "SOURCE_DISPLAY_LABEL_OVERRIDES"
+  );
+  const sourceDisplaySuffixes = parseConstant(
+    sourceLabelsSource,
+    "SOURCE_DISPLAY_SUFFIXES"
+  );
+  const subtypeLabelOverrides = mergeOverrideMaps(
+    parseConstant(sourceLabelsSource, "SUBTYPE_LABEL_OVERRIDES"),
+    parseConstant(sourceLabelsSource, "COMMON_SUBTYPE_LABEL_OVERRIDES")
+  );
+  const messages = parseConstant(messagesSource, "messages");
+  const supportedLocales = parseConstant(siteMetadataSource, "SUPPORTED_LOCALES");
+  const builtinCategories = parseConstant(siteMetadataSource, "BUILTIN_CATEGORIES");
+  const woolTopicMetadata = parseConstant(siteMetadataSource, "WOOL_TOPIC_METADATA");
+  const aiTopicMetadata = parseConstant(siteMetadataSource, "AI_TOPIC_METADATA");
+  const gameDealsTopicMetadata = parseConstant(siteMetadataSource, "GAME_DEALS_TOPIC_METADATA");
+  const chiguaTopicMetadata = parseConstant(siteMetadataSource, "CHIGUA_TOPIC_METADATA");
+  const eventHubMetadata = parseConstant(siteMetadataSource, "EVENT_HUB_METADATA");
+  const sourceCategoryProjections =
+    parseSourceCategoryProjections(taxonomySource);
+  const variantCategoryProjections = parseConstant(
+    taxonomySource,
+    "VARIANT_CATEGORY_PROJECTIONS"
+  );
+  const catalogPrioritySources = catalogSources.filter(
+    (source) => source.priorityTier === "A" || source.priorityTier === "B",
+  );
+  const sourceNames = [
+    ...new Set([
+      ...getSourceNames(storeSource),
+      ...catalogPrioritySources.map((source) => source.key),
+      ...variantCategoryProjections.map((projection) => projection.sourceName),
+    ]),
+  ];
+  const catalogSourceNames = new Map(
+    catalogPrioritySources.map((source) => [source.key, source.name]),
+  );
+  const subtypeValues = getSubtypeValues(sourceSubtypeGroups);
+  for (const projection of variantCategoryProjections) {
+    const sourceName = String(projection?.sourceName || "").trim();
+    const variant = String(projection?.variant || "").trim();
+    if (!sourceName || !variant) continue;
+    const values = subtypeValues.get(sourceName) || [];
+    if (!values.includes(variant)) {
+      subtypeValues.set(sourceName, [...values, variant]);
+    }
+  }
+  const defaultSubtypeValues = getDefaultSubtypeValues(subtypeValues);
+  for (const [sourceName, defaultSubtype] of catalogDefaultSubtypes) {
+    defaultSubtypeValues.set(sourceName, defaultSubtype);
+  }
+  const subtypeLabelMap = getSubtypeLabelMap(sourceSubtypeGroups);
+  for (const projection of variantCategoryProjections) {
+    const sourceName = String(projection?.sourceName || "").trim();
+    const variant = String(projection?.variant || "").trim();
+    const label = String(projection?.label || "").trim();
+    if (!sourceName || !variant || !label) continue;
+    const labels = subtypeLabelMap.get(sourceName) || new Map();
+    if (!labels.has(variant)) labels.set(variant, label);
+    subtypeLabelMap.set(sourceName, labels);
+  }
+  const categoryConfigBySlug = new Map(
+    builtinCategories.map((category) => [category.slug, category])
+  );
+  const categoryConfigById = new Map(
+    builtinCategories.map((category) => [category.id, category])
+  );
+  let writtenShellCount = 0;
+
+  const writeRouteShell = (pathname, meta) => {
+    const outputPath = path.join(distDir, pathname.replace(/^\/+/, ""), "index.html");
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(
+      outputPath,
+      setHtmlMeta(template, {
+        ogLocale: meta.htmlLang ? meta.htmlLang.replace("-", "_") : undefined,
+        ogImage:
+          buildAbsoluteUrl(defaultSeo.ogImage) ||
+          defaultSeo.ogImage,
+        ogImageType: defaultSeo.ogImageType,
+        ogImageWidth: defaultSeo.ogImageWidth,
+        ogImageHeight: defaultSeo.ogImageHeight,
+        ogImageAlt: defaultSeo.ogImageAlt,
+        twitterCard: defaultSeo.twitterCard,
+        ...meta,
+      })
+    );
+    writtenShellCount += 1;
+  };
+
+  const buildHomeMeta = (localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const seoMessages = getSeoMessages(messages, locale);
+    const siteName = getSiteName(messages, locale);
+    const title = seoMessages.homeTitle || `${siteName} - Hot Rankings`;
+    const description =
+      seoMessages.homeDescription ||
+      "Browse cross-platform trending topics and real-time hot rankings.";
+    const canonical = buildAbsoluteUrl(pathname);
+    return {
+      title,
+      description,
+      keywords: seoMessages.homeKeywords || siteName,
+      canonical,
+      htmlLang,
+      alternateLinks: buildAlternateLinks("/", supportedLocales),
+      jsonLd: buildWebsiteJsonLd({
+        siteName,
+        alternateName: locale === "zh-CN" ? "wuaihot" : undefined,
+        title,
+        description,
+        canonical,
+        htmlLang,
+      }),
+    };
+  };
+
+  const buildCategoryMeta = (category, localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const canonical = buildAbsoluteUrl(pathname);
+    const basePathname = `/category/${category.slug}`;
+    const htmlLang = localeMeta.htmlLang;
+    const categoryConfig = categoryConfigBySlug.get(category.slug);
+    const breadcrumbJsonLd = buildCategoryBreadcrumbJsonLd({
+      category: categoryConfig || category,
+      localeMeta,
+      categoryConfigById,
+    });
+    if (locale === "zh-CN") {
+      const meta = categorySeoMap[category.name];
+      if (meta?.title && meta?.description) {
+        const title = buildZhTitle(meta.title, meta.titleTail);
+        const description = meta.description;
+        return {
+          title,
+          description,
+          keywords: mergeKeywords(meta.keywords, category.name, brandNameZh),
+          canonical,
+          htmlLang,
+          alternateLinks: buildAlternateLinks(basePathname, supportedLocales),
+          breadcrumbJsonLd,
+          jsonLd: buildCollectionJsonLd({
+            title,
+            description,
+            canonical,
+            htmlLang,
+            listName: meta.title,
+          }),
+        };
+      }
+    }
+    const localizedCategoryMeta = categoryLocaleSeoMap?.[category.name]?.[locale];
+    if (localizedCategoryMeta) {
+      const { title, description, keywords } = localizedCategoryMeta;
+      return {
+        title,
+        description,
+        keywords,
+        canonical,
+        htmlLang,
+        alternateLinks: buildAlternateLinks(basePathname, supportedLocales),
+        breadcrumbJsonLd,
+        jsonLd: buildCollectionJsonLd({
+          title,
+          description,
+          canonical,
+          htmlLang,
+          listName: categoryConfig?.labels?.[locale] || category.name,
+        }),
+      };
+    }
+    const seoMessages = getSeoMessages(messages, locale);
+    const categoryLabel = categoryConfig?.labels?.[locale] || category.name;
+    const title = interpolate(seoMessages.categoryTitle, { category: categoryLabel });
+    const description = interpolate(seoMessages.categoryDescription, {
+      category: categoryLabel,
+    });
+    return {
+      title,
+      description,
+      keywords: interpolate(seoMessages.categoryKeywords, { category: categoryLabel }),
+      canonical,
+      htmlLang,
+      alternateLinks: buildAlternateLinks(basePathname, supportedLocales),
+      breadcrumbJsonLd,
+      jsonLd: buildCollectionJsonLd({
+        title,
+        description,
+        canonical,
+        htmlLang,
+        listName: categoryLabel,
+      }),
+    };
+  };
+
+  const buildAiTopicMeta = (localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const meta = aiTopicMetadata[locale] || aiTopicMetadata["zh-CN"] || {};
+    const canonical = buildAbsoluteUrl(pathname);
+    const title = meta.seoTitle || meta.title || "AI Trends";
+    const description =
+      meta.seoDescription || meta.description || "Major AI events and breakout trends.";
+    return {
+      title,
+      description,
+      keywords: meta.seoKeywords || mergeKeywords(title, brandNameZh),
+      canonical,
+      htmlLang,
+      robots: "index,follow",
+      alternateLinks: buildAlternateLinks("/topic/ai", supportedLocales),
+      jsonLd: buildWebPageJsonLd({ title, description, canonical, htmlLang }),
+    };
+  };
+
+  const buildWoolTopicMeta = (localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const meta = woolTopicMetadata[locale] || woolTopicMetadata["zh-CN"] || {};
+    const canonical = buildAbsoluteUrl(pathname);
+    const title = meta.seoTitle || meta.title || "Live Deals";
+    const description = meta.seoDescription || meta.description || "Live deal opportunities.";
+    return {
+      title,
+      description,
+      keywords: meta.seoKeywords || mergeKeywords(title, brandNameZh),
+      canonical,
+      htmlLang,
+      robots: "index,follow",
+      alternateLinks: buildAlternateLinks("/topic/wool", supportedLocales),
+      jsonLd: buildWebPageJsonLd({ title, description, canonical, htmlLang }),
+    };
+  };
+
+  const buildChiguaTopicMeta = (localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const meta = chiguaTopicMetadata[locale] || chiguaTopicMetadata["zh-CN"] || {};
+    const canonical = buildAbsoluteUrl(pathname);
+    const title = meta.seoTitle || meta.title || "Trending Events";
+    const description =
+      meta.seoDescription || meta.description || "Cross-platform trending events.";
+    return {
+      title,
+      description,
+      keywords: meta.seoKeywords || mergeKeywords(title, brandNameZh),
+      canonical,
+      htmlLang,
+      robots: "index,follow",
+      alternateLinks: buildAlternateLinks("/topic/chigua", supportedLocales),
+      jsonLd: buildWebPageJsonLd({ title, description, canonical, htmlLang }),
+    };
+  };
+
+  const buildGameDealsTopicMeta = (localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const meta = gameDealsTopicMetadata[locale] || gameDealsTopicMetadata["zh-CN"] || {};
+    const canonical = buildAbsoluteUrl(pathname);
+    const title = meta.seoTitle || meta.title || "Live Game Deals";
+    const description =
+      meta.seoDescription || meta.description || "Live game deals and historical lows.";
+    return {
+      title,
+      description,
+      keywords: meta.seoKeywords || mergeKeywords(title, brandNameZh),
+      canonical,
+      htmlLang,
+      robots: "index,follow",
+      alternateLinks: buildAlternateLinks("/topic/game-deals", supportedLocales),
+      jsonLd: buildWebPageJsonLd({ title, description, canonical, htmlLang }),
+    };
+  };
+
+  const buildEventHubMeta = (event, localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const meta =
+      event?.locales?.[locale] ||
+      event?.locales?.["zh-CN"] ||
+      {};
+    const canonical = buildAbsoluteUrl(pathname);
+    const title =
+      meta.seoTitle ||
+      meta.title ||
+      event?.id ||
+      "Event Hub";
+    const description =
+      meta.seoDescription ||
+      meta.description ||
+      "Official event standings, schedules, results and updates.";
+    const basePathname = event?.path || `/event/${event?.id || ""}`;
+    const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+      {
+        name:
+          BREADCRUMB_HOME_LABELS[locale] ||
+          BREADCRUMB_HOME_LABELS["zh-CN"],
+        item: buildAbsoluteUrl(withLocalePrefix(localeMeta, "/")),
+      },
+      {
+        name: meta.title || title,
+        item: canonical,
+      },
+    ]);
+    return {
+      title,
+      description,
+      keywords: meta.seoKeywords || mergeKeywords(title, brandNameZh),
+      canonical,
+      htmlLang,
+      robots: "index,follow",
+      alternateLinks: buildAlternateLinks(basePathname, supportedLocales),
+      breadcrumbJsonLd,
+      jsonLd: buildWebPageJsonLd({ title, description, canonical, htmlLang }),
+    };
+  };
+
+  const buildSystemRouteMeta = (systemRoute, localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const htmlLang = localeMeta.htmlLang;
+    const seoMessages = getSeoMessages(messages, locale);
+    const siteName = getSiteName(messages, locale);
+    const canonical = buildAbsoluteUrl(pathname);
+    const title =
+      seoMessages[`${systemRoute.seoKey}Title`] ||
+      `${systemRoute.seoKey} - ${siteName}`;
+    const description =
+      seoMessages[`${systemRoute.seoKey}Description`] ||
+      `${title} page.`;
+    return {
+      title,
+      description,
+      keywords: mergeKeywords(title, siteName),
+      canonical,
+      htmlLang,
+      robots: systemRoute.robots,
+      alternateLinks: buildAlternateLinks(systemRoute.pathname, supportedLocales),
+      jsonLd: buildWebPageJsonLd({
+        title,
+        description,
+        canonical,
+        htmlLang,
+      }),
+    };
+  };
+
+  const buildRankMeta = (sourceName, subtypeValue, localeMeta, pathname) => {
+    const locale = localeMeta.code;
+    const sourceMeta = listSeoMap[sourceName] || null;
+    const meta = sourceMeta || listSeoMap.default || {};
+    const shouldUseDefaultSubtype =
+      !subtypeValue &&
+      defaultSubtypeValues.has(sourceName) &&
+      !aggregateSubtypeSources.has(sourceName);
+    const effectiveSubtypeValue = shouldUseDefaultSubtype
+      ? defaultSubtypeValues.get(sourceName)
+      : subtypeValue;
+    const basePathname = effectiveSubtypeValue
+      ? `/rank/${sourceName}/${effectiveSubtypeValue}`
+      : `/rank/${sourceName}`;
+    const canonical = buildAbsoluteUrl(withLocalePrefix(localeMeta, basePathname));
+    const htmlLang = localeMeta.htmlLang;
+    const rawSubtypeLabel = effectiveSubtypeValue
+      ? subtypeLabelMap.get(sourceName)?.get(effectiveSubtypeValue) || ""
+      : "";
+    const subtypeLabel = effectiveSubtypeValue
+      ? getLocalizedSubtypeLabel(
+          subtypeLabelOverrides,
+          effectiveSubtypeValue,
+          rawSubtypeLabel,
+          locale
+        )
+      : "";
+    const catalogSourceLabel = catalogSourceNames.get(sourceName) || "";
+    const sourceLabel =
+      locale === "zh-CN"
+        ? sourceMeta?.label || catalogSourceLabel || prettifySlug(sourceName)
+        : getLocalizedSourceLabel(
+            sourceLabelOverrides,
+            sourceName,
+            sourceMeta?.label || catalogSourceLabel,
+            locale
+          );
+    const sourceDisplayLabel =
+      getLocalizedSourceDisplayLabel(
+        sourceLabelOverrides,
+        sourceDisplayLabelOverrides,
+        sourceDisplaySuffixes,
+        sourceName,
+        sourceLabel,
+        locale
+      ) || sourceLabel;
+    const sourceSeoLabel =
+      locale === "zh-CN" && sourceMeta?.label ? sourceMeta.label : sourceLabel;
+    const breadcrumbJsonLd = buildRankBreadcrumbJsonLd({
+      sourceName,
+      subtypeValue: effectiveSubtypeValue,
+      sourceDisplayLabel,
+      subtypeLabel,
+      localeMeta,
+      categoryConfigById,
+      sourceCategoryProjections,
+      variantCategoryProjections,
+    });
+
+    if (locale !== "zh-CN") {
+      const seoMessages = getSeoMessages(messages, locale);
+      const siteName = getSiteName(messages, locale);
+      const label = subtypeLabel
+        ? `${sourceDisplayLabel} · ${subtypeLabel}`
+        : sourceSeoLabel;
+      const descriptionLabel = subtypeLabel ? sourceDisplayLabel : sourceSeoLabel;
+      const title = `${label} - ${siteName}`;
+      const description = subtypeLabel
+        ? interpolate(seoMessages.sourceSubtypeDescription, {
+            label: descriptionLabel,
+            subtype: subtypeLabel,
+          })
+        : interpolate(seoMessages.sourceDescription, { label: descriptionLabel });
+      const keywords = subtypeLabel
+        ? interpolate(seoMessages.sourceSubtypeKeywords, {
+            label: descriptionLabel,
+            subtype: subtypeLabel,
+          })
+        : interpolate(seoMessages.sourceKeywords, { label: descriptionLabel });
+      return {
+        title,
+        description,
+        keywords,
+        canonical,
+        htmlLang,
+        alternateLinks: buildAlternateLinks(basePathname, supportedLocales),
+        breadcrumbJsonLd,
+        jsonLd: buildCollectionJsonLd({
+          title,
+          description,
+          canonical,
+          htmlLang,
+          listName: label,
+        }),
+      };
+    }
+
+    const rawDescription = trimTerminalPunctuation(
+      sourceMeta?.description || "实时榜单与趋势数据",
+    );
+    const baseIntent =
+      normalizeZhIntent(
+        stripLeadingPhrases(rawDescription, [sourceSeoLabel, sourceDisplayLabel])
+      ) ||
+      "实时热榜与趋势榜";
+    const zhRouteSeo = getZhRouteSeo({
+      sourceName,
+      subtypeValue: effectiveSubtypeValue,
+      clawHubZhBaseSeo,
+      clawHubZhSubtypeSeo,
+      designArenaZhSubtypeSeo,
+      ithomeZhSubtypeSeo,
+      bilibiliZhSubtypeSeo,
+      artificialAnalysisZhSubtypeSeo,
+    });
+    const titleLabel =
+      zhRouteSeo?.titleLabel ||
+      (subtypeLabel
+        ? combineSourceAndSubtypeLabel(sourceDisplayLabel, subtypeLabel)
+        : sourceSeoLabel);
+    const intent =
+      zhRouteSeo?.intent ||
+      (subtypeLabel
+        ? normalizeZhIntent(
+            stripLeadingPhrases(rawDescription, [
+              sourceSeoLabel,
+              sourceDisplayLabel,
+              subtypeLabel,
+            ])
+          ) || baseIntent
+        : baseIntent);
+    const listName = titleLabel;
+    const title = buildZhTitle(titleLabel, intent);
+    const description = `${appendZhPageSuffix(titleLabel)}，${joinZhVerbObject(
+      "聚合",
+      intent
+    )}、对应平台最新数据与原站入口，支持实时浏览、榜单切换、分页跳转与一键直达。`;
+    return {
+      title,
+      description,
+      keywords: mergeKeywords(
+        sourceMeta?.keywords,
+        sourceDisplayLabel,
+        sourceLabel,
+        subtypeLabel,
+        intent,
+        titleLabel,
+        brandNameZh
+      ),
+      canonical,
+      htmlLang,
+      alternateLinks: buildAlternateLinks(basePathname, supportedLocales),
+      breadcrumbJsonLd,
+      jsonLd: buildCollectionJsonLd({
+        title,
+        description,
+        canonical,
+        htmlLang,
+        listName,
+      }),
+    };
+  };
+
+  supportedLocales.forEach((localeMeta) => {
+    const homePathname = withLocalePrefix(localeMeta, "/");
+    writeRouteShell(homePathname, buildHomeMeta(localeMeta, homePathname));
+
+    builtinCategories.forEach((category) => {
+      const pathname = withLocalePrefix(localeMeta, `/category/${category.slug}`);
+      const meta = buildCategoryMeta(category, localeMeta, pathname);
+      if (meta) writeRouteShell(pathname, meta);
+    });
+
+    const aiTopicPathname = withLocalePrefix(localeMeta, "/topic/ai");
+    writeRouteShell(
+      aiTopicPathname,
+      buildAiTopicMeta(localeMeta, aiTopicPathname)
+    );
+
+    const chiguaTopicPathname = withLocalePrefix(localeMeta, "/topic/chigua");
+    writeRouteShell(
+      chiguaTopicPathname,
+      buildChiguaTopicMeta(localeMeta, chiguaTopicPathname)
+    );
+
+    const woolTopicPathname = withLocalePrefix(localeMeta, "/topic/wool");
+    writeRouteShell(
+      woolTopicPathname,
+      buildWoolTopicMeta(localeMeta, woolTopicPathname)
+    );
+
+    const gameDealsTopicPathname = withLocalePrefix(localeMeta, "/topic/game-deals");
+    writeRouteShell(
+      gameDealsTopicPathname,
+      buildGameDealsTopicMeta(localeMeta, gameDealsTopicPathname)
+    );
+
+    eventHubMetadata.forEach((event) => {
+      if (!event?.path) return;
+      const pathname = withLocalePrefix(localeMeta, event.path);
+      writeRouteShell(
+        pathname,
+        buildEventHubMeta(event, localeMeta, pathname)
+      );
+    });
+
+    SYSTEM_ROUTES.forEach((systemRoute) => {
+      const pathname = withLocalePrefix(localeMeta, systemRoute.pathname);
+      writeRouteShell(
+        pathname,
+        buildSystemRouteMeta(systemRoute, localeMeta, pathname)
+      );
+    });
+
+    sourceNames.forEach((sourceName) => {
+      const basePathname = withLocalePrefix(localeMeta, `/rank/${sourceName}`);
+      writeRouteShell(basePathname, buildRankMeta(sourceName, "", localeMeta, basePathname));
+
+      (subtypeValues.get(sourceName) || []).forEach((subtypeValue) => {
+        const pathname = withLocalePrefix(
+          localeMeta,
+          `/rank/${sourceName}/${subtypeValue}`
+        );
+        writeRouteShell(
+          pathname,
+          buildRankMeta(sourceName, subtypeValue, localeMeta, pathname)
+        );
+      });
+    });
+  });
+
+  console.log(`[seo-shell] generated ${writtenShellCount} route shells`);
+}
+
+main().catch((error) => {
+  console.error("[seo-shell] failed", error);
+  process.exit(1);
+});

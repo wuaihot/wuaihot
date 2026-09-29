@@ -1,0 +1,39 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.DS_Store
+dist
+dist-ssr
+coverage
+*.local
+
+/cypress/videos/
+/cypress/screenshots/
+
+/DailyHotApi-master/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+public/sitemap.xml
+public/robots.txt
+.env
+.vercel
+.env*
+
+# Machine-local confidential agent overlay; durable strategy lives in the private WP Better workspace.
+AGENTS.private.md
+!.env.example

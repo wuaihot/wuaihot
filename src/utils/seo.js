@@ -1,0 +1,2203 @@
+import i18n from "@/i18n";
+import {
+  buildCategoryPath,
+  buildHomePath,
+  buildLocalePathFromRoute,
+  buildRankPath,
+  getCategoryLabel,
+  getCategoryMetaById,
+  getCategoryNameBySlug,
+  getLocaleFromRoute,
+  getLocaleMeta,
+  getSourceNameBySlug,
+  getSupportedLocales,
+  normalizeLocale,
+} from "@/utils/locale";
+import {
+  getDefaultSourceSubtype,
+  getSourceSubtypeOptions,
+  getTrendsCatalogSource,
+  shouldCanonicalizeDefaultSubtype,
+} from "@/utils/sourceSubtypes";
+import {
+  getSourceDisplayLabel as getLocalizedSourceDisplayLabel,
+  getSourceLabel as getLocalizedSourceLabel,
+  getSubtypeLabel as getLocalizedSubtypeLabel,
+} from "@/utils/sourceLabels";
+import { BUILTIN_CATEGORIES, EVENT_HUB_METADATA } from "@/config/site-metadata.mjs";
+import {
+  SOURCE_CATEGORY_PROJECTIONS,
+  VARIANT_CATEGORY_PROJECTIONS,
+} from "@/config/taxonomy-v3";
+
+const DEFAULT_SEO = {
+  title: "今日热榜 - 全网热搜与实时热点聚合 | 吾爱热榜",
+  description:
+    "今日热榜聚合微博、百度、知乎、抖音、B站、头条等平台的全网热搜与实时热点。一站看全网，覆盖新闻、科技、AI、财经、文娱、游戏、体育、生活等分类，支持榜单切换与实时更新。",
+  keywords:
+    "今日热榜,全网热搜,实时热点,热榜聚合,微博热搜,百度热搜,知乎热榜,抖音热榜,吾爱热榜,wuaihot",
+  ogImage: "/brand/wuaihot-social.png",
+  ogImageWidth: "1254",
+  ogImageHeight: "1254",
+  ogImageType: "image/png",
+  ogImageAlt: "吾爱热榜品牌标识",
+  twitterCard: "summary",
+  siteName: "吾爱热榜",
+  locale: "zh_CN",
+};
+
+const SEO_BRAND_NAME_ZH = "吾爱热榜";
+
+const CATEGORY_SEO_MAP = {
+  "综合": {
+    title: "综合热榜",
+    titleTail: "微博、知乎、抖音、头条与新闻站全网热点聚合",
+    description:
+      "综合热榜聚合微博热搜、知乎热榜、抖音热榜、百度热搜、腾讯新闻、网易新闻等多平台实时热点，适合一站式追踪全网焦点、突发资讯与大众话题。",
+    keywords: [
+      "综合热榜",
+      "全网热点",
+      "微博热搜",
+      "知乎热榜",
+      "抖音热榜",
+      "百度热搜",
+      "新闻热榜",
+      "实时热点",
+    ],
+  },
+  "新闻": {
+    title: "新闻热榜",
+    titleTail: "国内外新闻、社会热点与主流媒体榜单聚合",
+    description:
+      "新闻热榜聚合今日头条、腾讯新闻、网易新闻、新浪新闻、澎湃新闻、微博社会榜及国际媒体热点，覆盖国内、国际、社会与突发新闻，一站追踪当天重要资讯。",
+    keywords: [
+      "新闻热榜",
+      "今日新闻",
+      "新闻热点",
+      "社会热点",
+      "今日头条",
+      "腾讯新闻",
+      "网易新闻",
+      "新浪新闻",
+      "澎湃新闻",
+      "微博社会榜",
+    ],
+  },
+  "文娱": {
+    title: "文娱热榜",
+    titleTail: "娱乐、影视、音乐、短剧与ACG热点聚合",
+    description:
+      "文娱热榜聚合抖音、百度、微博、腾讯新闻、中国电影票房、红果短剧及主流音乐平台榜单，覆盖明星娱乐、影视综艺、短剧、音乐与 ACG 热点。",
+    keywords: [
+      "文娱热榜",
+      "娱乐热榜",
+      "影视热榜",
+      "音乐热榜",
+      "短剧热榜",
+      "ACG热榜",
+      "微博文娱榜",
+      "抖音娱乐榜",
+    ],
+  },
+  "音乐": {
+    title: "音乐热榜",
+    titleTail: "QQ音乐、网易云、酷狗、酷我等榜单聚合",
+    description:
+      "音乐热榜聚合 QQ音乐、网易云音乐、酷狗音乐、酷我音乐、Apple Music、Apple Podcasts 与喜马拉雅等真实榜单，集中查看热歌、新歌、飙升、专辑、歌单与音频内容趋势。",
+    keywords: [
+      "音乐热榜",
+      "歌曲排行榜",
+      "QQ音乐排行榜",
+      "网易云音乐排行榜",
+      "酷狗音乐排行榜",
+      "酷我音乐排行榜",
+      "Apple Music排行榜",
+      "热歌榜",
+      "新歌榜",
+      "飙升榜",
+    ],
+  },
+  "体育": {
+    title: "体育热榜",
+    titleTail: "赛事热点、足球篮球与体育话题聚合",
+    description:
+      "体育热榜聚合微博体育榜、腾讯新闻体育榜与虎扑等平台热点，覆盖足球、篮球、乒乓球及综合赛事话题，快速查看当天体育热搜与热门讨论。",
+    keywords: [
+      "体育热榜",
+      "体育热搜",
+      "足球热点",
+      "篮球热点",
+      "微博体育榜",
+      "腾讯新闻体育榜",
+      "虎扑热榜",
+      "赛事热点",
+    ],
+  },
+  "科技": {
+    title: "科技热榜",
+    titleTail: "科技新闻、数码资讯与开发者趋势聚合",
+    description:
+      "科技热榜聚合 36氪、IT之家、少数派、CSDN、掘金、GitHub 趋势、酷安等平台内容，覆盖科技新闻、数码资讯、开源项目、编程实践与开发者社区热点。",
+    keywords: [
+      "科技热榜",
+      "科技新闻",
+      "数码资讯",
+      "开发者社区",
+      "GitHub 趋势",
+      "开源项目",
+      "CSDN 热榜",
+      "掘金热榜",
+    ],
+  },
+  游戏: {
+    en: {
+      title: "Game Deals & Rankings - Steam sales, Epic freebies and game trends | wuaihot",
+      description:
+        "Game Deals & Rankings combine Steam official sales, Epic free games, Xiaoheihe historical lows, GG.deals freebies and bundles with gaming news and community trends.",
+      keywords:
+        "game deals,Steam sales,Epic free games,historical low game prices,Xiaoheihe,GG.deals,game bundles,game rankings,wuaihot",
+    },
+    "zh-TW": {
+      title: "遊戲優惠與熱榜 - Steam 特惠、Epic 免費遊戲與史低情報 | 吾愛熱榜",
+      description:
+        "遊戲優惠與熱榜彙整 Steam 官方特惠、Epic 免費遊戲、小黑盒史低與高折扣、GG.deals 免費及遊戲包情報，並結合遊戲資訊與玩家社群趨勢。",
+      keywords:
+        "遊戲優惠,Steam特惠,Epic免費遊戲,遊戲史低,小黑盒,GG.deals,遊戲包,遊戲熱榜,吾愛熱榜",
+    },
+    ja: {
+      title: "ゲームセール・ランキング - Steam セール、Epic 無料配布、史上最安 | wuaihot",
+      description:
+        "Steam 公式セール、Epic 無料ゲーム、Xiaoheihe の史上最安・高割引、GG.deals の無料配布・バンドルとゲームニュースをまとめます。",
+      keywords:
+        "ゲームセール,Steamセール,Epic無料ゲーム,史上最安,Xiaoheihe,GG.deals,ゲームバンドル,ゲームランキング,wuaihot",
+    },
+    ko: {
+      title: "게임 할인·랭킹 - Steam 세일, Epic 무료 게임, 역대 최저가 | wuaihot",
+      description:
+        "Steam 공식 세일, Epic 무료 게임, Xiaoheihe 역대 최저가·고할인, GG.deals 무료 배포·번들과 게임 뉴스 및 커뮤니티 트렌드를 함께 제공합니다.",
+      keywords:
+        "게임 할인,Steam 세일,Epic 무료 게임,역대 최저가,Xiaoheihe,GG.deals,게임 번들,게임 랭킹,wuaihot",
+    },
+  },
+  "财经": {
+    title: "财经热榜",
+    titleTail: "7×24快讯、股票、ETF、全球股指与投资趋势聚合",
+    description:
+      "财经热榜聚合财联社、东方财富、金十、同花顺、华尔街见闻、新浪财经与第一财经7×24快讯，结合雪球投资热度、沪深港及全球主要交易所榜单和全球股指，覆盖A股、港股、美股、ETF、宏观政策、公司动态与跨市场趋势。",
+    keywords: [
+      "财经热榜",
+      "股票成交额榜",
+      "ETF成交额榜",
+      "上海证券交易所",
+      "深圳证券交易所",
+      "香港交易所",
+      "港股成交额榜",
+      "Nasdaq",
+      "纽约证券交易所",
+      "台湾证券交易所",
+      "印度国家证券交易所",
+      "NYSE",
+      "TWSE",
+      "NSE India",
+      "美股活跃榜",
+      "全球股指",
+      "上证指数",
+      "恒生指数",
+      "纳斯达克指数",
+      "雪球热门话题",
+      "雪球热股榜",
+      "雪球热门基金",
+      "A股热榜",
+      "证券市场",
+      "投资热点",
+    ],
+  },
+  "实时快讯": {
+    title: "财经实时快讯",
+    titleTail: "财联社、东方财富、金十、同花顺等7×24市场消息聚合",
+    description:
+      "财经实时快讯聚合财联社电报、东方财富快讯、金十数据、同花顺、华尔街见闻、新浪财经7×24与第一财经，集中追踪A股、港股、美股、宏观政策、公司公告与全球市场突发消息。",
+    keywords: [
+      "财经快讯",
+      "7×24快讯",
+      "财联社电报",
+      "东方财富快讯",
+      "金十数据",
+      "同花顺快讯",
+      "华尔街见闻",
+      "新浪财经7×24",
+      "第一财经",
+      "股票快讯",
+      "市场快讯",
+    ],
+  },
+  "市场热度": {
+    title: "市场热度",
+    titleTail: "雪球投资话题、热股与热门基金趋势",
+    description:
+      "市场热度聚合雪球热门投资话题、热股与热门基金榜单，用于观察投资者关注方向、市场讨论度与短期资金情绪变化。",
+    keywords: ["市场热度", "雪球热榜", "热门股票", "热门基金", "投资话题", "市场情绪"],
+  },
+  "全球股指": {
+    title: "全球股指",
+    titleTail: "亚欧美主要股票指数行情与涨跌排行",
+    description:
+      "全球股指汇总中国、香港、日本、韩国、印度、美国、加拿大、澳大利亚、巴西及欧洲主要股票指数，集中查看最新点位、涨跌幅与区域市场表现。",
+    keywords: [
+      "全球股指",
+      "上证指数",
+      "恒生指数",
+      "日经225",
+      "纳斯达克指数",
+      "标普500",
+      "NIFTY 50",
+      "欧洲股指",
+    ],
+  },
+  "交易所": {
+    title: "交易所市场榜",
+    titleTail: "沪深港、美股、台湾、印度与澳洲市场活跃榜",
+    description:
+      "交易所市场榜聚合上海证券交易所、深圳证券交易所、香港交易所、Nasdaq、NYSE、台湾证券交易所、印度国家证券交易所与澳大利亚证券交易所的官方市场榜单与活跃证券数据。",
+    keywords: [
+      "交易所",
+      "上交所",
+      "深交所",
+      "港交所",
+      "Nasdaq",
+      "NYSE",
+      "TWSE",
+      "NSE India",
+      "ASX",
+      "股票成交额榜",
+      "ETF成交额榜",
+    ],
+  },
+  "羊毛": {
+    title: "羊毛优惠",
+    titleTail: "限免、优惠券、免费福利与实测线报实时聚合",
+    description:
+      "羊毛优惠聚合超级线报、0818团、NodeLoc、豆瓣优惠及 Steam、Epic、GOG、小黑盒、GG.deals 游戏福利，覆盖限免、优惠券、史低、超低价、抽奖、免费额度与游戏免费领取。",
+    keywords: [
+      "羊毛",
+      "优惠线报",
+      "限免",
+      "免费福利",
+      "优惠券",
+      "免费额度",
+      "抽奖",
+      "秒杀",
+      "喜加一",
+      "超级线报",
+      "0818团",
+      "NodeLoc优惠",
+    ],
+  },
+  "生活": {
+    title: "生活热榜",
+    titleTail: "消费、阅读、影视与生活方式热点聚合",
+    description:
+      "生活热榜聚合什么值得买、微信读书、豆瓣电影、豆瓣小组、纽约时报、中央气象台等内容，覆盖消费决策、热门书影音、天气与日常生活方式话题。",
+    keywords: [
+      "生活热榜",
+      "消费热点",
+      "微信读书热榜",
+      "豆瓣电影热榜",
+      "什么值得买",
+      "生活方式",
+      "阅读榜单",
+      "影视热榜",
+    ],
+  },
+  "游戏": {
+    title: "游戏热榜",
+    titleTail: "游戏资讯、官方公告与玩家社区讨论聚合",
+    description:
+      "游戏热榜聚合 Steam 官方特惠、Epic 免费游戏、小黑盒史低与高折扣、GG.deals 免费及促销情报，并结合游戏葡萄、游研社、米游社等资讯社区，覆盖免费领取、史低、超低价、游戏资讯与玩家讨论。",
+    keywords: [
+      "游戏热榜",
+      "游戏资讯",
+      "玩家社区",
+      "米游社",
+      "原神热榜",
+      "星穹铁道热榜",
+      "英雄联盟热榜",
+      "游戏公告",
+      "Steam 特惠",
+      "Epic 免费游戏",
+      "游戏史低",
+      "游戏折扣",
+      "小黑盒",
+      "GG.deals",
+    ],
+  },
+  "社区": {
+    title: "社区热榜",
+    titleTail: "论坛热议、社区热帖与开发者讨论聚合",
+    description:
+      "社区热榜聚合百度贴吧、V2EX、NGA、吾爱破解、天涯、Nodeseek 等平台热门帖子，帮助你快速掌握论坛热议、社区热帖与圈层讨论动态。",
+    keywords: [
+      "社区热榜",
+      "论坛热议",
+      "V2EX 热榜",
+      "百度贴吧",
+      "NGA 热帖",
+      "吾爱破解",
+      "Nodeseek",
+      "社区讨论",
+    ],
+  },
+  "模型评测": {
+    title: "AI模型评测",
+    titleTail: "大模型排行榜、基准测试与性能价格对比",
+    description:
+      "AI模型评测聚合 OpenRouter、Artificial Analysis、Arena AI、DesignArena 与 LLM Stats，集中查看主流大模型的综合能力、编程、视觉、Agent、价格与使用热度排名。",
+    keywords: ["AI模型评测", "大模型排行榜", "OpenRouter", "Artificial Analysis", "Arena AI", "DesignArena", "LLM Stats"],
+  },
+  "产品生态": {
+    title: "AI产品生态",
+    titleTail: "AI产品、Agent Skills、插件与新品趋势",
+    description:
+      "AI产品生态聚合 AICPB 全球 AI 产品热度、Skills Rank、ClawHub 与 Product Hunt AI 新品，观察 AI 应用、Agent Skills、插件和工具生态的真实热度变化。",
+    keywords: ["AI产品", "AI工具", "Agent Skills", "ClawHub", "Product Hunt AI", "AICPB", "AI应用榜"],
+  },
+  "官方动态": {
+    title: "AI官方动态",
+    titleTail: "OpenAI、Anthropic、DeepMind等官方更新聚合",
+    description:
+      "AI官方动态聚合 OpenAI、Anthropic、DeepMind、Meta AI、Mistral、Cohere、Perplexity、xAI 与 Hugging Face 官方新闻和博客，优先追踪模型发布、产品更新与公司研究进展。",
+    keywords: ["AI官方动态", "OpenAI", "Anthropic", "DeepMind", "Meta AI", "Mistral", "Hugging Face", "AI新闻"],
+  },
+  "研究社区": {
+    title: "AI研究社区",
+    titleTail: "论文代码、Hacker News与Reddit技术讨论聚合",
+    description:
+      "AI研究社区聚合 Papers with Code、Hacker News AI 讨论以及 LocalLLaMA、MachineLearning、artificial 等 Reddit 社区，跟踪论文代码、开源模型与开发者技术讨论。",
+    keywords: ["AI研究", "Papers with Code", "Hacker News AI", "LocalLLaMA", "MachineLearning", "开源模型", "AI社区"],
+  },
+  "中文AI资讯": {
+    title: "中文AI资讯",
+    titleTail: "量子位与新浪AI热点实时聚合",
+    description:
+      "中文AI资讯聚合量子位与新浪 AI 热榜，补充国内大模型、AI产品、创业公司、产业事件和爆火话题，降低只依赖海外英文源造成的信息偏差。",
+    keywords: ["中文AI资讯", "量子位", "新浪AI", "国内AI新闻", "大模型新闻", "AI产业", "AI热点"],
+  },
+  AI: {
+    title: "AI 热榜",
+    titleTail: "模型评测、官方动态、产品生态与中文AI资讯聚合",
+    description:
+      "AI 热榜聚合 OpenRouter、Artificial Analysis、Arena AI、OpenAI、Anthropic、Hugging Face、Product Hunt、Hacker News、量子位与新浪 AI，覆盖模型评测、产品生态、官方动态、研究社区与中文 AI 资讯。",
+    keywords: [
+      "AI热榜",
+      "AI排行榜",
+      "大模型排行榜",
+      "AI资讯",
+      "OpenRouter",
+      "OpenAI",
+      "Hugging Face",
+      "AI产品",
+    ],
+  },
+};
+
+const CATEGORY_LOCALE_SEO_MAP = {
+  "羊毛": {
+    en: {
+      title: "Deals & Freebies - Coupons, giveaways and limited-time offers | wuaihot",
+      description:
+        "Deals & Freebies aggregates time-sensitive offers from Super Deals, 0818 Deals, NodeLoc Deals and ITHome Free Games, including coupons, free credits, giveaways, discounts and limited-time freebies.",
+      keywords:
+        "deals,freebies,coupons,giveaways,discounts,free credits,limited-time offers,0818 Deals,NodeLoc Deals,ITHome Free Games,wuaihot",
+    },
+    "zh-TW": {
+      title: "優惠情報 - 限免、優惠券、免費福利與即時線報 | 吾愛熱榜",
+      description:
+        "優惠情報彙整超級線報、0818團、NodeLoc優惠與 IT之家喜加一等高時效資訊，涵蓋限免、免費額度、優惠券、抽獎、折扣及遊戲免費領取。",
+      keywords: "優惠情報,限免,免費福利,優惠券,抽獎,折扣,0818團,NodeLoc優惠,喜加一,吾愛熱榜",
+    },
+    ja: {
+      title: "お得情報 - 無料配布、クーポン、キャンペーン速報 | wuaihot",
+      description:
+        "スーパーお得情報、0818、NodeLoc、ITHome の無料配布やクーポン、無料クレジット、抽選、割引など、行動価値の高いお得情報をまとめて確認できます。",
+      keywords: "お得情報,無料配布,クーポン,キャンペーン,割引,無料クレジット,0818,NodeLoc,ITHome,wuaihot",
+    },
+    ko: {
+      title: "혜택 정보 - 무료 배포, 쿠폰, 할인 및 이벤트 | wuaihot",
+      description:
+        "Super Deals, 0818, NodeLoc, ITHome에서 제공하는 무료 배포, 쿠폰, 무료 크레딧, 경품, 할인 등 시의성 높은 혜택 정보를 한곳에서 확인합니다.",
+      keywords: "혜택,무료 배포,쿠폰,할인,경품,무료 크레딧,0818,NodeLoc,ITHome,wuaihot",
+    },
+  },
+  "财经": {
+    en: {
+      title: "Finance Rankings - Live market news, stocks, ETFs and global indexes | wuaihot",
+      description:
+        "Finance Rankings combine 24/7 market flashes from major Chinese financial outlets with Xueqiu investor trends, official exchange activity rankings and major global stock indexes across Asia, the U.S. and Europe.",
+      keywords:
+        "finance rankings,global market indexes,Shanghai Composite,CSI 300,Hang Seng Index,Hang Seng TECH,Nasdaq Composite,Nasdaq-100,NIFTY 50,SENSEX,stock turnover,ETF turnover,HKEX,Nasdaq,Xueqiu,wuaihot",
+    },
+    "zh-TW": {
+      title: "財經熱榜 - 7×24快訊、股票、ETF與全球股指聚合 | 吾愛熱榜",
+      description:
+        "財經熱榜彙整主要財經媒體7×24快訊、雪球投資熱度、上海、深圳、香港及海外交易所官方市場榜單與全球主要股指，追蹤A股、港股、美股、ETF與宏觀市場趨勢。",
+      keywords:
+        "財經熱榜,股票成交額榜,ETF成交額榜,上海證券交易所,深圳證券交易所,香港交易所,Nasdaq,NIFTY 50,SENSEX,美股,港股,雪球熱門股票,熱門基金,A股熱榜,證券市場,吾愛熱榜",
+    },
+    ja: {
+      title: "金融ランキング - 24時間速報、株式、ETF、世界株価指数 | wuaihot",
+      description:
+        "主要金融メディアの24時間速報、Xueqiu の投資トレンド、上海・深圳・香港など主要取引所の公式市場データ、世界主要株価指数を一体で追跡します。",
+      keywords:
+        "金融ランキング,株式売買代金,ETF売買代金,上海証券取引所,深圳証券取引所,香港取引所,Nasdaq,NIFTY 50,SENSEX,米国株,香港株,Xueqiu,人気ファンド,A株,wuaihot",
+    },
+    ko: {
+      title: "금융 랭킹 - 24시간 속보, 주식, ETF, 글로벌 지수 | wuaihot",
+      description:
+        "주요 금융 매체의 24시간 속보, Xueqiu 투자 동향, 상하이·선전·홍콩 등 주요 거래소 공식 시장 데이터와 글로벌 주요 주가지수를 함께 추적합니다.",
+      keywords:
+        "금융 랭킹,주식 거래대금,ETF 거래대금,상하이증권거래소,선전증권거래소,홍콩거래소,Nasdaq,NIFTY 50,SENSEX,미국 주식,홍콩 주식,Xueqiu,인기 펀드,A주,wuaihot",
+    },
+  },
+  "实时快讯": {
+    en: {
+      title: "Live Finance News - 24/7 market flashes and breaking updates | wuaihot",
+      description:
+        "Live Finance News aggregates CLS Telegraph, Eastmoney, Jin10, Tonghuashun, WallstreetCN, Sina Finance and Yicai for fast-moving stock, macro, company and global market updates.",
+      keywords: "live finance news,market flash,breaking finance news,CLS,Eastmoney,Jin10,Tonghuashun,WallstreetCN,Sina Finance,Yicai,wuaihot",
+    },
+    "zh-TW": {
+      title: "財經即時快訊 - 7×24市場消息與重大事件聚合 | 吾愛熱榜",
+      description:
+        "財經即時快訊彙整財聯社、東方財富、金十、同花順、華爾街見聞、新浪財經與第一財經，追蹤股票、宏觀、公司及全球市場突發消息。",
+      keywords: "財經快訊,7×24快訊,財聯社,東方財富,金十,同花順,華爾街見聞,新浪財經,第一財經,吾愛熱榜",
+    },
+    ja: {
+      title: "金融速報 - 24時間マーケットニュース・重要イベント | wuaihot",
+      description:
+        "CLS、Eastmoney、Jin10、Tonghuashun、WallstreetCN、Sina Finance、Yicai の速報を集約し、株式・マクロ・企業・世界市場の動きを追跡します。",
+      keywords: "金融速報,市場ニュース,CLS,Eastmoney,Jin10,Tonghuashun,WallstreetCN,Sina Finance,Yicai,wuaihot",
+    },
+    ko: {
+      title: "금융 실시간 속보 - 24시간 시장 뉴스와 주요 이벤트 | wuaihot",
+      description:
+        "CLS, Eastmoney, Jin10, Tonghuashun, WallstreetCN, Sina Finance, Yicai의 속보를 모아 주식·거시경제·기업·글로벌 시장 변화를 추적합니다.",
+      keywords: "금융 속보,시장 뉴스,CLS,Eastmoney,Jin10,Tonghuashun,WallstreetCN,Sina Finance,Yicai,wuaihot",
+    },
+  },
+  "市场热度": {
+    en: {
+      title: "Market Trends - Popular stocks, funds, and investor topics | wuaihot",
+      description:
+        "Market Trends tracks Xueqiu investor discussions, popular stocks and popular funds to surface changes in attention and short-term market sentiment.",
+      keywords: "market trends,Xueqiu,popular stocks,popular funds,investor topics,market sentiment,wuaihot",
+    },
+    "zh-TW": {
+      title: "市場熱度 - 熱門股票、基金與投資話題趨勢 | 吾愛熱榜",
+      description: "市場熱度彙整雪球熱門投資話題、熱門股票與基金榜單，用於觀察投資者關注方向與短期市場情緒。",
+      keywords: "市場熱度,雪球,熱門股票,熱門基金,投資話題,市場情緒,吾愛熱榜",
+    },
+    ja: {
+      title: "市場トレンド - 人気株・ファンド・投資テーマ | wuaihot",
+      description: "Xueqiu の人気投資テーマ、注目株、人気ファンドを集約し、投資家の関心と短期的な市場センチメントを可視化します。",
+      keywords: "市場トレンド,Xueqiu,人気株,人気ファンド,投資テーマ,市場センチメント,wuaihot",
+    },
+    ko: {
+      title: "시장 동향 - 인기 종목·펀드·투자 이슈 | wuaihot",
+      description: "Xueqiu의 인기 투자 이슈, 종목, 펀드를 모아 투자자 관심과 단기 시장 심리 변화를 보여줍니다.",
+      keywords: "시장 동향,Xueqiu,인기 종목,인기 펀드,투자 이슈,시장 심리,wuaihot",
+    },
+  },
+  "全球股指": {
+    en: {
+      title: "Global Stock Indexes - Major market performance across regions | wuaihot",
+      description:
+        "Global Stock Indexes tracks major benchmarks across China, Hong Kong, Japan, Korea, India, the U.S., Canada, Australia, Brazil and Europe with current levels and percentage moves.",
+      keywords: "global stock indexes,Shanghai Composite,Hang Seng,Nikkei 225,Nasdaq,S&P 500,NIFTY 50,European indexes,wuaihot",
+    },
+    "zh-TW": {
+      title: "全球股指 - 亞洲、美國與歐洲主要股票指數行情 | 吾愛熱榜",
+      description: "全球股指彙整中國、香港、日本、韓國、印度、美國、加拿大、澳洲、巴西及歐洲主要股票指數的最新點位與漲跌幅。",
+      keywords: "全球股指,上證指數,恆生指數,日經225,納斯達克,標普500,NIFTY 50,歐洲股指,吾愛熱榜",
+    },
+    ja: {
+      title: "世界株価指数 - アジア・米国・欧州の主要指数 | wuaihot",
+      description: "中国、香港、日本、韓国、インド、米国、カナダ、豪州、ブラジル、欧州の主要株価指数を現在値と騰落率で一覧できます。",
+      keywords: "世界株価指数,上海総合,ハンセン,日経225,Nasdaq,S&P 500,NIFTY 50,欧州株,wuaihot",
+    },
+    ko: {
+      title: "글로벌 주가지수 - 아시아·미국·유럽 주요 지수 | wuaihot",
+      description: "중국, 홍콩, 일본, 한국, 인도, 미국, 캐나다, 호주, 브라질, 유럽 주요 주가지수의 현재 수준과 등락률을 한곳에서 확인합니다.",
+      keywords: "글로벌 주가지수,상하이종합,항셍,닛케이225,Nasdaq,S&P 500,NIFTY 50,유럽 지수,wuaihot",
+    },
+  },
+  "交易所": {
+    en: {
+      title: "Exchange Market Rankings - Official activity from major exchanges | wuaihot",
+      description:
+        "Exchange Market Rankings aggregate official market activity from SSE, SZSE, HKEX, Nasdaq, NYSE, TWSE, NSE India and ASX, including active stocks and ETF turnover lists.",
+      keywords: "stock exchanges,SSE,SZSE,HKEX,Nasdaq,NYSE,TWSE,NSE India,ASX,stock turnover,ETF turnover,wuaihot",
+    },
+    "zh-TW": {
+      title: "交易所市場榜 - 滬深港、美股、臺灣、印度與澳洲官方榜單 | 吾愛熱榜",
+      description: "交易所市場榜彙整上交所、深交所、港交所、Nasdaq、NYSE、臺灣證券交易所、印度 NSE 與澳洲 ASX 的官方市場活躍榜。",
+      keywords: "交易所,上交所,深交所,港交所,Nasdaq,NYSE,TWSE,NSE India,ASX,成交額榜,吾愛熱榜",
+    },
+    ja: {
+      title: "取引所ランキング - 世界主要取引所の公式市場データ | wuaihot",
+      description: "SSE、SZSE、HKEX、Nasdaq、NYSE、TWSE、NSE India、ASX の公式市場アクティビティや株式・ETF売買代金ランキングを集約します。",
+      keywords: "取引所,SSE,SZSE,HKEX,Nasdaq,NYSE,TWSE,NSE India,ASX,売買代金,wuaihot",
+    },
+    ko: {
+      title: "거래소 시장 랭킹 - 주요 거래소 공식 활동 데이터 | wuaihot",
+      description: "SSE, SZSE, HKEX, Nasdaq, NYSE, TWSE, NSE India, ASX의 공식 시장 활동과 주식·ETF 거래대금 랭킹을 모아 제공합니다.",
+      keywords: "거래소,SSE,SZSE,HKEX,Nasdaq,NYSE,TWSE,NSE India,ASX,거래대금,wuaihot",
+    },
+  },
+  "模型评测": {
+    en: { title: "AI Model Benchmarks - Leaderboards, capability and price comparisons | wuaihot", description: "Compare leading AI models across OpenRouter, Artificial Analysis, Arena AI, DesignArena and LLM Stats, including capability, coding, vision, agent and pricing signals.", keywords: "AI model benchmarks,AI leaderboard,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,wuaihot" },
+    "zh-TW": { title: "AI模型評測 - 大模型排行榜、能力與價格比較 | 吾愛熱榜", description: "彙整 OpenRouter、Artificial Analysis、Arena AI、DesignArena 與 LLM Stats，追蹤主流大模型能力、編程、視覺、Agent、價格與熱度排名。", keywords: "AI模型評測,大模型排行榜,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,吾愛熱榜" },
+    ja: { title: "AIモデル評価 - ランキング、性能、価格比較 | wuaihot", description: "OpenRouter、Artificial Analysis、Arena AI、DesignArena、LLM Stats を集約し、主要モデルの性能、コーディング、画像、Agent、価格を比較します。", keywords: "AIモデル評価,AIランキング,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,wuaihot" },
+    ko: { title: "AI 모델 평가 - 순위, 성능, 가격 비교 | wuaihot", description: "OpenRouter, Artificial Analysis, Arena AI, DesignArena, LLM Stats를 모아 주요 모델의 성능, 코딩, 비전, Agent, 가격 신호를 비교합니다.", keywords: "AI 모델 평가,AI 순위,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,wuaihot" },
+  },
+  "产品生态": {
+    en: { title: "AI Products & Ecosystem - Apps, Agent Skills and tool trends | wuaihot", description: "Track AI product popularity, Agent Skills, plugins and new tools through AICPB, Skills Rank, ClawHub and Product Hunt AI.", keywords: "AI products,AI tools,Agent Skills,ClawHub,Product Hunt AI,AICPB,AI apps,wuaihot" },
+    "zh-TW": { title: "AI產品生態 - AI應用、Agent Skills與工具趨勢 | 吾愛熱榜", description: "彙整 AICPB、Skills Rank、ClawHub 與 Product Hunt AI，追蹤AI應用、Agent Skills、插件與新品熱度。", keywords: "AI產品,AI工具,Agent Skills,ClawHub,Product Hunt AI,AICPB,吾愛熱榜" },
+    ja: { title: "AI製品・エコシステム - アプリ、Agent Skills、ツール動向 | wuaihot", description: "AICPB、Skills Rank、ClawHub、Product Hunt AI からAIアプリ、Agent Skills、プラグイン、新製品の人気を追跡します。", keywords: "AI製品,AIツール,Agent Skills,ClawHub,Product Hunt AI,AICPB,wuaihot" },
+    ko: { title: "AI 제품·생태계 - 앱, Agent Skills, 도구 트렌드 | wuaihot", description: "AICPB, Skills Rank, ClawHub, Product Hunt AI를 통해 AI 앱, Agent Skills, 플러그인과 신규 도구의 인기를 추적합니다.", keywords: "AI 제품,AI 도구,Agent Skills,ClawHub,Product Hunt AI,AICPB,wuaihot" },
+  },
+  "官方动态": {
+    en: { title: "Official AI Updates - OpenAI, Anthropic, DeepMind and more | wuaihot", description: "Follow official news and blogs from OpenAI, Anthropic, DeepMind, Meta AI, Mistral, Cohere, Perplexity, xAI and Hugging Face for model launches, product updates and research progress.", keywords: "official AI updates,OpenAI,Anthropic,DeepMind,Meta AI,Mistral,Hugging Face,AI news,wuaihot" },
+    "zh-TW": { title: "AI官方動態 - OpenAI、Anthropic、DeepMind等官方更新 | 吾愛熱榜", description: "彙整 OpenAI、Anthropic、DeepMind、Meta AI、Mistral、Cohere、Perplexity、xAI 與 Hugging Face 官方新聞與博客。", keywords: "AI官方動態,OpenAI,Anthropic,DeepMind,Meta AI,Mistral,Hugging Face,AI新聞,吾愛熱榜" },
+    ja: { title: "AI公式アップデート - OpenAI、Anthropic、DeepMindなど | wuaihot", description: "OpenAI、Anthropic、DeepMind、Meta AI、Mistral、Cohere、Perplexity、xAI、Hugging Face の公式ニュースとブログをまとめます。", keywords: "AI公式アップデート,OpenAI,Anthropic,DeepMind,Meta AI,Mistral,Hugging Face,wuaihot" },
+    ko: { title: "AI 공식 업데이트 - OpenAI, Anthropic, DeepMind 등 | wuaihot", description: "OpenAI, Anthropic, DeepMind, Meta AI, Mistral, Cohere, Perplexity, xAI, Hugging Face의 공식 뉴스와 블로그를 모아 제공합니다.", keywords: "AI 공식 업데이트,OpenAI,Anthropic,DeepMind,Meta AI,Mistral,Hugging Face,wuaihot" },
+  },
+  "研究社区": {
+    en: { title: "AI Research & Community - Papers, open source and developer discussions | wuaihot", description: "Track Papers with Code, Hacker News AI discussions and Reddit communities including LocalLLaMA, MachineLearning and artificial for research, open models and developer debate.", keywords: "AI research,Papers with Code,Hacker News AI,LocalLLaMA,MachineLearning,open models,AI community,wuaihot" },
+    "zh-TW": { title: "AI研究社群 - 論文代碼、開源模型與技術討論 | 吾愛熱榜", description: "彙整 Papers with Code、Hacker News AI 與 LocalLLaMA、MachineLearning、artificial 等 Reddit 社群，追蹤論文代碼、開源模型與技術討論。", keywords: "AI研究,Papers with Code,Hacker News AI,LocalLLaMA,MachineLearning,開源模型,AI社群,吾愛熱榜" },
+    ja: { title: "AI研究・コミュニティ - 論文、オープンモデル、技術議論 | wuaihot", description: "Papers with Code、Hacker News AI、LocalLLaMA、MachineLearning、artificial などを集約し、論文コード、オープンモデル、開発者議論を追跡します。", keywords: "AI研究,Papers with Code,Hacker News AI,LocalLLaMA,MachineLearning,オープンモデル,wuaihot" },
+    ko: { title: "AI 연구·커뮤니티 - 논문, 오픈 모델, 개발자 토론 | wuaihot", description: "Papers with Code, Hacker News AI, LocalLLaMA, MachineLearning, artificial 등을 모아 논문 코드, 오픈 모델, 개발자 토론을 추적합니다.", keywords: "AI 연구,Papers with Code,Hacker News AI,LocalLLaMA,MachineLearning,오픈 모델,wuaihot" },
+  },
+  "中文AI资讯": {
+    en: { title: "Chinese AI News - QbitAI and Sina AI trends | wuaihot", description: "Follow Chinese-language AI developments through QbitAI and Sina AI, covering domestic models, products, startups, industry events and fast-rising topics.", keywords: "Chinese AI news,QbitAI,Sina AI,China AI,AI models,AI startups,AI industry,wuaihot" },
+    "zh-TW": { title: "中文AI資訊 - 量子位與新浪AI熱點聚合 | 吾愛熱榜", description: "彙整量子位與新浪 AI 熱榜，追蹤國內大模型、AI產品、創業公司、產業事件與熱門話題。", keywords: "中文AI資訊,量子位,新浪AI,國內AI新聞,大模型新聞,AI產業,吾愛熱榜" },
+    ja: { title: "中国語AIニュース - QbitAI・Sina AIトレンド | wuaihot", description: "QbitAI と Sina AI から中国語圏のAIモデル、製品、スタートアップ、業界イベント、注目トピックを追跡します。", keywords: "中国語AIニュース,QbitAI,Sina AI,中国AI,AIモデル,AIスタートアップ,wuaihot" },
+    ko: { title: "중국어 AI 뉴스 - QbitAI·Sina AI 트렌드 | wuaihot", description: "QbitAI와 Sina AI를 통해 중국어권 AI 모델, 제품, 스타트업, 산업 이벤트와 급상승 이슈를 추적합니다.", keywords: "중국어 AI 뉴스,QbitAI,Sina AI,중국 AI,AI 모델,AI 스타트업,wuaihot" },
+  },
+  AI: {
+    en: {
+      title: "AI Hot Rankings - AI model leaderboards, AI news, and tool trends | wuaihot",
+      description:
+        "AI Hot Rankings aggregate model benchmarks, official updates, product ecosystems, research communities, and Chinese AI news from sources including OpenRouter, Artificial Analysis, OpenAI, Anthropic, Hugging Face, Product Hunt, Hacker News, QbitAI, and Sina AI.",
+      keywords:
+        "AI rankings,AI model leaderboard,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,OpenAI,Anthropic,Hugging Face,AI news,AI tools,wuaihot",
+    },
+    "zh-TW": {
+      title: "AI熱榜 - AI模型排行榜、AI資訊與熱門工具榜單聚合 | 吾愛熱榜",
+      description:
+        "AI熱榜彙整模型評測、官方動態、產品生態、研究社群與中文AI資訊，來源涵蓋 OpenRouter、Artificial Analysis、OpenAI、Anthropic、Hugging Face、Product Hunt、Hacker News、量子位與新浪AI。",
+      keywords:
+        "AI熱榜,AI模型排行榜,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,OpenAI,Anthropic,Hugging Face,AI資訊,AI工具,吾愛熱榜",
+    },
+    ja: {
+      title: "AIランキング - AIモデル評価、AIニュース、人気ツール動向の集約 | wuaihot",
+      description:
+        "AIランキングはモデル評価、公式アップデート、製品エコシステム、研究コミュニティ、中国語AIニュースをまとめ、OpenRouter、Artificial Analysis、OpenAI、Anthropic、Hugging Face、Hacker News、QbitAI などを追跡します。",
+      keywords:
+        "AIランキング,AIモデルランキング,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,OpenAI,Anthropic,Hugging Face,AIニュース,AIツール,wuaihot",
+    },
+    ko: {
+      title: "AI 랭킹 - AI 모델 순위, AI 뉴스, 인기 도구 트렌드 | wuaihot",
+      description:
+        "AI 랭킹은 모델 평가, 공식 업데이트, 제품 생태계, 연구 커뮤니티, 중국어 AI 뉴스를 함께 모아 OpenRouter, Artificial Analysis, OpenAI, Anthropic, Hugging Face, Hacker News, QbitAI 등의 흐름을 추적합니다.",
+      keywords:
+        "AI 랭킹,AI 모델 순위,OpenRouter,Artificial Analysis,Arena AI,DesignArena,LLM Stats,OpenAI,Anthropic,Hugging Face,AI 뉴스,AI 도구,wuaihot",
+    },
+  },
+};
+
+const trimTerminalPunctuation = (value = "") =>
+  String(value)
+    .trim()
+    .replace(/[。！？!?,，；;：:]+$/gu, "");
+
+const escapeRegExp = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const stripLeadingPhrases = (value = "", phrases = []) =>
+  phrases
+    .filter(Boolean)
+    .reduce(
+      (result, phrase) =>
+        result.replace(new RegExp(`^${escapeRegExp(String(phrase).trim())}[\\s·:：-]*`, "u"), ""),
+      String(value).trim()
+    )
+    .trim();
+
+const stripLeadingZhPossessive = (value = "") =>
+  String(value)
+    .trim()
+    .replace(/^的[\s·:：-]*/u, "")
+    .trim();
+
+const stripLeadingZhIntentVerb = (value = "") =>
+  String(value)
+    .trim()
+    .replace(
+      /^(?:聚合|追踪|收录|覆盖|精选|汇总|关注|发现|整理|展示|呈现)[\s，,、]*/u,
+      ""
+    )
+    .trim();
+
+const normalizeZhIntent = (value = "") =>
+  stripLeadingZhIntentVerb(stripLeadingZhPossessive(value));
+
+const normalizeTitleLabel = (value = "") =>
+  String(value)
+    .replace(/\s*·\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/gu, "$1$2")
+    .trim();
+
+const combineSourceAndSubtypeLabel = (sourceLabel = "", subtypeLabel = "") => {
+  const source = normalizeTitleLabel(sourceLabel).replace(/榜$/u, "");
+  const subtype = normalizeTitleLabel(subtypeLabel);
+  if (!source || !subtype) return normalizeTitleLabel(source || subtype);
+
+  const maxOverlap = Math.min(source.length, subtype.length);
+  for (let length = maxOverlap; length >= 1; length -= 1) {
+    if (source.slice(-length) === subtype.slice(0, length)) {
+      return normalizeTitleLabel(source + subtype.slice(length));
+    }
+  }
+
+  const maxPrefix = Math.min(source.length, subtype.length);
+  for (let length = maxPrefix; length >= 2; length -= 1) {
+    if (source.slice(0, length) === subtype.slice(0, length)) {
+      return normalizeTitleLabel(source + subtype.slice(length));
+    }
+  }
+
+  return normalizeTitleLabel(`${source} ${subtype}`);
+};
+
+const keywordTokensFrom = (value) =>
+  Array.isArray(value)
+    ? value.flatMap((item) => keywordTokensFrom(item))
+    : String(value || "")
+        .split(/[,\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+const mergeKeywords = (...segments) =>
+  [...new Set(segments.flatMap((segment) => keywordTokensFrom(segment)))].join(",");
+
+const buildZhTitle = (main, detail) =>
+  detail
+    ? `${normalizeTitleLabel(main)} - ${detail} | ${SEO_BRAND_NAME_ZH}`
+    : `${normalizeTitleLabel(main)} | ${SEO_BRAND_NAME_ZH}`;
+
+const appendZhPageSuffix = (label = "") =>
+  /[A-Za-z0-9]$/u.test(String(label).trim())
+    ? `${String(label).trim()} 页面`
+    : `${String(label).trim()}页面`;
+
+const joinZhVerbObject = (verb, object = "") =>
+  /^[A-Za-z0-9]/u.test(String(object).trim())
+    ? `${verb} ${String(object).trim()}`
+    : `${verb}${String(object).trim()}`;
+
+const CLAWHUB_ZH_BASE_SEO = {
+  clawhub: {
+    titleLabel: "ClawHub",
+    intent: "OpenClaw技能与插件聚合榜单入口",
+  },
+  "clawhub-skills": {
+    titleLabel: "ClawHub 技能",
+    intent: "OpenClaw技能推荐、安装、星标与分类榜单",
+  },
+  "clawhub-plugins": {
+    titleLabel: "ClawHub 插件",
+    intent: "OpenClaw插件推荐、精选、安装与分类榜单",
+  },
+};
+
+const CLAWHUB_ZH_SUBTYPE_SEO = {
+  "skills-recommended": {
+    titleSegment: "推荐技能榜",
+    intent: "OpenClaw技能推荐与精选方案榜单",
+  },
+  "skills-featured": {
+    titleSegment: "精选技能榜",
+    intent: "OpenClaw精选技能与高质量方案榜单",
+  },
+  "skills-stars": {
+    titleSegment: "星标最多技能榜",
+    intent: "OpenClaw技能星标热度与社区关注排行",
+  },
+  "skills-installs": {
+    titleSegment: "安装最多技能榜",
+    intent: "OpenClaw技能安装量与流行度排行",
+  },
+  "skills-updated": {
+    titleSegment: "最近更新技能榜",
+    intent: "OpenClaw技能更新动态与维护活跃榜单",
+  },
+  "skills-newest": {
+    titleSegment: "最新发布技能榜",
+    intent: "OpenClaw新发布技能与生态新增榜单",
+  },
+  "skills-name": {
+    titleSegment: "技能名称索引",
+    intent: "OpenClaw技能名称索引与快速查找入口",
+  },
+  "skills-mcp-tools": {
+    titleSegment: "MCP 工具技能分类",
+    intent: "OpenClaw MCP工具技能分类与工具生态榜单",
+  },
+  "skills-prompts": {
+    titleSegment: "提示词技能分类",
+    intent: "OpenClaw提示词技能分类与提示工程资源榜单",
+  },
+  "skills-workflows": {
+    titleSegment: "工作流技能分类",
+    intent: "OpenClaw工作流技能分类与自动化流程榜单",
+  },
+  "skills-dev-tools": {
+    titleSegment: "开发工具技能分类",
+    intent: "OpenClaw开发工具技能分类与工程效率榜单",
+  },
+  "skills-data": {
+    titleSegment: "数据与 API 技能分类",
+    intent: "OpenClaw数据与API技能分类和集成资源榜单",
+  },
+  "skills-security": {
+    titleSegment: "安全技能分类",
+    intent: "OpenClaw安全技能分类与风险防护工具榜单",
+  },
+  "skills-automation": {
+    titleSegment: "自动化技能分类",
+    intent: "OpenClaw自动化技能分类与任务执行工具榜单",
+  },
+  "skills-other": {
+    titleSegment: "其他技能分类",
+    intent: "OpenClaw其他技能分类与补充生态资源榜单",
+  },
+  "plugins-recommended": {
+    titleSegment: "推荐插件榜",
+    intent: "OpenClaw插件推荐与工具生态榜单",
+  },
+  "plugins-featured": {
+    titleSegment: "精选插件榜",
+    intent: "OpenClaw精选插件与高质量扩展榜单",
+  },
+  "plugins-installs": {
+    titleSegment: "安装最多插件榜",
+    intent: "OpenClaw插件安装量与流行度排行",
+  },
+  "plugins-updated": {
+    titleSegment: "最近更新插件榜",
+    intent: "OpenClaw插件更新动态与维护活跃榜单",
+  },
+  "plugins-data": {
+    titleSegment: "数据与 API 插件分类",
+    intent: "OpenClaw数据与API插件分类和集成资源榜单",
+  },
+};
+
+const DESIGNARENA_ZH_SUBTYPE_SEO = {
+  fullstack: {
+    titleSegment: "Agentic 全栈应用模型榜",
+    intent: "Agentic全栈应用生成、后端能力与完整产品化模型排行",
+  },
+  "fullstack-win-rate": {
+    titleSegment: "Agentic 全栈应用胜率榜",
+    intent: "Agentic全栈应用生成模型胜率排行",
+  },
+  agon_webapps: {
+    titleSegment: "Agentic 前端模型榜",
+    intent: "Agentic前端与React应用生成模型排行",
+  },
+  "agon_webapps-win-rate": {
+    titleSegment: "Agentic 前端胜率榜",
+    intent: "Agentic前端与React应用生成模型胜率排行",
+  },
+  "fullstack-quality": {
+    titleSegment: "全栈应用质量榜",
+    intent: "全栈应用质量、数据建模与交互完成度评分排行",
+  },
+  "fullstack-backend": {
+    titleSegment: "后端能力评分榜",
+    intent: "全栈应用后端能力、API、认证与持久化评分排行",
+  },
+  "daily-usage": {
+    titleSegment: "日活使用榜",
+    intent: "模型生成应用日活用户与真实使用表现排行",
+  },
+  "real-world-reach": {
+    titleSegment: "真实触达榜",
+    intent: "模型生成应用真实用户触达与传播表现排行",
+  },
+  retention: {
+    titleSegment: "回访用户榜",
+    intent: "模型生成应用用户回访率与留存表现排行",
+  },
+  downloads: {
+    titleSegment: "应用下载榜",
+    intent: "模型生成应用源码下载率与保存价值排行",
+  },
+  website: {
+    titleSegment: "Website 模型榜",
+    intent: "WebDev网站生成与前端设计模型排行",
+  },
+  "website-win-rate": {
+    titleSegment: "Website 胜率榜",
+    intent: "WebDev网站生成与前端设计模型胜率排行",
+  },
+  uicomponent: {
+    titleSegment: "UI 组件模型榜",
+    intent: "UI组件生成与界面设计模型排行",
+  },
+  dataviz: {
+    titleSegment: "数据可视化模型榜",
+    intent: "数据可视化与图表生成模型排行",
+  },
+  svg: {
+    titleSegment: "SVG 模型榜",
+    intent: "SVG生成与矢量设计模型排行",
+  },
+  gamedev: {
+    titleSegment: "游戏开发模型榜",
+    intent: "游戏开发与互动场景生成模型排行",
+  },
+  agentic_gamedev: {
+    titleSegment: "Agentic 游戏开发模型榜",
+    intent: "Agentic游戏开发与可交互玩法生成模型排行",
+  },
+  mobileapps: {
+    titleSegment: "移动 App 模型榜",
+    intent: "移动App生成与移动端应用开发模型排行",
+  },
+  nativeapps: {
+    titleSegment: "原生 App 模型榜",
+    intent: "原生App生成与端侧应用开发模型排行",
+  },
+  "3d": {
+    titleSegment: "3D 设计模型榜",
+    intent: "3D设计与空间生成模型排行",
+  },
+  ascii: {
+    titleSegment: "ASCII Art 模型榜",
+    intent: "ASCII Art字符画与文本视觉生成模型排行",
+  },
+  agon_slides: {
+    titleSegment: "Agentic 演示文稿模型榜",
+    intent: "Agentic演示文稿与幻灯片生成模型排行",
+  },
+  agon_slides_html: {
+    titleSegment: "Agentic HTML 演示文稿模型榜",
+    intent: "Agentic HTML演示文稿与网页幻灯片生成模型排行",
+  },
+  slides: {
+    titleSegment: "演示文稿模型榜",
+    intent: "演示文稿与幻灯片生成模型排行",
+  },
+  image: {
+    titleSegment: "图像生成模型榜",
+    intent: "图像生成与视觉创作模型排行",
+  },
+  imagetoimage: {
+    titleSegment: "图像编辑模型榜",
+    intent: "图像编辑、图生图与视觉修改模型排行",
+  },
+  graphicdesign: {
+    titleSegment: "平面设计模型榜",
+    intent: "平面设计与视觉创意生成模型排行",
+  },
+  logo: {
+    titleSegment: "Logo 模型榜",
+    intent: "Logo生成与品牌视觉设计模型排行",
+  },
+  video: {
+    titleSegment: "视频生成模型榜",
+    intent: "视频生成与动态内容创作模型排行",
+  },
+  videotovideo: {
+    titleSegment: "视频编辑模型榜",
+    intent: "视频编辑、视频重绘与视频到视频模型排行",
+  },
+  imagetovideo: {
+    titleSegment: "图像转视频模型榜",
+    intent: "图像转视频与动态镜头生成模型排行",
+  },
+  multitovideo: {
+    titleSegment: "多输入转视频模型榜",
+    intent: "多输入视频生成与复合素材转视频模型排行",
+  },
+  multimodaltovideo: {
+    titleSegment: "多模态转视频模型榜",
+    intent: "多模态视频生成与图文音视频综合生成模型排行",
+  },
+  tts: {
+    titleSegment: "TTS 模型榜",
+    intent: "文本转语音与音频生成模型排行",
+  },
+  builders: {
+    titleSegment: "AI 构建器榜",
+    intent: "AI应用构建器、建站工具与产品化能力排行",
+  },
+};
+
+const ITHOME_ZH_SUBTYPE_SEO = {
+  day: {
+    titleSegment: "日榜",
+    intent: "今日科技数码热点、IT新闻与热门资讯排行",
+  },
+  week: {
+    titleSegment: "周榜",
+    intent: "本周科技数码热点、行业新闻与热门资讯排行",
+  },
+  month: {
+    titleSegment: "月榜",
+    intent: "本月科技数码热点、行业新闻与热门资讯排行",
+  },
+  comments: {
+    titleSegment: "热评榜",
+    intent: "高互动评论话题、科技争议与热门讨论排行",
+  },
+  hot: {
+    titleSegment: "资讯热榜",
+    intent: "资讯热度、科技新闻与数码产品动态排行",
+  },
+  list: {
+    titleSegment: "滚动新闻",
+    intent: "滚动新闻、科技快讯与数码新品动态",
+  },
+};
+
+const BILIBILI_ZH_SUBTYPE_SEO = {
+  popular: {
+    titleSegment: "综合热门",
+    intent: "全站热视频、UP主内容与流行视频趋势",
+  },
+  all: {
+    titleSegment: "综合热门",
+    intent: "全站热视频、UP主内容与流行视频趋势",
+  },
+  weekly: {
+    titleSegment: "每周必看",
+    intent: "哔哩哔哩每周必看精选视频与高质量内容推荐",
+  },
+  history: {
+    titleSegment: "入站必刷",
+    intent: "哔哩哔哩入站必刷经典视频与宝藏内容合集",
+  },
+  rank: {
+    titleSegment: "排行榜",
+    intent: "哔哩哔哩全站视频排行榜、播放热度与内容趋势",
+  },
+  music: {
+    titleSegment: "全站音乐榜",
+    intent: "哔哩哔哩全站音乐视频排行、翻唱演奏与热门音乐内容",
+  },
+};
+
+const ARTIFICIALANALYSIS_ZH_SUBTYPE_SEO = {
+  providers: {
+    titleSegment: "API 提供商与端点榜",
+    intent: "LLM API 提供商、模型端点、价格、速度与首包延迟对比",
+  },
+  "coding-agents": {
+    titleSegment: "编码智能体榜",
+    intent: "AI 编码智能体基准、任务通过率、成本与执行时长排行",
+  },
+  "text-to-image": {
+    titleSegment: "文生图榜",
+    intent: "AI 文生图模型 Elo、样本量与图像生成价格排行",
+  },
+};
+
+const getClawHubSubtypeSeoKey = (sourceKey, subtypeSlug) => {
+  if (!subtypeSlug) return "";
+  if (sourceKey === "clawhub") return subtypeSlug;
+  if (sourceKey === "clawhub-skills") return `skills-${subtypeSlug}`;
+  if (sourceKey === "clawhub-plugins") return `plugins-${subtypeSlug}`;
+  return "";
+};
+
+const getClawHubZhRouteSeo = ({ sourceKey, subtypeSlug }) => {
+  const baseSeo = CLAWHUB_ZH_BASE_SEO[sourceKey];
+  if (!baseSeo) return null;
+
+  const subtypeSeo = CLAWHUB_ZH_SUBTYPE_SEO[
+    getClawHubSubtypeSeoKey(sourceKey, subtypeSlug)
+  ];
+  if (subtypeSeo) {
+    return {
+      titleLabel: normalizeTitleLabel(`ClawHub ${subtypeSeo.titleSegment}`),
+      intent: subtypeSeo.intent,
+    };
+  }
+
+  return baseSeo;
+};
+
+const getDesignArenaZhRouteSeo = ({ sourceKey, subtypeSlug }) => {
+  if (sourceKey !== "designarena" || !subtypeSlug) return null;
+  const subtypeSeo = DESIGNARENA_ZH_SUBTYPE_SEO[subtypeSlug];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`DesignArena ${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getIthomeZhRouteSeo = ({ sourceKey, subtypeSlug }) => {
+  if (sourceKey !== "ithome" || !subtypeSlug) return null;
+  const subtypeSeo = ITHOME_ZH_SUBTYPE_SEO[subtypeSlug];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`IT之家${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getBilibiliZhRouteSeo = ({ sourceKey, subtypeSlug }) => {
+  if (sourceKey !== "bilibili" || !subtypeSlug) return null;
+  const subtypeSeo = BILIBILI_ZH_SUBTYPE_SEO[subtypeSlug];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`哔哩哔哩${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getArtificialAnalysisZhRouteSeo = ({ sourceKey, subtypeSlug }) => {
+  if (sourceKey !== "artificialanalysis" || !subtypeSlug) return null;
+  const subtypeSeo = ARTIFICIALANALYSIS_ZH_SUBTYPE_SEO[subtypeSlug];
+  if (!subtypeSeo) return null;
+
+  return {
+    titleLabel: normalizeTitleLabel(`Artificial Analysis ${subtypeSeo.titleSegment}`),
+    intent: subtypeSeo.intent,
+  };
+};
+
+const getZhRouteSeo = ({ sourceKey, subtypeSlug }) =>
+  getClawHubZhRouteSeo({ sourceKey, subtypeSlug }) ||
+  getDesignArenaZhRouteSeo({ sourceKey, subtypeSlug }) ||
+  getIthomeZhRouteSeo({ sourceKey, subtypeSlug }) ||
+  getBilibiliZhRouteSeo({ sourceKey, subtypeSlug }) ||
+  getArtificialAnalysisZhRouteSeo({ sourceKey, subtypeSlug });
+
+const buildZhListIntent = ({
+  sourceLabel,
+  subtypeLabel,
+  meta,
+}) => {
+  const rawDescription = trimTerminalPunctuation(meta?.description || "");
+  const stripped = normalizeZhIntent(
+    stripLeadingPhrases(rawDescription, [sourceLabel, subtypeLabel])
+  );
+  return stripped || "实时热榜与趋势榜";
+};
+
+const LIST_SEO_MAP = {
+  "super-deals": {
+    label: "超级线报",
+    keywords: "超级线报,实时线报,羊毛线报,优惠券,免单,红包,一小时排行,三小时排行,六小时排行",
+    description: "聚合超级线报公开的最新线报及 1 小时、3 小时、6 小时排行，覆盖优惠券、红包、免单、低价商品与限时福利。",
+  },
+  "douban-wool": {
+    label: "豆瓣羊毛",
+    keywords: "豆瓣羊毛,豆瓣买组,豆瓣拼组,优惠,拼单,刷券,低价好物",
+    description: "聚合豆瓣买组与拼组的最新消费优惠讨论，覆盖刷券、拼单、低价商品、红包与限时好价。",
+  },
+  "douban-pet-wool": {
+    label: "豆瓣宠物羊毛",
+    keywords: "豆瓣宠物羊毛,爱猫生活,爱猫澡盆,豆瓣狗组,宠物好价,猫粮优惠,猫砂优惠,狗粮优惠,宠物团购",
+    description: "从豆瓣爱猫生活、爱猫澡盆与豆瓣狗组中筛选高信噪宠物消费机会，只保留团购、开车、作业、拼团、试用与明确好价，过滤领养、求助、闲置、转卖和医疗讨论。",
+  },
+  "steam-deals": {
+    label: "Steam 特惠",
+    keywords: "Steam特惠,Steam折扣,Steam低价,Steam 90%折扣,Steam游戏优惠",
+    description: "基于 Steam 官方当前特惠，筛选热门折扣、75%+、90%+ 与 10/30 元以内低价游戏。",
+  },
+  "epic-free-games": {
+    label: "Epic 免费游戏",
+    keywords: "Epic免费游戏,Epic喜加一,Epic限免,免费领取游戏",
+    description: "聚合 Epic Games Store 官方正在免费与即将免费的游戏，直接跳转官方商店领取。",
+  },
+  "xiaoheihe-deals": {
+    label: "小黑盒游戏折扣",
+    keywords: "小黑盒游戏折扣,Steam史低,游戏史低,90%折扣,低价游戏",
+    description: "使用小黑盒公开折扣情报识别 Steam 史低、新史低、高折扣与低价游戏，并直达 Steam 官方商品页。",
+  },
+  ggdeals: {
+    label: "GG.deals 游戏优惠",
+    keywords: "GG.deals,游戏免费,游戏折扣,游戏包,game freebies,game deals",
+    description: "聚合 GG.deals 官方公开的 Freebies、Deals 与 Bundles RSS，追踪全球游戏免费领取、促销与游戏包情报。",
+  },
+  "gog-deals": {
+    label: "GOG 游戏折扣",
+    keywords: "GOG游戏折扣,GOG特惠,GOG 90%折扣,GOG低价游戏,DRM-free游戏",
+    description: "基于 GOG 官方 Catalog 聚合当前 DRM-free 游戏折扣，覆盖热门促销、75%+/90%+ 高折扣与美元低价游戏。",
+  },
+  weibo: {
+    label: "微博热搜",
+    keywords: "微博热搜,微博热榜,热搜榜",
+    description: "微博实时热搜榜单，追踪全网热门话题与趋势。",
+  },
+  xueqiu: {
+    label: "雪球",
+    keywords: "雪球热门话题,雪球热股榜,雪球热门基金,财经热点,投资话题,证券市场热点",
+    description: "聚合雪球热门投资话题、全球热股榜与热门基金，覆盖股票行情、基金长期收益与投资社区关注焦点。",
+  },
+  sse: {
+    label: "上海证券交易所",
+    keywords: "上海证券交易所,上交所,沪市股票成交额榜,沪市股票成交量榜,沪市股票涨幅榜,沪市股票跌幅榜,沪市ETF成交额榜,A股行情,证券市场",
+    description: "上海证券交易所官方全市场行情排行，覆盖沪市股票成交额、成交量、涨幅、跌幅 Top20，并提供官方 ETF 成交额排行。",
+  },
+  szse: {
+    label: "深圳证券交易所",
+    keywords: "深圳证券交易所,深交所,深市股票成交额榜,深市股票成交量榜,深市股票涨幅榜,深市股票跌幅榜,成交笔数榜,换手率榜,深市ETF成交额榜,A股行情,证券市场",
+    description: "深圳证券交易所官方指标排名，覆盖深市股票成交额、成交量、成交笔数、涨幅、跌幅、换手率 Top20，并提供官方 ETF 成交额排行。",
+  },
+  hkex: {
+    label: "香港交易所",
+    keywords: "香港交易所,港交所,HKEX,港股成交额榜,港股成交量榜,港股涨幅榜,港股跌幅榜,主板,GEM,香港股票,证券市场",
+    description: "基于香港交易所官方日行情和最新股票代码分配规则，提供港股主板及 GEM 证券成交额、成交量、涨幅与跌幅 Top20。",
+  },
+  nasdaq: {
+    label: "Nasdaq",
+    keywords: "Nasdaq,Nasdaq most active,美股成交额活跃榜,美股成交量榜,美股涨幅榜,美股跌幅榜,NVDA,美股热榜,美国股市",
+    description: "汇总 Nasdaq 官方美元成交额活跃榜，并基于官方股票筛选器全市场行情提供成交量、涨幅与跌幅 Top20。",
+  },
+  nyse: {
+    label: "纽约证券交易所",
+    keywords: "纽约证券交易所,NYSE,NYSE成交额榜,NYSE成交量榜,NYSE涨幅榜,NYSE跌幅榜,美股行情,美国股市",
+    description: "聚合 NYSE 上市股票行情，提供成交额、成交量、涨幅与跌幅 Top20，并明确标注 Nasdaq Stock Screener 行情数据来源。",
+  },
+  twse: {
+    label: "台湾证券交易所",
+    keywords: "台湾证券交易所,TWSE,台股成交额榜,台股成交量榜,台股涨幅榜,台股跌幅榜,台湾股票",
+    description: "基于台湾证券交易所官方 OpenAPI 全市场日行情，提供台股成交额、成交量、涨幅与跌幅 Top20。",
+  },
+  nse: {
+    label: "印度国家证券交易所",
+    keywords: "印度国家证券交易所,NSE India,NSE成交额榜,NSE成交量榜,NSE涨幅榜,NSE跌幅榜,印度股票",
+    description: "基于印度国家证券交易所官方市场分析接口，提供 NSE 股票成交额、成交量、涨幅与跌幅 Top20。",
+  },
+  asx: {
+    label: "澳大利亚证券交易所",
+    keywords: "澳大利亚证券交易所,ASX,澳股成交额榜,澳股成交量榜,澳股成交笔数榜,澳大利亚股票",
+    description: "基于澳大利亚证券交易所官方每日 Top20 报告，提供澳股成交额、成交量与成交笔数排行。",
+  },
+  "global-indexes": {
+    label: "全球股指",
+    keywords: "全球股指,全球指数,上证指数,沪深300,深证成指,创业板指,恒生指数,恒生科技指数,台湾加权指数,TAIEX,标普500,S&P 500,SPX,道琼斯指数,Dow Jones,罗素2000,Russell 2000,纳斯达克综合指数,Nasdaq 100,日经225,Nikkei 225,KOSPI,KOSPI 200,KOSDAQ,NIFTY 50,SENSEX,S&P TSX,TSX Composite,S&P ASX 200,ASX 200,Ibovespa,SMI,IBEX 35,FTSE MIB,富时100,FTSE 100,CAC 40,DAX,EURO STOXX 50",
+    description: "聚合中国大陆、中国香港、中国台湾、日本、韩国、印度、加拿大、澳大利亚、巴西、美国、瑞士、西班牙、意大利、英国、法国、德国与欧元区主要股票指数行情，覆盖标普500、道琼斯、纳斯达克、日经225、KOSPI、NIFTY 50、SENSEX、S&P/TSX Composite、S&P/ASX 200、Ibovespa、SMI、IBEX 35、FTSE MIB、FTSE 100、CAC 40、DAX、EURO STOXX 50 等全球核心市场基准。"
+  },
+  zhihu: {
+    label: "知乎热榜",
+    keywords: "知乎热榜,知乎热搜,知乎热门",
+    description: "知乎热榜及时更新，收录最受关注的问答与讨论。",
+  },
+  douyin: {
+    label: "抖音热榜",
+    keywords: "抖音热榜,抖音热搜,短视频热门",
+    description: "抖音热榜追踪实时短视频热点，发现全网流行内容。",
+  },
+  xiaohongshu: {
+    label: "小红书热搜",
+    keywords: "小红书热搜,小红书热点,小红书热门话题,生活方式热点",
+    description: "追踪小红书社区热搜、生活方式、消费趋势与热门话题。",
+  },
+  bilibili: {
+    label: "B站热榜",
+    keywords: "B站热榜,哔哩哔哩热门,综合热门,每周必看,入站必刷,视频排行榜",
+    description: "哔哩哔哩综合热门、每周必看、入站必刷、排行榜与全站音乐榜聚合。",
+  },
+  toutiao: {
+    label: "今日头条热榜",
+    keywords: "今日头条热榜,头条热搜,头条热点",
+    description: "今日头条热榜聚合时事热点与资讯趋势，实时更新。",
+  },
+  baidu: {
+    label: "百度热搜",
+    keywords: "百度热搜,百度热榜,搜索热度",
+    description: "百度热搜榜单，收录当前全网热议与搜索高频关键词。",
+  },
+  "36kr": {
+    label: "36氪热榜",
+    keywords: "36氪热榜,创投热点,科技资讯",
+    description: "36氪热榜追踪创投与科技领域的热门资讯与趋势。",
+  },
+  "qq-news": {
+    label: "腾讯新闻热榜",
+    keywords: "腾讯新闻热榜,新闻热度,热门资讯",
+    description: "腾讯新闻实时热榜，聚合当下高关注度资讯内容。",
+  },
+  ithome: {
+    label: "IT之家热榜",
+    keywords: "IT之家热榜,科技新闻,数码热点",
+    description: "IT之家科技数码热榜，覆盖新品、评测与行业动态。",
+  },
+  sspai: {
+    label: "少数派热榜",
+    keywords: "少数派热榜,效率工具,数码生活",
+    description: "精选效率、工具与数码生活热门内容。",
+  },
+  thepaper: {
+    label: "澎湃新闻热榜",
+    keywords: "澎湃新闻热榜,时政热点,社会新闻",
+    description: "澎湃新闻热门榜单，关注时政、社会与深度报道。",
+  },
+  tieba: {
+    label: "百度贴吧热议",
+    keywords: "贴吧热议,贴吧热榜,百度贴吧",
+    description: "汇总社区热门话题与讨论。",
+  },
+  juejin: {
+    label: "掘金热榜",
+    keywords: "掘金热榜,前端热点,开发者社区",
+    description: "掘金热门文章榜，面向开发者的技术热点与实践。",
+  },
+  "douban-movie": {
+    label: "豆瓣电影与剧集热榜",
+    keywords: "豆瓣电影榜单,豆瓣电视剧榜单,热门电影,热门剧集",
+    description: "豆瓣电影与剧集热榜，覆盖热映电影、热门电影、热门电视剧、综艺、动画与纪录片。",
+  },
+  "douban-group": {
+    label: "豆瓣小组热帖",
+    keywords: "豆瓣小组热帖,豆瓣热榜,社区讨论",
+    description: "豆瓣小组热门帖文，聚合社区内的热门讨论。",
+  },
+  nytimes: {
+    label: "纽约时报",
+    keywords: "纽约时报,纽约时报中文网,纽约时报全球版,国际新闻",
+    description: "纽约时报中文网与全球版新闻榜单，覆盖国际时事、商业、科技与文化报道。",
+  },
+  tianya: {
+    label: "天涯社区精华帖",
+    keywords: "天涯社区,天涯荟萃,天涯神帖,社区精华帖",
+    description: "天涯社区官方恢复开放的天涯荟萃与精华帖榜单。",
+  },
+  ngabbs: {
+    label: "NGA 热帖",
+    keywords: "NGA 热帖,NGA 热榜,游戏论坛热点",
+    description: "NGA 论坛热门帖子，涵盖游戏资讯与玩家讨论。",
+  },
+  hellogithub: {
+    label: "HelloGitHub 热榜",
+    keywords: "HelloGitHub 热榜,开源项目,GitHub 热门",
+    description: "HelloGitHub 热门项目推荐，发现精选开源资源。",
+  },
+  jianshu: {
+    label: "简书热榜",
+    keywords: "简书热榜,简书热门文章,写作平台",
+    description: "简书热门文章榜单，收录高热度写作与故事。",
+  },
+  "zhihu-daily": {
+    label: "知乎日报",
+    keywords: "知乎日报,知乎日报热榜,每日精选",
+    description: "知乎日报精选内容，快速浏览每日热门文章。",
+  },
+  acfun: {
+    label: "AcFun 排行榜",
+    keywords: "AcFun,AcFun 排行榜,视频热榜,弹幕视频",
+    description: "AcFun 视频排行榜，覆盖综合、动画、游戏、科技、番剧等分区与时间热度。",
+  },
+  miyoushe: {
+    label: "米游社热榜",
+    keywords: "米游社,米游社公告,米哈游游戏资讯,原神,崩坏星穹铁道,绝区零",
+    description: "米游社官方动态榜单，覆盖米哈游游戏公告、活动、资讯与社区更新。",
+  },
+  genshin: {
+    label: "原神热榜",
+    keywords: "原神热榜,游戏热搜,原神资讯",
+    description: "原神相关热门内容与讨论，及时掌握游戏资讯。",
+  },
+  starrail: {
+    label: "崩坏：星穹铁道热榜",
+    keywords: "星穹铁道热榜,崩坏星轨,游戏热点",
+    description: "崩坏：星穹铁道热门内容，追踪活动与攻略讨论。",
+  },
+  lol: {
+    label: "英雄联盟热榜",
+    keywords: "LOL热榜,英雄联盟热点,赛事资讯",
+    description: "英雄联盟热门榜单，覆盖赛事资讯与社区讨论。",
+  },
+  "netease-news": {
+    label: "网易新闻",
+    keywords: "网易新闻,新闻热点,热点资讯,新闻排行",
+    description: "聚合当下高关注度新闻、热点资讯与官方热榜数据。",
+  },
+  "openrouter-rankings": {
+    label: "OpenRouter",
+    keywords: "OpenRouter,AI 模型热度,模型使用趋势",
+    description: "OpenRouter 模型使用热度与调用趋势榜。",
+  },
+  artificialanalysis: {
+    label: "Artificial Analysis 排行榜",
+    keywords: "Artificial Analysis,AI 排行榜,模型评测",
+    description: "Artificial Analysis 模型、API 提供商与专项 AI 榜单入口。",
+  },
+  lmarena: {
+    label: "Arena AI 排行榜",
+    keywords: "Arena AI,AI 对战榜,模型竞技场,多模态排行榜",
+    description: "Arena AI 多模态、Agent、WebDev、图像与视频对战排行榜。",
+  },
+  "arena-ai": {
+    label: "Arena AI 排行榜",
+    keywords: "Arena AI,AI 对战榜,模型竞技场,多模态排行榜",
+    description: "Arena AI 多模态、Agent、WebDev、图像与视频对战排行榜。",
+  },
+  designarena: {
+    label: "DesignArena",
+    keywords: "DesignArena,AI 设计榜单,Agentic WebDev,Full-Stack模型榜,AI创意生成榜,Daily Usage",
+    description: "DesignArena AI 模型与应用生成榜单入口。",
+  },
+  "aicpb-rankings": {
+    label: "AICPB 全球 AI 排行榜",
+    keywords: "AICPB,全球 AI 排行榜,AI 产品榜单",
+    description: "AICPB 全球 AI 产品与网站热度排行榜。",
+  },
+  "llm-stats": {
+    label: "LLM Stats 排行榜",
+    keywords: "LLM Stats,大模型比较,AI 模型榜单",
+    description: "LLM Stats 模型能力、速度与价格排行榜。",
+  },
+  "modeldial-radar": {
+    label: "ModelDial Radar",
+    keywords: "ModelDial Radar,AI Coding模型榜,大模型编程评测,AI代码能力榜单,模型实测榜",
+    description: "AI Coding 模型综合实测排行榜",
+  },
+  "skills-rank": {
+    label: "Skills Rank 排行榜",
+    keywords: "Skills Rank,Agent Skills,安装量榜单",
+    description: "Skills Rank 展示 Agent Skills 安装量与流行度排行。",
+  },
+  openai: {
+    label: "OpenAI",
+    keywords: "OpenAI,OpenAI 新闻,OpenAI Research,OpenAI 官方动态",
+    description: "OpenAI 官方新闻与研究更新聚合榜单。",
+  },
+  "openai-news": {
+    label: "OpenAI",
+    keywords: "OpenAI,OpenAI 新闻,OpenAI 更新,OpenAI 博客",
+    description: "OpenAI 官方新闻与产品发布动态。",
+  },
+  "openai-research": {
+    label: "OpenAI",
+    keywords: "OpenAI,OpenAI Research,OpenAI 研究动态,AI 官方研究",
+    description: "OpenAI 官方研究与技术发布更新。",
+  },
+  "anthropic-news": {
+    label: "Anthropic",
+    keywords: "Anthropic,Claude 更新,Anthropic 博客",
+    description: "Anthropic 官方新闻、Claude 更新与发布动态。",
+  },
+  "deepmind-blog": {
+    label: "DeepMind",
+    keywords: "DeepMind 博客,Google DeepMind,AI 研究更新",
+    description: "Google DeepMind 官方博客与研究更新。",
+  },
+  "meta-ai-blog": {
+    label: "Meta AI",
+    keywords: "Meta AI,Meta Llama,Meta 官方 AI 动态",
+    description: "Meta 官方 AI 动态与 Llama 相关新闻更新。",
+  },
+  huggingface: {
+    label: "Hugging Face",
+    keywords: "Hugging Face,官方博客,模型趋势,热门论文",
+    description: "Hugging Face 官方博客、模型趋势与热门论文聚合榜单。",
+  },
+  "huggingface-blog": {
+    label: "Hugging Face",
+    keywords: "Hugging Face 博客,AI 开源,模型生态",
+    description: "Hugging Face 官方博客与模型生态更新。",
+  },
+  "mistral-news": {
+    label: "Mistral",
+    keywords: "Mistral 新闻,Mistral AI,模型更新",
+    description: "Mistral 官方产品与模型更新动态。",
+  },
+  "cohere-blog": {
+    label: "Cohere",
+    keywords: "Cohere 博客,Cohere AI,企业 AI",
+    description: "Cohere 官方博客、研究与产品更新。",
+  },
+  "hf-models": {
+    label: "Hugging Face",
+    keywords: "Hugging Face 模型,模型趋势,开源模型",
+    description: "Hugging Face 模型趋势榜，观察热门开源模型。",
+  },
+  "hf-papers": {
+    label: "Hugging Face",
+    keywords: "Hugging Face 热门论文,AI 论文趋势,热门论文",
+    description: "Hugging Face 热门论文趋势榜。",
+  },
+  paperswithcode: {
+    label: "Papers with Code",
+    keywords: "Papers with Code,热门论文,论文代码,镜像榜",
+    description: "Papers with Code 论文代码镜像榜，当前由 Hugging Face Trending Papers 承载。",
+  },
+  "producthunt-ai": {
+    label: "Product Hunt",
+    keywords: "Product Hunt AI,AI 产品发现,AI 新品",
+    description: "Product Hunt 中与 AI 相关的产品发现流。",
+  },
+  "hackernews-ai": {
+    label: "Hacker News",
+    keywords: "Hacker News AI,AI 社区热议,技术讨论",
+    description: "Hacker News 中与 AI 相关的热门讨论。",
+  },
+  "clawhub-skills": {
+    label: "ClawHub 技能",
+    keywords: "ClawHub 技能,OpenClaw技能,AI 技能榜,Agent Skills",
+    description: "ClawHub 的 OpenClaw技能推荐、安装、星标与分类榜单。",
+  },
+  clawhub: {
+    label: "ClawHub",
+    keywords: "ClawHub,OpenClaw,OpenClaw技能,OpenClaw插件,AI 技能与插件榜",
+    description: "ClawHub 的 OpenClaw技能与插件聚合榜单入口。",
+  },
+  "clawhub-plugins": {
+    label: "ClawHub 插件",
+    keywords: "ClawHub 插件,OpenClaw插件,AI 插件榜,Agent 插件",
+    description: "ClawHub 的 OpenClaw插件推荐、精选、安装与分类榜单。",
+  },
+  "sina-ai": {
+    label: "新浪 AI 热榜",
+    keywords: "新浪 AI 热榜,AI 资讯,中文 AI 热点",
+    description: "新浪 AI 热榜，补充中文 AI 资讯视角。",
+  },
+  weread: {
+    label: "微信读书热榜",
+    keywords: "微信读书热榜,阅读榜单,热门书籍",
+    description: "微信读书热门书籍榜，发现当下高热度的阅读内容。",
+  },
+  default: {
+    label: "全平台热榜",
+    keywords: "全网热点,热榜聚合,实时热榜",
+    description: "全平台热门榜单实时聚合，快速浏览全网趋势。",
+  },
+};
+
+const SYSTEM_ROUTE_SEO_KEY_MAP = {
+  setting: "setting",
+  "setting-locale": "setting",
+  analytics: "analytics",
+  "analytics-locale": "analytics",
+  privacy: "privacy",
+  "privacy-locale": "privacy",
+  test: "test",
+  "test-locale": "test",
+  403: "forbidden",
+  "403-locale": "forbidden",
+  404: "notFound",
+  "404-locale": "notFound",
+  500: "serverError",
+  "500-locale": "serverError",
+};
+
+const containsNonLatin = (value = "") => /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(value);
+
+const titleCaseToken = (token = "") =>
+  token
+    .split(" ")
+    .filter(Boolean)
+    .map((part) =>
+      /^[A-Z0-9]+$/.test(part)
+        ? part
+        : part.charAt(0).toUpperCase() + part.slice(1)
+    )
+    .join(" ");
+
+const prettifySlug = (value = "") =>
+  titleCaseToken(
+    String(value)
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+
+const getSourceLabel = (typeKey, locale = "zh-CN") => {
+  const catalogLabel = getTrendsCatalogSource(typeKey)?.name || "";
+  const fallbackLabel = LIST_SEO_MAP[typeKey]?.label || catalogLabel;
+  return getLocalizedSourceLabel(typeKey, locale, fallbackLabel);
+};
+
+const getSubtypeLabel = (sourceSlug, subtypeSlug, locale = "zh-CN") => {
+  if (!sourceSlug || !subtypeSlug) return "";
+  const subtype = getSourceSubtypeOptions(sourceSlug).find(
+    (item) => item.value === subtypeSlug
+  );
+  const rawLabel = subtype?.label || "";
+  const normalizedLocale = normalizeLocale(locale);
+  if (!rawLabel) return prettifySlug(subtypeSlug);
+  const localizedLabel = getLocalizedSubtypeLabel(subtype, normalizedLocale);
+  return localizedLabel || prettifySlug(subtypeSlug);
+};
+
+const normalizeSiteUrl = (url) => {
+  if (!url) return "";
+  return url.replace(/\/+$/, "");
+};
+
+const getSiteUrl = () => {
+  const envUrl = import.meta.env.VITE_SITE_URL;
+  if (envUrl) return normalizeSiteUrl(envUrl);
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+};
+
+const ensureMetaTag = (attr, name) => {
+  const selector = `meta[${attr}="${name}"]`;
+  let tag = document.head.querySelector(selector);
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.setAttribute(attr, name);
+    document.head.appendChild(tag);
+  }
+  return tag;
+};
+
+const setMetaTag = (attr, name, content) => {
+  if (!content) return;
+  const tag = ensureMetaTag(attr, name);
+  tag.setAttribute("content", content);
+};
+
+const setLinkTag = (rel, href) => {
+  if (!href) return;
+  const selector = `link[rel="${rel}"]`;
+  let tag = document.head.querySelector(selector);
+  if (!tag) {
+    tag = document.createElement("link");
+    tag.setAttribute("rel", rel);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("href", href);
+};
+
+const setAlternateLinks = (route, siteUrl) => {
+  const existing = document.head.querySelectorAll('link[data-i18n-alt="true"]');
+  existing.forEach((item) => item.remove());
+  if (!siteUrl) return;
+  const locales = getSupportedLocales();
+  locales.forEach((item) => {
+    const link = document.createElement("link");
+    link.setAttribute("rel", "alternate");
+    link.setAttribute("hreflang", item.htmlLang);
+    link.setAttribute(
+      "href",
+      buildAbsoluteUrl(buildLocalePathFromRoute(route, item.code), siteUrl)
+    );
+    link.setAttribute("data-i18n-alt", "true");
+    document.head.appendChild(link);
+  });
+  const xDefault = document.createElement("link");
+  xDefault.setAttribute("rel", "alternate");
+  xDefault.setAttribute("hreflang", "x-default");
+  xDefault.setAttribute(
+    "href",
+    buildAbsoluteUrl(buildLocalePathFromRoute(route, "zh-CN"), siteUrl)
+  );
+  xDefault.setAttribute("data-i18n-alt", "true");
+  document.head.appendChild(xDefault);
+};
+
+const setJsonLd = (id, data) => {
+  const selector = `script#${id}`;
+  const existing = document.head.querySelector(selector);
+  if (!data) {
+    if (existing) existing.remove();
+    return;
+  }
+  const script = existing || document.createElement("script");
+  script.id = id;
+  script.type = "application/ld+json";
+  script.textContent = JSON.stringify(data);
+  if (!existing) document.head.appendChild(script);
+};
+
+const buildAbsoluteUrl = (path, siteUrl) => {
+  if (!path) return "";
+  if (!siteUrl) return path;
+  try {
+    return new URL(path, siteUrl).toString();
+  } catch (error) {
+    return path;
+  }
+};
+
+const BREADCRUMB_HOME_LABELS = {
+  "zh-CN": "首页",
+  en: "Home",
+  "zh-TW": "首頁",
+  ja: "ホーム",
+  ko: "홈",
+};
+
+const CATEGORY_HEADING_SUFFIXES = {
+  "zh-CN": "热榜",
+  en: " Rankings",
+  "zh-TW": "熱榜",
+  ja: "ランキング",
+  ko: " 랭킹",
+};
+
+const getBuiltinCategoryTrail = (categoryId) => {
+  const trail = [];
+  const seen = new Set();
+  let current = getCategoryMetaById(categoryId, BUILTIN_CATEGORIES);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    trail.unshift(current);
+    current = current.parentId
+      ? getCategoryMetaById(current.parentId, BUILTIN_CATEGORIES)
+      : null;
+  }
+  return trail;
+};
+
+const getCategoryBreadcrumbLabel = (category, locale, isCurrent = false) => {
+  const label =
+    category?.labels?.[locale] ||
+    getCategoryLabel(category?.name || "", locale) ||
+    category?.name ||
+    "";
+  if (!isCurrent || !label) return label;
+  if (locale === "zh-CN" && category?.name === "音乐") return "音乐热榜";
+  if (category?.parentId) return label;
+  return `${label}${CATEGORY_HEADING_SUFFIXES[locale] || ""}`;
+};
+
+const buildBreadcrumbJsonLd = (items = []) => {
+  const normalized = items.filter((item) => item?.name);
+  if (normalized.length < 2) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: normalized.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      ...(index < normalized.length - 1 && item.item
+        ? { item: item.item }
+        : {}),
+    })),
+  };
+};
+
+const getBreadcrumbJsonLd = (route, locale, siteUrl) => {
+  const routeName = String(route?.name || "");
+  const homeItem = {
+    name: BREADCRUMB_HOME_LABELS[locale] || BREADCRUMB_HOME_LABELS["zh-CN"],
+    item: buildAbsoluteUrl(buildHomePath(locale), siteUrl),
+  };
+
+  if (["category", "category-locale"].includes(routeName)) {
+    const categoryName = getCategoryNameBySlug(route?.params?.categorySlug || "");
+    const currentCategory = BUILTIN_CATEGORIES.find(
+      (category) => category.name === categoryName,
+    );
+    if (!currentCategory) return null;
+    const trail = getBuiltinCategoryTrail(currentCategory.id);
+    return buildBreadcrumbJsonLd([
+      homeItem,
+      ...trail.map((category, index) => ({
+        name: getCategoryBreadcrumbLabel(
+          category,
+          locale,
+          index === trail.length - 1,
+        ),
+        item: buildAbsoluteUrl(buildCategoryPath(locale, category.slug), siteUrl),
+      })),
+    ]);
+  }
+
+  if (["event", "event-locale"].includes(routeName)) {
+    const eventSlug = String(route?.params?.eventSlug || "");
+    const event = EVENT_HUB_METADATA.find((item) => item.id === eventSlug);
+    const eventMeta =
+      event?.locales?.[locale] ||
+      event?.locales?.["zh-CN"] ||
+      null;
+    if (!eventMeta) return null;
+    return buildBreadcrumbJsonLd([
+      homeItem,
+      {
+        name: eventMeta.title || eventSlug,
+        item: buildAbsoluteUrl(buildLocalePathFromRoute(route, locale), siteUrl),
+      },
+    ]);
+  }
+
+  if (["list", "list-locale", "list-legacy"].includes(routeName)) {
+    const sourceParam =
+      route?.query?.type ||
+      route?.params?.type ||
+      getSourceNameBySlug(route?.params?.sourceSlug);
+    const sourceKey = Array.isArray(sourceParam) ? sourceParam[0] : sourceParam;
+    if (!sourceKey) return null;
+    const subtypeParam = Array.isArray(route?.params?.subtypeSlug)
+      ? route.params.subtypeSlug[0]
+      : route?.params?.subtypeSlug;
+    const effectiveSubtype =
+      subtypeParam ||
+      (shouldCanonicalizeDefaultSubtype(sourceKey)
+        ? getDefaultSourceSubtype(sourceKey)
+        : "");
+    const projectedCategoryId =
+      VARIANT_CATEGORY_PROJECTIONS.find(
+        (projection) =>
+          projection.sourceName === sourceKey &&
+          String(projection.variant || "") === String(effectiveSubtype || ""),
+      )?.categoryIds?.[0] ||
+      SOURCE_CATEGORY_PROJECTIONS[sourceKey]?.[0] ||
+      "general";
+    const categoryTrail = getBuiltinCategoryTrail(projectedCategoryId);
+    const sourceLabel = getSourceLabel(sourceKey, locale);
+    const sourceDisplayLabel =
+      getLocalizedSourceDisplayLabel(sourceKey, locale, sourceLabel) ||
+      sourceLabel;
+    const subtypeLabel = getSubtypeLabel(sourceKey, effectiveSubtype, locale);
+    const items = [
+      homeItem,
+      ...categoryTrail.map((category) => ({
+        name: getCategoryBreadcrumbLabel(category, locale, false),
+        item: buildAbsoluteUrl(buildCategoryPath(locale, category.slug), siteUrl),
+      })),
+      {
+        name: sourceDisplayLabel,
+        item: buildAbsoluteUrl(buildRankPath(locale, sourceKey), siteUrl),
+      },
+    ];
+    if (subtypeLabel) {
+      items.push({
+        name: subtypeLabel,
+        item: buildAbsoluteUrl(
+          buildRankPath(locale, sourceKey, effectiveSubtype),
+          siteUrl,
+        ),
+      });
+    }
+    return buildBreadcrumbJsonLd(items);
+  }
+
+  return null;
+};
+
+const resolveValue = (val, ctx) => {
+  return typeof val === "function" ? val(ctx) : val;
+};
+
+const getPageSeo = (route, locale) => {
+  if (["event", "event-locale"].includes(String(route?.name || ""))) {
+    const eventSlug = String(route?.params?.eventSlug || "");
+    const event = EVENT_HUB_METADATA.find((item) => item.id === eventSlug);
+    const meta =
+      event?.locales?.[locale] ||
+      event?.locales?.["zh-CN"] ||
+      null;
+    if (meta) {
+      const title = meta.seoTitle || meta.title || eventSlug;
+      const description = meta.seoDescription || meta.description || "";
+      return {
+        title,
+        description,
+        keywords: meta.seoKeywords || "",
+        jsonLd: {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          name: title,
+          description,
+          inLanguage: getLocaleMeta(locale)?.htmlLang || "zh-CN",
+        },
+      };
+    }
+  }
+
+  const pageKey = SYSTEM_ROUTE_SEO_KEY_MAP[route?.name];
+  if (!pageKey) return null;
+  return {
+    title: i18n.global.t(`seo.${pageKey}Title`, {}, { locale }),
+    description: i18n.global.t(`seo.${pageKey}Description`, {}, { locale }),
+  };
+};
+
+const getHomeJsonLd = (siteUrl, title, description, locale) => ({
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: i18n.global.t("common.siteName", {}, { locale }) || DEFAULT_SEO.siteName,
+  ...(locale === "zh-CN" ? { alternateName: "wuaihot" } : {}),
+  url: siteUrl || "/",
+  description,
+  inLanguage: getLocaleMeta(locale)?.htmlLang || "zh-CN",
+  headline: title,
+});
+
+const getCategorySeo = (route, canonical) => {
+  const locale = getLocaleFromRoute(route);
+  const rawCategoryName = route?.params?.categorySlug
+    ? getCategoryNameBySlug(route.params.categorySlug)
+    : "";
+  const categoryName = rawCategoryName
+    ? getCategoryLabel(rawCategoryName, locale)
+    : "";
+  if (!categoryName) return null;
+  const categoryMeta = CATEGORY_SEO_MAP[rawCategoryName];
+  if (
+    locale === "zh-CN" &&
+    categoryMeta?.title &&
+    categoryMeta?.description
+  ) {
+    const title = buildZhTitle(categoryMeta.title, categoryMeta.titleTail);
+    const description = categoryMeta.description;
+    const keywords = mergeKeywords(
+      categoryMeta.keywords,
+      rawCategoryName,
+      categoryName,
+      SEO_BRAND_NAME_ZH
+    );
+    return {
+      title,
+      description,
+      keywords,
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: title,
+        description,
+        inLanguage: getLocaleMeta(locale)?.htmlLang || "zh-CN",
+        url: canonical,
+        mainEntity: {
+          "@type": "ItemList",
+          name: categoryMeta.title,
+          itemListOrder: "Descending",
+        },
+      },
+    };
+  }
+  const localizedCategoryMeta = CATEGORY_LOCALE_SEO_MAP[rawCategoryName]?.[locale];
+  if (localizedCategoryMeta) {
+    const { title, description, keywords } = localizedCategoryMeta;
+    return {
+      title,
+      description,
+      keywords,
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: title,
+        description,
+        inLanguage: getLocaleMeta(locale)?.htmlLang || "zh-CN",
+        url: canonical,
+        mainEntity: {
+          "@type": "ItemList",
+          name: categoryName,
+          itemListOrder: "Descending",
+        },
+      },
+    };
+  }
+  const title = i18n.global.t(
+    "seo.categoryTitle",
+    { category: categoryName },
+    { locale }
+  );
+  const description = i18n.global.t(
+    "seo.categoryDescription",
+    { category: categoryName },
+    { locale }
+  );
+  const keywords = i18n.global.t(
+    "seo.categoryKeywords",
+    { category: categoryName },
+    { locale }
+  );
+  return {
+    title,
+    description,
+    keywords,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: title,
+      description,
+      inLanguage: getLocaleMeta(locale)?.htmlLang || "zh-CN",
+      url: canonical,
+      mainEntity: {
+        "@type": "ItemList",
+        name: categoryName,
+        itemListOrder: "Descending",
+      },
+    },
+  };
+};
+
+const getListSeo = (route, siteUrl, canonical) => {
+  const locale = getLocaleFromRoute(route);
+  const typeParam =
+    route?.query?.type ||
+    route?.params?.type ||
+    getSourceNameBySlug(route?.params?.sourceSlug);
+  const typeKey = Array.isArray(typeParam) ? typeParam?.[0] : typeParam;
+  const sourceKey = typeKey || "default";
+  const sourceMeta = LIST_SEO_MAP[sourceKey] || null;
+  const meta = sourceMeta || LIST_SEO_MAP.default;
+  const sourceLabel = getSourceLabel(sourceKey, locale);
+  const sourceDisplayLabel =
+    getLocalizedSourceDisplayLabel(sourceKey, locale, sourceLabel) || sourceLabel;
+  const sourceSeoLabel =
+    locale === "zh-CN" && sourceMeta?.label ? sourceMeta.label : sourceLabel;
+  const subtypeSlug = Array.isArray(route?.params?.subtypeSlug)
+    ? route.params.subtypeSlug[0]
+    : route?.params?.subtypeSlug;
+  const effectiveSubtypeSlug =
+    subtypeSlug ||
+    (shouldCanonicalizeDefaultSubtype(sourceKey)
+      ? getDefaultSourceSubtype(sourceKey)
+      : "");
+  const subtypeLabel = getSubtypeLabel(sourceKey, effectiveSubtypeSlug, locale);
+  const label = subtypeLabel
+    ? `${sourceDisplayLabel} · ${subtypeLabel}`
+    : sourceSeoLabel;
+  const descriptionLabel = subtypeLabel ? sourceDisplayLabel : sourceSeoLabel;
+  const defaultTitleLabel = subtypeLabel
+    ? combineSourceAndSubtypeLabel(sourceDisplayLabel, subtypeLabel)
+    : normalizeTitleLabel(sourceSeoLabel);
+  const zhRouteSeo =
+    locale === "zh-CN"
+      ? getZhRouteSeo({ sourceKey, subtypeSlug: effectiveSubtypeSlug })
+      : null;
+  const titleLabel = zhRouteSeo?.titleLabel || defaultTitleLabel;
+  const localizedDefaultDescription = i18n.global.t(
+    "seo.listDescription",
+    {},
+    { locale }
+  );
+  const localizedDefaultKeywords = i18n.global.t(
+    "seo.listKeywords",
+    {},
+    { locale }
+  );
+  const description =
+    subtypeLabel
+      ? i18n.global.t(
+          "seo.sourceSubtypeDescription",
+          {
+            label: descriptionLabel,
+            subtype: subtypeLabel,
+          },
+          { locale }
+        )
+      : locale === "zh-CN" && sourceMeta?.description
+        ? sourceMeta.description
+        : i18n.global.t("seo.sourceDescription", { label: descriptionLabel }, { locale });
+  const keywords =
+    subtypeLabel
+      ? i18n.global.t(
+          "seo.sourceSubtypeKeywords",
+          {
+            label: descriptionLabel,
+            subtype: subtypeLabel,
+          },
+          { locale }
+        )
+      : locale === "zh-CN" && sourceMeta?.keywords
+        ? sourceMeta.keywords
+        : i18n.global.t("seo.sourceKeywords", { label: descriptionLabel }, { locale });
+  const localizedSiteName = i18n.global.t("common.siteName", {}, { locale });
+  const zhIntent =
+    zhRouteSeo?.intent ||
+    buildZhListIntent({
+      sourceLabel: sourceSeoLabel,
+      subtypeLabel,
+      meta: sourceMeta || { description: "实时榜单与趋势数据" },
+    });
+  const listName = locale === "zh-CN" ? titleLabel : label;
+  const title =
+    locale === "zh-CN"
+      ? buildZhTitle(titleLabel, zhIntent)
+      : `${label} - ${localizedSiteName}`;
+  const finalDescription =
+    locale === "zh-CN"
+      ? `${appendZhPageSuffix(titleLabel)}，${joinZhVerbObject(
+          "聚合",
+          zhIntent
+        )}、对应平台最新数据与原站入口，支持实时浏览、榜单切换、分页跳转与一键直达。`
+      : description || localizedDefaultDescription;
+  const finalKeywords =
+    locale === "zh-CN"
+      ? mergeKeywords(
+          keywords,
+          sourceDisplayLabel,
+          sourceLabel,
+          subtypeLabel,
+          zhIntent,
+          titleLabel,
+          SEO_BRAND_NAME_ZH
+        )
+      : keywords || localizedDefaultKeywords;
+
+  return {
+    title,
+    description: finalDescription,
+    keywords: finalKeywords,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: title,
+      description: finalDescription,
+      inLanguage: getLocaleMeta(locale)?.htmlLang || "zh-CN",
+      url: canonical,
+      isPartOf: siteUrl || undefined,
+      mainEntity: {
+        "@type": "ItemList",
+        name: listName,
+        itemListOrder: "Descending",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: listName,
+            url: canonical,
+          },
+        ],
+      },
+    },
+  };
+};
+
+export const applySeoMeta = (route) => {
+  if (typeof document === "undefined") return;
+  const locale = normalizeLocale(getLocaleFromRoute(route));
+  const meta = route?.meta || {};
+  const siteUrl = getSiteUrl();
+  const canonical = meta.canonical
+    ? buildAbsoluteUrl(meta.canonical, siteUrl)
+    : buildAbsoluteUrl(buildLocalePathFromRoute(route, locale), siteUrl);
+  const context = { route, siteUrl, canonical, locale };
+
+  const listSeo = ["list", "list-locale", "list-legacy"].includes(route?.name)
+    ? getListSeo(route, siteUrl, canonical)
+    : null;
+  const categorySeo = ["category", "category-locale"].includes(route?.name)
+    ? getCategorySeo(route, canonical)
+    : null;
+  const pageSeo = getPageSeo(route, locale);
+  const localizedHomeTitle = i18n.global.t("seo.homeTitle", {}, { locale });
+  const homeTitle =
+    locale === "zh-CN"
+      ? resolveValue(meta.seoTitle, context) || DEFAULT_SEO.title
+      : localizedHomeTitle;
+  const localizedHomeDescription = i18n.global.t(
+    "seo.homeDescription",
+    {},
+    { locale }
+  );
+  const localizedHomeKeywords = i18n.global.t("seo.homeKeywords", {}, { locale });
+  const localizedListTitle = i18n.global.t("seo.listTitle", {}, { locale });
+  const localizedListDescription = i18n.global.t(
+    "seo.listDescription",
+    {},
+    { locale }
+  );
+  const localizedListKeywords = i18n.global.t("seo.listKeywords", {}, { locale });
+  const isListRoute = ["list", "list-locale", "list-legacy"].includes(route?.name);
+  const isHomeRoute = ["home", "home-locale"].includes(route?.name);
+
+  const title =
+    listSeo?.title ||
+    categorySeo?.title ||
+    pageSeo?.title ||
+    (isHomeRoute ? homeTitle : null) ||
+    (isListRoute ? localizedListTitle : null) ||
+    resolveValue(meta.seoTitle || meta.title, context) ||
+    localizedHomeTitle ||
+    DEFAULT_SEO.title;
+  const description =
+    listSeo?.description ||
+    categorySeo?.description ||
+    pageSeo?.description ||
+    (isHomeRoute ? localizedHomeDescription : null) ||
+    (isListRoute ? localizedListDescription : null) ||
+    resolveValue(meta.description, context) ||
+    localizedHomeDescription ||
+    DEFAULT_SEO.description;
+  const keywords =
+    listSeo?.keywords ||
+    categorySeo?.keywords ||
+    pageSeo?.keywords ||
+    (isHomeRoute ? localizedHomeKeywords : null) ||
+    (isListRoute ? localizedListKeywords : null) ||
+    resolveValue(meta.keywords, context) ||
+    localizedHomeKeywords ||
+    DEFAULT_SEO.keywords;
+  const robots = resolveValue(meta.robots, context) || "index,follow";
+  const ogType = resolveValue(meta.ogType, context) || "website";
+  const ogImage = buildAbsoluteUrl(
+    resolveValue(meta.ogImage, context) || DEFAULT_SEO.ogImage,
+    siteUrl
+  );
+  const ogImageWidth =
+    resolveValue(meta.ogImageWidth, context) || DEFAULT_SEO.ogImageWidth;
+  const ogImageHeight =
+    resolveValue(meta.ogImageHeight, context) || DEFAULT_SEO.ogImageHeight;
+  const ogImageType =
+    resolveValue(meta.ogImageType, context) || DEFAULT_SEO.ogImageType;
+  const ogImageAlt =
+    resolveValue(meta.ogImageAlt, context) || DEFAULT_SEO.ogImageAlt;
+  const twitterCard =
+    resolveValue(meta.twitterCard, context) || DEFAULT_SEO.twitterCard;
+
+  document.title = title;
+  setMetaTag("name", "description", description);
+  setMetaTag("name", "keywords", keywords);
+  setMetaTag("name", "robots", robots);
+
+  setMetaTag("property", "og:type", ogType);
+  setMetaTag("property", "og:title", title);
+  setMetaTag("property", "og:description", description);
+  setMetaTag("property", "og:url", canonical);
+  setMetaTag("property", "og:image", ogImage);
+  setMetaTag("property", "og:image:type", ogImageType);
+  setMetaTag("property", "og:image:width", ogImageWidth);
+  setMetaTag("property", "og:image:height", ogImageHeight);
+  setMetaTag("property", "og:image:alt", ogImageAlt);
+  setMetaTag("property", "og:site_name", i18n.global.t("common.siteName", {}, { locale }) || DEFAULT_SEO.siteName);
+  setMetaTag(
+    "property",
+    "og:locale",
+    (getLocaleMeta(locale)?.htmlLang || DEFAULT_SEO.locale).replace("-", "_")
+  );
+
+  setMetaTag("name", "twitter:card", twitterCard);
+  setMetaTag("name", "twitter:title", title);
+  setMetaTag("name", "twitter:description", description);
+  setMetaTag("name", "twitter:image", ogImage);
+  setMetaTag("name", "twitter:image:alt", ogImageAlt);
+
+  setLinkTag("canonical", canonical);
+  setAlternateLinks(route, siteUrl);
+
+  const jsonLd =
+    listSeo?.jsonLd ||
+    categorySeo?.jsonLd ||
+    pageSeo?.jsonLd ||
+    (isHomeRoute ? getHomeJsonLd(siteUrl, title, description, locale) : null) ||
+    (typeof meta.jsonLd === "function"
+      ? meta.jsonLd({ siteUrl, canonical, title, description, route })
+      : meta.jsonLd);
+  setJsonLd("dailyhot-route-jsonld", jsonLd);
+  setJsonLd(
+    "dailyhot-breadcrumb-jsonld",
+    getBreadcrumbJsonLd(route, locale, siteUrl),
+  );
+};

@@ -1,0 +1,72 @@
+{
+  "name": "wuaihot",
+  "description": "wuaihot 吾爱热榜：一站看全网，聚合今日热榜、全网热搜、实时热点与跨平台趋势榜单。",
+  "author": {
+    "name": "吾爱分享网",
+    "url": "https://www.wuaishare.cn/"
+  },
+  "homepage": "https://github.com/wuaihot/wuaihot#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wuaihot/wuaihot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wuaihot/wuaihot/issues"
+  },
+  "version": "1.5.1",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "npm run audit:trends-catalog:contract && npm run audit:trends-catalog:build && npm run audit:source-logos && npm run audit:ranking-item-meta && npm run audit:ranking-meta-consumers && npm run audit:ranking-preview-governance && npm run audit:translation-terms && npm run audit:stream-layout && npm run audit:event-hub && npm run audit:image-proxy && npm run audit:bilibili-cache && node scripts/generate-seo-files.js",
+    "build": "vite build",
+    "postbuild": "node scripts/generate-route-shells.cjs && npm run audit:seo-shells && npm run audit:home-seo",
+    "preview": "vite preview",
+    "print:build-number": "node scripts/resolve-code-build-date.cjs",
+    "audit:i18n": "node scripts/audit-i18n-labels.cjs",
+    "audit:seo-shells": "node scripts/audit-seo-route-shells.cjs",
+    "audit:subtypes": "node scripts/audit-source-subtypes.cjs",
+    "audit:trends-catalog": "node scripts/audit-trends-catalog-subtypes.mjs",
+    "audit:trends-catalog:contract": "node scripts/audit-trends-catalog-contract.mjs",
+    "audit:trends-catalog:build": "node scripts/audit-trends-catalog-build.cjs",
+    "audit:source-logos": "node scripts/audit-source-logo-contract.mjs",
+    "audit:ranking-item-meta": "node scripts/audit-ranking-item-meta.mjs",
+    "audit:ranking-meta-consumers": "node scripts/audit-ranking-meta-consumers.mjs",
+    "audit:ranking-preview-governance": "node scripts/audit-ranking-preview-governance.mjs",
+    "audit:feedback": "node scripts/audit-feedback-config.mjs",
+    "audit:fallback": "node scripts/audit-api-fallback.mjs",
+    "audit:home-seo": "node scripts/audit-home-seo.cjs",
+    "audit:stream-layout": "node scripts/audit-stream-layout-contract.mjs",
+    "audit:event-hub": "node scripts/audit-event-hub-contract.mjs",
+    "audit:image-proxy": "node scripts/audit-image-proxy-contract.mjs",
+    "audit:bilibili-cache": "node scripts/audit-bilibili-cache.mjs",
+    "audit:translation-terms": "node scripts/audit-translation-terms.mjs"
+  },
+  "dependencies": {
+    "@icon-park/vue-next": "^1.4.2",
+    "@jridgewell/sourcemap-codec": "^1.5.0",
+    "@vercel/speed-insights": "^1.1.0",
+    "axios": "^1.7.7",
+    "chinese-simple2traditional": "^2.3.2",
+    "lunar-calendar": "^0.1.4",
+    "pinia": "^2.2.6",
+    "pinia-plugin-persistedstate": "^3.2.3",
+    "sass": "^1.80.6",
+    "scrollreveal": "^4.0.9",
+    "terser": "^5.36.0",
+    "vue": "^3.5.12",
+    "vue-i18n": "^11.4.5",
+    "vue-router": "^4.4.5",
+    "vuedraggable": "^4.1.0",
+    "workbox-window": "^6.6.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.6.2",
+    "naive-ui": "^2.40.1",
+    "unplugin-auto-import": "^0.12.2",
+    "unplugin-vue-components": "^0.22.12",
+    "vite": "^4.5.5",
+    "vite-plugin-prerender": "^1.0.8",
+    "vite-plugin-pwa": "^0.14.7"
+  },
+  "packageManager": "pnpm@11.24.0"
+}

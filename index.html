@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/ico/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      data-dailyhot-theme-color
+      content="#ffffff"
+    />
+    <script>
+      (() => {
+        const resolveInitialTheme = () => {
+          const prefersDark =
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          try {
+            const persisted = JSON.parse(localStorage.getItem("mainData") || "null");
+            if (persisted?.siteThemeAuto !== false) {
+              return prefersDark ? "dark" : "light";
+            }
+            return persisted?.siteTheme === "dark" ? "dark" : "light";
+          } catch {
+            return prefersDark ? "dark" : "light";
+          }
+        };
+
+        const theme = resolveInitialTheme();
+        const root = document.documentElement;
+        root.dataset.dailyhotTheme = theme;
+        root.style.colorScheme = theme;
+        document
+          .querySelector('meta[name="theme-color"][data-dailyhot-theme-color]')
+          ?.setAttribute("content", theme === "dark" ? "#101014" : "#ffffff");
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #app {
+        min-height: 100%;
+        background: #ffffff;
+      }
+
+      html[data-dailyhot-theme="dark"],
+      html[data-dailyhot-theme="dark"] body,
+      html[data-dailyhot-theme="dark"] #app {
+        background: #101014;
+      }
+
+      /* Vue 刚挂载时 Naive Layout 也必须继承 boot theme，避免中间白帧。 */
+      html[data-dailyhot-theme="dark"] .n-layout,
+      html[data-dailyhot-theme="dark"] .n-layout-scroll-container {
+        background-color: #101014 !important;
+      }
+    </style>
+    <title>今日热榜 - 全网热搜与实时热点聚合 | 吾爱热榜</title>
+    <meta
+      name="description"
+      content="今日热榜聚合微博、百度、知乎、抖音、B站、头条等平台的全网热搜与实时热点。一站看全网，覆盖新闻、科技、AI、财经、文娱、游戏、体育、生活等分类，支持榜单切换与实时更新。"
+    />
+    <meta
+      name="keywords"
+      content="今日热榜,全网热搜,实时热点,热榜聚合,微博热搜,百度热搜,知乎热榜,抖音热榜,吾爱热榜,wuaihot"
+    />
+    <meta name="robots" content="index,follow" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="今日热榜 - 全网热搜与实时热点聚合 | 吾爱热榜"
+    />
+    <meta
+      property="og:description"
+      content="今日热榜聚合微博、百度、知乎、抖音、B站、头条等平台的全网热搜与实时热点。一站看全网，覆盖新闻、科技、AI、财经、文娱、游戏、体育、生活等分类，支持榜单切换与实时更新。"
+    />
+    <meta
+      property="og:image"
+      content="/brand/wuaihot-social.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1254" />
+    <meta property="og:image:height" content="1254" />
+    <meta
+      property="og:image:alt"
+      content="吾爱热榜品牌标识"
+    />
+    <meta property="og:site_name" content="吾爱热榜" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta name="twitter:card" content="summary" />
+    <meta
+      name="twitter:title"
+      content="今日热榜 - 全网热搜与实时热点聚合 | 吾爱热榜"
+    />
+    <meta
+      name="twitter:description"
+      content="今日热榜聚合微博、百度、知乎、抖音、B站、头条等平台的全网热搜与实时热点。一站看全网，覆盖新闻、科技、AI、财经、文娱、游戏、体育、生活等分类，支持榜单切换与实时更新。"
+    />
+    <meta
+      name="twitter:image"
+      content="/brand/wuaihot-social.png"
+    />
+    <meta
+      name="twitter:image:alt"
+      content="吾爱热榜品牌标识"
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      (() => {
+        const assetRetryParam = "__dailyhot_asset_retry";
+        const bootRetryParam = "__dailyhot_boot_retry";
+        const currentUrl = new URL(window.location.href);
+        let cleanedUrl = false;
+        for (const retryParam of [assetRetryParam, bootRetryParam]) {
+          if (!currentUrl.searchParams.has(retryParam)) continue;
+          currentUrl.searchParams.delete(retryParam);
+          cleanedUrl = true;
+        }
+        if (cleanedUrl) {
+          history.replaceState(
+            history.state,
+            "",
+            `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`
+          );
+        }
+
+        const recoverBoot = async () => {
+          if (document.documentElement.dataset.dailyhotMounted === "1") return;
+          const storageKey = `dailyhot:boot-retry:${window.location.pathname}`;
+          try {
+            if (sessionStorage.getItem(storageKey)) return;
+            sessionStorage.setItem(storageKey, String(Date.now()));
+          } catch {
+            // Recovery should still work when session storage is unavailable.
+          }
+
+          try {
+            if (navigator.serviceWorker) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(registrations.map((registration) => registration.unregister()));
+            }
+            if (window.caches) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map((key) => caches.delete(key)));
+            }
+          } catch {
+            // Reloading from the network is still useful if cleanup is partial.
+          }
+
+          const retryUrl = new URL(window.location.href);
+          retryUrl.searchParams.set(bootRetryParam, String(Date.now()));
+          window.location.replace(retryUrl.toString());
+        };
+
+        window.setTimeout(() => {
+          void recoverBoot();
+        }, 12000);
+
+        window.addEventListener(
+          "error",
+          (event) => {
+            const target = event.target;
+            const resourceUrl = target?.src || target?.href || "";
+            if (!resourceUrl) return;
+
+            let parsedUrl;
+            try {
+              parsedUrl = new URL(resourceUrl, window.location.href);
+            } catch {
+              return;
+            }
+            if (
+              parsedUrl.origin !== window.location.origin ||
+              !parsedUrl.pathname.startsWith("/assets/")
+            ) {
+              return;
+            }
+
+            const storageKey = `dailyhot:asset-retry:${parsedUrl.pathname}`;
+            try {
+              if (sessionStorage.getItem(storageKey)) return;
+              sessionStorage.setItem(storageKey, String(Date.now()));
+            } catch {
+              // Recovery should still work when session storage is unavailable.
+            }
+
+            const retryUrl = new URL(window.location.href);
+            retryUrl.searchParams.set(assetRetryParam, String(Date.now()));
+            window.location.replace(retryUrl.toString());
+          },
+          true
+        );
+      })();
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

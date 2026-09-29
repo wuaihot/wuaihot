@@ -1,0 +1,1216 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+import { resolveResponsiveCardColumns } from "../src/utils/responsiveColumns.js";
+import { isSeriousEvent, isSeriousEventText } from "../src/utils/seriousEvents.js";
+import { pickTopicSummary } from "../src/utils/topicSummary.js";
+import {
+  COVER_PRESENTATION_MODES,
+  classifyCoverPresentationRatio,
+  inferCoverPresentationMode,
+} from "../src/utils/coverPresentation.js";
+
+const component = fs.readFileSync("src/components/CategoryStream.vue", "utf8");
+const app = fs.readFileSync("src/App.vue", "utf8");
+const header = fs.readFileSync("src/components/Header.vue", "utf8");
+const footer = fs.readFileSync("src/components/Footer.vue", "utf8");
+const generalSettings = fs.readFileSync("src/components/GeneralSettings.vue", "utf8");
+const hotboardManager = fs.readFileSync("src/components/HotboardManager.vue", "utf8");
+const settingsModal = fs.readFileSync("src/components/SettingsModal.vue", "utf8");
+const store = fs.readFileSync("src/store/index.js", "utf8");
+const coverPresentation = fs.readFileSync("src/utils/coverPresentation.js", "utf8");
+const coverPreviewGeometry = fs.readFileSync("src/utils/coverPreviewGeometry.js", "utf8");
+const floatingCoverPreview = fs.readFileSync("src/utils/floatingCoverPreview.js", "utf8");
+const expandableCoverGeometry = fs.readFileSync("src/utils/expandableCoverGeometry.js", "utf8");
+const globalStyle = fs.readFileSync("src/style/global.scss", "utf8");
+const home = fs.readFileSync("src/views/Home.vue", "utf8");
+const router = fs.readFileSync("src/router/index.js", "utf8");
+const categoryRail = fs.readFileSync("src/components/CategorySourceRail.vue", "utf8");
+const directorySourceCard = fs.readFileSync("src/components/DirectorySourceCard.vue", "utf8");
+const directorySources = fs.readFileSync("src/config/directorySources.js", "utf8");
+const hotList = fs.readFileSync("src/components/HotList.vue", "utf8");
+const rankingCardOperations = fs.readFileSync("src/components/RankingCardOperations.vue", "utf8");
+const rankingSplitControl = fs.readFileSync("src/components/RankingSplitControl.vue", "utf8");
+const marketRankDirectionControl = fs.readFileSync(
+  "src/components/MarketRankDirectionControl.vue",
+  "utf8",
+);
+const marketListSortControl = fs.readFileSync(
+  "src/components/MarketListSortControl.vue",
+  "utf8",
+);
+const contextToolbar = fs.readFileSync("src/components/ContextToolbar.vue", "utf8");
+const listView = fs.readFileSync("src/views/List.vue", "utf8");
+const readableTitles = fs.readFileSync("src/utils/readableTitles.js", "utf8");
+const sourceLogos = fs.readFileSync("src/utils/sourceLogos.js", "utf8");
+const sourceSubtypes = fs.readFileSync("src/utils/sourceSubtypes.js", "utf8");
+const musicSources = fs.readFileSync("src/utils/musicSources.js", "utf8");
+const categoryVariantScope = fs.readFileSync("src/utils/categoryVariantScope.js", "utf8");
+const taxonomyV3 = fs.readFileSync("src/config/taxonomy-v3.js", "utf8");
+const sharedBadges = fs.readFileSync("src/components/RankingBadgeGroup.vue", "utf8");
+const subtypeBar = fs.readFileSync("src/components/SubtypeBar.vue", "utf8");
+const trendStrip = fs.readFileSync("src/components/TrendIntelligenceStrip.vue", "utf8");
+const topicLaneGrid = fs.readFileSync("src/components/TopicLaneGrid.vue", "utf8");
+const chigua = fs.readFileSync("src/views/ChiguaTopic.vue", "utf8");
+const appShell = fs.readFileSync("src/App.vue", "utf8");
+const aiTopic = fs.readFileSync("src/views/AiTopic.vue", "utf8");
+const gameDealsTopic = fs.readFileSync("src/views/GameDealsTopic.vue", "utf8");
+const template = component.split("<script setup>")[0];
+
+assert.doesNotMatch(store, /成功更新 \${updatedNum} 个榜单数据/, "boot source migration must stay silent instead of impersonating ranking-data refresh");
+assert.match(
+  hotList,
+  /getSourceVariantOption\(props\.hotData\.name, rawSubtitle\)/,
+  "single-ranking cards must resolve the canonical Catalog variant label before falling back to technical subtype keys",
+);
+assert.match(
+  hotList,
+  /getSubtypeLabel\(variantOption, locale\.value\)/,
+  "single-ranking Catalog labels must use the existing localized subtype label resolver",
+);
+assert.match(rankingCardOperations, /:trigger="triggerMode"/);
+assert.match(rankingCardOperations, /\(hover: hover\) and \(pointer: fine\)/);
+assert.match(rankingCardOperations, /@mouseenter="handleTriggerEnter"/);
+assert.match(rankingCardOperations, /@clickoutside="closeMenu"/);
+assert.match(rankingCardOperations, /ranking-card-operations__selection-link/);
+assert.doesNotMatch(rankingCardOperations, /ranking-card-operations__selection-actions button \{/);
+assert.match(rankingSplitControl, /:trigger="triggerMode"/);
+assert.match(rankingSplitControl, /\(hover: hover\) and \(pointer: fine\)/);
+assert.match(rankingSplitControl, /@mouseenter="handleTriggerEnter"/);
+assert.match(rankingSplitControl, /@clickoutside="closeMenu"/);
+
+assert.match(store, /siteContainerWidth: 1400/);
+assert.match(store, /focusContainerWidth: 1360/);
+assert.match(store, /"siteContainerWidth"/);
+assert.match(store, /"focusContainerWidth"/);
+assert.match(app, /--site-container-width/);
+assert.match(app, /--site-focus-container-width/);
+assert.match(app, /width: min\(calc\(100% - var\(--site-gutter-total\)\), var\(--site-container-width\)\)/);
+assert.match(app, /clamp\(16px, 2vw, 32px\)/);
+assert.match(app, /clamp\(32px, 4vw, 64px\)/);
+assert.match(app, /clamp\(12px, 1\.5vw, 24px\)/);
+assert.match(app, /clamp\(24px, 3vw, 48px\)/);
+assert.match(header, /max-width: var\(--site-container-width, 1400px\)/);
+assert.match(footer, /var\(--site-container-width, 1400px\)/);
+assert.match(generalSettings, /v-model:value="siteContainerWidth"/);
+assert.match(generalSettings, /v-model:value="focusContainerWidth"/);
+assert.match(component, /var\(--site-focus-container-width, 1360px\)/);
+assert.match(chigua, /var\(--site-container-width, 1400px\)/);
+assert.match(chigua, /\.topic-feed-section \{[\s\S]{0,80}box-sizing: border-box;[\s\S]{0,100}var\(--site-focus-container-width, 1360px\)/);
+
+assert.match(store, /homeCardColumns: 4/);
+assert.match(store, /homeCompactColumns: 5/);
+assert.match(store, /listFontSize: 16/);
+assert.match(store, /compactListFontSize: 14/);
+assert.match(store, /effectiveListFontSize:/);
+assert.match(store, /"compactListFontSize"/);
+assert.match(generalSettings, /activeListFontSize/);
+assert.match(generalSettings, /compactListFontSize/);
+assert.match(hotList, /store\.effectiveListFontSize/);
+assert.match(component, /store\.effectiveListFontSize/);
+assert.match(chigua, /store\.effectiveListFontSize/);
+assert.match(store, /showCardImages: true/);
+assert.match(store, /showStreamImages: true/);
+assert.match(store, /showDetailImages: true/);
+assert.match(store, /showPreviewImages: true/);
+for (const key of ["homeCardColumns", "homeCompactColumns", "showCardImages", "showStreamImages", "showDetailImages", "showPreviewImages"]) {
+  assert.match(store, new RegExp(`"${key}"`));
+}
+assert.match(home, /--home-grid-columns/);
+assert.match(home, /store\.compactMode[\s\S]{0,180}store\.homeCompactColumns[\s\S]{0,180}store\.homeCardColumns/);
+assert.match(home, /resolveResponsiveCardColumns/);
+assert.match(home, /ResizeObserver/);
+assert.match(home, /repeat\(var\(--home-grid-columns, 1\), minmax\(0, 1fr\)\)/);
+assert.doesNotMatch(home, /music-platform-strip/);
+for (const sourceName of ["qq-music", "netease-music", "kugou-music", "kuwo-music"]) {
+  assert.match(
+    store,
+    new RegExp(`"${sourceName}": \\{[\\s\\S]{0,180}categoryIds: \\["entertainment-music"\\]`),
+    `${sourceName} must remain a normal music-category source instead of a separate promo strip`,
+  );
+}
+assert.match(store, /"apple-music": \{[\s\S]{0,180}categoryIds: \["entertainment-music"\]/);
+assert.match(taxonomyV3, /"apple-music"[\s\S]{0,160}"songs"[\s\S]{0,160}"entertainment-music-songs"/);
+assert.match(taxonomyV3, /"ximalaya-rankings"[\s\S]{0,180}"classic-fiction-ticket"[\s\S]{0,180}"entertainment-reading-novels"/);
+assert.match(taxonomyV3, /"apple-app-store"[\s\S]{0,160}"games-free"[\s\S]{0,160}"games-ranking"/);
+assert.match(taxonomyV3, /"steam"[\s\S]{0,160}"topselling"[\s\S]{0,160}"games-ranking"/);
+assert.match(store, /"ximalaya-rankings": \{[\s\S]{0,160}categoryIds: \["entertainment-audio"\]/);
+assert.match(store, /"china-film-boxoffice": \{[\s\S]{0,160}categoryIds: \["entertainment-video-movie"\]/);
+assert.match(store, /"hotbook-discovery": \{[\s\S]{0,160}categoryIds: \["entertainment-reading-books"\]/);
+assert.match(
+  store,
+  /"douyin-live": \{[\s\S]{0,120}category: "直播"[\s\S]{0,120}categoryIds: \["entertainment-live"\][\s\S]{0,80}order: 16\.45/,
+  "Douyin Live must remain a vertical live-entertainment source instead of outranking the main Douyin hot list",
+);
+assert.match(
+  store,
+  /"bilibili-live": \{[\s\S]{0,160}category: "直播"[\s\S]{0,120}categoryIds: \["entertainment-live"\]/,
+  "Bilibili Live must share the dedicated entertainment live category",
+);
+assert.match(
+  store,
+  /"huya-live": \{[\s\S]{0,160}category: "直播"[\s\S]{0,120}categoryIds: \["entertainment-live"\][\s\S]{0,120}coverPresentationMode: "landscape-uniform"/,
+  "Huya Live must share the dedicated entertainment live category with landscape covers",
+);
+assert.match(
+  store,
+  /"douyin-live": \{ from: "综合", to: "直播" \}/,
+  "legacy default Douyin Live category must migrate from general into the dedicated live category without overriding custom categories",
+);
+assert.match(
+  store,
+  /"douyin-live": \{ from: 0\.2, to: 16\.45 \}/,
+  "legacy default Douyin Live order must migrate to the entertainment extension slot",
+);
+assert.match(
+  taxonomyV3,
+  /"douyin-live": single\("entertainment-live"\)/,
+  "taxonomy v3 must project Douyin Live into the dedicated entertainment live category",
+);
+assert.match(
+  taxonomyV3,
+  /"bilibili-live": single\("entertainment-live"\)/,
+  "taxonomy v3 must project Bilibili Live into the dedicated entertainment live category",
+);
+assert.match(
+  taxonomyV3,
+  /"huya-live": single\("entertainment-live"\)/,
+  "taxonomy v3 must project Huya Live into the dedicated entertainment live category",
+);
+assert.doesNotMatch(store, /categoryIds: \["media-/);
+assert.doesNotMatch(home, /@media \(min-width: 1100px\)[\s\S]{0,160}--home-grid-columns/);
+assert.equal(resolveResponsiveCardColumns({ width: 1600, requested: 5, compact: true }), 5);
+assert.equal(resolveResponsiveCardColumns({ width: 1200, requested: 5, compact: true }), 4);
+assert.equal(resolveResponsiveCardColumns({ width: 1140, requested: 5, compact: true }), 4);
+assert.equal(resolveResponsiveCardColumns({ width: 900, requested: 5, compact: true }), 3);
+assert.equal(resolveResponsiveCardColumns({ width: 700, requested: 5, compact: true }), 2);
+assert.equal(resolveResponsiveCardColumns({ width: 390, requested: 5, compact: true }), 1);
+assert.match(hotList, /showCardImages/);
+assert.match(hotList, /showPreviewImages/);
+assert.match(hotList, /class="hot-list"[\s\S]{0,120}'is-compact': store\.compactMode/);
+assert.match(component, /store\.showDetailImages/);
+assert.match(component, /store\.showStreamImages/);
+assert.match(listView, /store\.showDetailImages/);
+assert.doesNotMatch(generalSettings, /v-model:value="homeCardColumns"/);
+assert.doesNotMatch(generalSettings, /v-model:value="homeCompactColumns"/);
+assert.doesNotMatch(generalSettings, /v-model:value="showCardImages"/);
+assert.doesNotMatch(generalSettings, /v-model:value="showStreamImages"/);
+assert.doesNotMatch(generalSettings, /v-model:value="showDetailImages"/);
+assert.doesNotMatch(generalSettings, /v-model:value="showPreviewImages"/);
+assert.doesNotMatch(generalSettings, /settings\.showPinnedRankings/);
+assert.doesNotMatch(settingsModal, /value: "categories"/);
+assert.doesNotMatch(settingsModal, /value: "ranking"/);
+assert.match(hotboardManager, /v-model:value="store\.compactMode"/);
+assert.match(hotboardManager, /store\.homeCompactColumns/);
+assert.match(hotboardManager, /store\.homeCardColumns/);
+assert.match(hotboardManager, /v-model:value="store\.showPinnedRankings"/);
+assert.match(hotboardManager, /v-model:value="store\.showImages"/);
+assert.match(hotboardManager, /showCardImages/);
+assert.match(hotboardManager, /showStreamImages/);
+assert.match(hotboardManager, /showDetailImages/);
+assert.match(hotboardManager, /showPreviewImages/);
+assert.match(hotboardManager, /--manager-grid-columns/);
+assert.match(hotboardManager, /is-current/);
+assert.match(hotboardManager, /getTrendsCatalogSources/);
+assert.match(
+  hotboardManager,
+  /!source\.publicAvailable/,
+  "HotboardManager catalog-only projection must exclude Public-readable sources",
+);
+assert.match(
+  hotboardManager,
+  /!source\.displayAvailable/,
+  "HotboardManager catalog-only projection must exclude Display-readable sources",
+);
+assert.match(
+  hotboardManager,
+  /catalogUnavailable: true/,
+  "HotboardManager must mark catalog-only sources as unavailable instead of admitting them",
+);
+assert.match(
+  hotboardManager,
+  /SOURCE_CATEGORY_PROJECTIONS\[source\.key\]/,
+  "unavailable catalog sources must keep the governed taxonomy projection",
+);
+assert.match(
+  hotboardManager,
+  /v-if="filteredUnavailableSources\.length"[\s\S]{0,900}board-item--unavailable/,
+  "catalog-only sources must remain visible in a dedicated read-only manager section",
+);
+const unavailableManagerSection = hotboardManager.slice(
+  hotboardManager.indexOf('v-if="filteredUnavailableSources.length"'),
+  hotboardManager.indexOf("</section>", hotboardManager.indexOf('v-if="filteredUnavailableSources.length"')),
+);
+assert.doesNotMatch(
+  unavailableManagerSection,
+  /<n-switch|@update:value|handle="\.source-drag"/,
+  "unavailable catalog sources must not expose enable, assignment, or drag controls",
+);
+assert.match(sourceLogos, /xiaohongshu:\s*"\/logo\/xiaohongshu\.svg"/);
+assert.doesNotMatch(sourceLogos, /xiaohongshu\.ico/);
+
+assert.match(template, /category-stream__source-rail/);
+assert.match(template, /category-stream__main/);
+assert.match(template, /category-stream__controls/);
+assert.match(template, /category-stream__context/);
+assert.match(template, /category-stream__variant-nav/);
+assert.match(template, /currentVariantLabel/);
+assert.match(template, /sourceVariantPathFor\(currentPageSource\.name, item\.value\)/);
+assert.match(template, /@click="rememberSourceVariant\(currentPageSource\.name, item\.value\)"/);
+assert.match(template, /v-for="entry in pagedEntries"/);
+assert.match(template, /:class="\{ 'has-media': !minimalMode && showImages && Boolean\(entry\.cover\) && !coverImageErrors\[entry\.cover\] \}"/);
+assert.match(template, /v-if="sourcePageMode && !minimalMode && showImages && entry\.cover && !coverImageErrors\[entry\.cover\]"[\s\S]{0,180}category-stream__media is-cover is-previewable/);
+assert.match(template, /@mouseenter="prepareRowCoverHover"/);
+assert.match(template, /ref="streamRoot"/);
+const sourceMediaIndex = template.indexOf('category-stream__media is-cover is-previewable');
+const sourceContentIndex = template.indexOf('category-stream__content-wrap');
+assert.ok(sourceMediaIndex !== -1 && sourceMediaIndex < sourceContentIndex, 'source detail rows must preserve rank → cover → title/meta scan order');
+assert.doesNotMatch(template, /category-stream__media is-logo/);
+assert.doesNotMatch(template, /category-stream__toc-children/);
+assert.match(component, /const currentPageSource = computed/);
+assert.match(component, /const currentVariantLabel = computed/);
+const rawSourceAssignmentIndex = component.indexOf("sourceResults[source.name] = result;");
+const readableEnhancementIndex = component.indexOf("void enhanceReadableResultTitles(result, locale.value");
+assert.ok(
+  rawSourceAssignmentIndex !== -1 &&
+    readableEnhancementIndex > rawSourceAssignmentIndex,
+  "CategoryStream must publish provider data before readable-title enhancement",
+);
+assert.match(
+  component,
+  /includeDescriptions: sourcePageMode\.value && showDescriptions\.value/,
+  "single-source detail pages may translate visible summaries while category aggregation keeps title-only translation",
+);
+assert.doesNotMatch(
+  component,
+  /includeDescriptions: true/,
+  "CategoryStream must not translate every aggregated source description unconditionally",
+);
+assert.match(
+  component,
+  /sourceRequestVersions\[source\.name\] === requestVersion[\s\S]{0,220}toRaw\(sourceResults\[source\.name\]\) === result/,
+  "late readable-title enhancement must compare the reactive result through toRaw while guarding against newer requests",
+);
+assert.doesNotMatch(
+  component,
+  /sourceResults\[source\.name\] === result/,
+  "late readable-title enhancement must not compare a Vue reactive proxy directly with the raw provider result",
+);
+assert.match(
+  hotList,
+  /enhanceReadableResultTitles\(result, targetLocale,[\s\S]{0,180}includeDescriptions: false/,
+  "HotList initial readable translation must remain title-only to avoid eager description amplification",
+);
+assert.match(hotList, /translateReadableTitles/);
+assert.match(
+  hotList,
+  /const translatePreviewDescription = async \(item\) =>[\s\S]{0,900}translateReadableTitles\([\s\S]{0,160}\[sourceDesc\][\s\S]{0,220}getReadableTranslationPriority\(\) \+ 1200/,
+  "HotList hover preview must translate only the hovered description at elevated priority",
+);
+assert.match(
+  hotList,
+  /const translatedItemPromise = translatePreviewDescription\(item\)[\s\S]{0,900}const previewItemForDisplay = await translatedItemPromise[\s\S]{0,180}positionPreview\(previewItemForDisplay, target, mediaLayout\)/,
+  "HotList preview positioning must use the lazily translated preview item",
+);
+assert.match(
+  readableTitles,
+  /ENTITY_TITLE_SOURCE_NAMES[\s\S]{0,800}"vscode-marketplace"/,
+  "VS Code Marketplace extension names must stay protected as entity titles",
+);
+assert.match(
+  readableTitles,
+  /ENTITY_TITLE_SOURCE_NAMES[\s\S]{0,800}"bilibili-ai-arena"/,
+  "Bilibili AI Arena model names must stay protected as entity titles instead of entering readable translation",
+);
+assert.match(component, /const minimalMode = computed\(\(\) => !showImages\.value && !showDescriptions\.value\)/);
+assert.match(component, /const PAGE_SIZE_VALUES = \[20, 30, 50, 100\]/);
+assert.match(component, /grid-template-columns: 280px minmax\(520px, 720px\) 280px;[\s\S]{0,120}gap: 16px/);
+assert.match(component, /\.category-stream\.is-source-page \.category-stream__row\.has-media/);
+assert.match(component, /\.category-stream__variant-tab\.active/);
+assert.match(component, /\.category-stream\.is-source-page \.category-stream__rail-card/);
+assert.match(component, /\.category-stream\.is-source-page \.category-stream__controls-card/);
+assert.match(component, /const coverImageErrors = reactive\(\{\}\)/);
+assert.match(component, /const hideBrokenMedia = \(event, cover = ""\) =>/);
+assert.match(template, /@error="hideBrokenMedia\(\$event, entry\.cover\)"/);
+assert.match(template, /onError: \(event\) => hideBrokenMedia\(event, entry\.cover\)/);
+assert.match(template, /'data-cover-source': entry\.cover/);
+assert.match(template, /'data-cover-sample-key': entry\.coverPresentationSampleKey/);
+assert.match(component, /const coverPresentationSampleKeyFor = \(sourceName, variant = ""\) =>/);
+assert.match(component, /const resultVariant = sourceResults\[sourceName\]\?\.variant;[\s\S]{0,180}resultVariant \|\| sourceSubtypeFor\(sourceName\)/);
+assert.match(component, /coverPresentationSampleKey: coverPresentationSampleKeyFor\([\s\S]{0,120}result\?\.variant \|\| sourceSubtypeFor\(source\.name\)/);
+assert.match(component, /const markBrokenCoverImage = \(image\) =>/);
+assert.match(
+  component,
+  /if \(image\.complete\) \{[\s\S]{0,260}image\.naturalWidth > 0 && image\.naturalHeight > 0[\s\S]{0,260}rememberCoverPresentationSample\(image\)[\s\S]{0,160}syncCoverHoverGeometry\(image\)/,
+);
+assert.match(
+  component,
+  /if \(image\.complete\) \{[\s\S]{0,700}else \{[\s\S]{0,100}markBrokenCoverImage\(image\)/,
+);
+assert.match(component, /image\.addEventListener\?\.\([\s\S]{0,40}"error"[\s\S]{0,140}markBrokenCoverImage\(image\)/);
+assert.doesNotMatch(component, /media\?\.remove\?\.\(\)/);
+assert.match(component, /@media \(max-width: 820px\)[\s\S]*category-stream__source-rail/);
+assert.match(component, /@media \(max-width: 820px\)[\s\S]*overflow-x: auto/);
+assert.match(component, /setTocSourceRef/);
+assert.match(component, /ensureActiveSourceVisible/);
+assert.match(component, /const remembered = readSourceSubtype\(source\.name\)/);
+assert.match(component, /const options = getSourceSubtypeOptions\(source\.name\)/);
+assert.match(component, /options\.length[\s\S]{0,120}resolveSourceSubtype\(options, remembered\)[\s\S]{0,80}: remembered/);
+assert.match(component, /rememberSourceVariant/);
+assert.match(component, /container\.scrollTop \+= delta/);
+assert.match(component, /const sourceNavigationPathFor = \(source\) => \{[\s\S]{0,420}readSourceSubtype\(source\.name\)[\s\S]{0,260}rememberedSubtype \|\| getDefaultSourceSubtype/);
+assert.match(component, /const rememberSourceVariant = \(sourceName, variant\) => \{[\s\S]{0,260}persistSourceSubtype\(sourceName, resolved\)/);
+assert.match(contextToolbar, /\.context-breadcrumb__caret \{[\s\S]{0,180}stroke: currentColor;[\s\S]{0,80}opacity: 0\.66/);
+assert.match(contextToolbar, /routeKind === 'home'[\s\S]{0,100}routeKind === 'category'[\s\S]{0,100}routeKind === 'list'[\s\S]{0,160}context-toolbar__manager/);
+assert.match(
+  router,
+  /\["home", "home-locale", "category", "category-locale"\]\.includes\([\s\S]{0,80}String\(to\.name \|\| ""\)/,
+  "list routes must not mutate persisted activeCategory during route entry",
+);
+assert.match(
+  contextToolbar,
+  /routeKind\.value === "category"[\s\S]{0,140}store\.activeCategory !== category\.name[\s\S]{0,100}store\.setActiveCategory\(category\.name\)/,
+  "ContextToolbar must keep activeCategory writes scoped to category pages",
+);
+assert.doesNotMatch(
+  contextToolbar,
+  /\(routeKind\.value === "category" \|\| routeKind\.value === "list"\)[\s\S]{0,180}store\.setActiveCategory/,
+  "list detail routes must stay free of persisted activeCategory writes",
+);
+assert.match(
+  store,
+  /markAvailable\(name\) \{[\s\S]{0,100}!this\.unavailableSources\.includes\(name\)\) return;/,
+  "markAvailable must not mutate the persisted store when availability is already healthy",
+);
+assert.doesNotMatch(contextToolbar, /\.context-breadcrumb__caret \{[^}]*stroke: var\(--n-text-color-3\)/s);
+assert.match(component, /category-stream\.is-source-page \.category-stream__rank \{[\s\S]{0,100}align-self: center/);
+
+assert.match(home, /import CategorySourceRail from "@\/components\/CategorySourceRail\.vue"/);
+assert.match(home, /<CategorySourceRail[\s\S]{0,160}:sources="scopedNews"/);
+assert.doesNotMatch(home, /CategoryStream/);
+assert.doesNotMatch(home, /category-context-nav/);
+assert.match(home, /@reorder="saveStreamOrder"/);
+assert.match(home, /const saveStreamOrder =/);
+assert.match(categoryRail, /grid-template-columns: 220px minmax\(0, 1fr\)/);
+assert.match(categoryRail, /scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/);
+assert.match(categoryRail, /closest\?\.\('\.n-scrollbar-container'\)/);
+assert.match(categoryRail, /new IntersectionObserver/);
+assert.match(categoryRail, /rootMargin: '800px 0px 800px 0px'/);
+assert.match(categoryRail, /INITIAL_SOURCE_LOAD_COUNT = 5/);
+assert.match(categoryRail, /overflow-x: auto/);
+assert.match(categoryRail, /category-source-section__rail[\s\S]{0,420}scrollbar-width: thin/);
+assert.match(categoryRail, /category-source-section__rail::-webkit-scrollbar \{ height: 7px; \}/);
+assert.match(component, /category-stream__source-rail::-webkit-scrollbar[\s\S]{0,80}display: none/);
+assert.match(categoryRail, /category-source-rail__toc::-webkit-scrollbar[\s\S]{0,80}display: none/);
+assert.match(categoryRail, /grid-auto-flow: column/);
+assert.match(categoryRail, /v-model="orderedSources"/);
+assert.match(categoryRail, /category-source-section__drag/);
+assert.match(categoryRail, /category-source-section__subtypes/);
+assert.match(categoryRail, /changeSourceSubtype/);
+assert.match(categoryRail, /sourceUpdateTime/);
+assert.match(categoryRail, /normalizeRankingBadges\(item\?\.badges, 3\)/);
+assert.match(categoryRail, /category-story-card__badges/);
+assert.match(categoryRail, /category-story-card\.is-one/);
+assert.match(categoryRail, /category-story-card__cover/);
+assert.match(categoryRail, /category-story-card__scrim/);
+assert.match(categoryRail, /linear-gradient\(180deg, rgba\(6,8,12,\.02\)/);
+assert.match(categoryRail, /text-shadow: 0 1px 2px rgba\(0,0,0,\.52\)/);
+assert.doesNotMatch(categoryRail, /\.category-story-card\.has-cover \.category-story-card__content \{[^}]*backdrop-filter/s);
+assert.match(hotList, /import { formatCompactMetric } from "@\/utils\/compactMetric"/);
+assert.match(hotList, /const formatPreviewHot = \(value\) => formatCompactMetric\(value, locale\.value\)/);
+assert.match(hotList, /<n-icon class="preview-hot-icon" :component="Fire" \/>/);
+assert.match(globalStyle, /--ranking-card-thumb-width: 50px;/);
+assert.match(globalStyle, /--ranking-card-thumb-height: 40px;/);
+assert.match(globalStyle, /--ranking-card-compact-thumb-width: 46px;/);
+assert.match(globalStyle, /--ranking-card-compact-thumb-height: 36px;/);
+assert.match(hotList, /grid-template-columns: auto var\(--ranking-card-thumb-width\) minmax\(0, 1fr\)/);
+assert.match(hotList, /\.item-thumb \{[\s\S]{0,180}width: var\(--ranking-card-thumb-width\);[\s\S]{0,100}height: var\(--ranking-card-thumb-height\);/);
+assert.match(hotList, /resolveCoverPreviewLayout/);
+assert.match(hotList, /resolveFloatingCoverPreviewPosition\(\{/);
+assert.match(floatingCoverPreview, /availablePlacements = \{ right: placeRight, left: placeLeft, below: placeBelow, above: placeAbove \}/);
+assert.match(floatingCoverPreview, /overlapsText[\s\S]{0,320}placement === "left" \|\| placement === "right"/);
+assert.doesNotMatch(hotList, /previewMediaPresets|center 28%|--preview-cover-position/);
+assert.match(hotList, /@pointerleave="schedulePreviewClose"/);
+assert.match(hotList, /class="hot-item-preview"[\s\S]{0,420}@pointerenter="cancelPreviewClose"[\s\S]{0,180}@pointerleave="schedulePreviewClose"/);
+assert.match(hotList, /const schedulePreviewClose = \(\) => \{[\s\S]{0,240}setTimeout[\s\S]{0,100}hidePreview/);
+assert.match(hotList, /class="item-thumb"[\s\S]{0,260}@click\.stop="openFullImagePreview\(item\.cover\)"/);
+assert.match(hotList, /:data-cover-presentation="cardCoverPresentationMode"/);
+assert.match(hotList, /@load="rememberCardCoverPresentationSample\(\$event, item\.cover\)"/);
+assert.match(hotList, /const configuredCardCoverPresentationMode = computed\(\(\) =>[\s\S]{0,240}resolveCoverPresentationMode/);
+assert.match(hotList, /const cardCoverPresentationMode = computed\(\(\) =>[\s\S]{0,420}inferCoverPresentationMode/);
+assert.match(hotList, /data-cover-presentation="square-uniform"[\s\S]{0,220}grid-template-columns: auto 40px minmax\(0, 1fr\)/);
+assert.match(hotList, /data-cover-presentation="portrait-uniform"[\s\S]{0,260}grid-template-columns: auto 42px minmax\(0, 1fr\)[\s\S]{0,100}min-height: 58px/);
+assert.match(hotList, /line\[data-cover-presentation="square-uniform"\] \.item-thumb[\s\S]{0,220}width: 40px;[\s\S]{0,80}height: 40px;[\s\S]{0,180}object-fit: contain/);
+assert.match(hotList, /line\[data-cover-presentation="portrait-uniform"\] \.item-thumb[\s\S]{0,220}width: 42px;[\s\S]{0,80}height: 58px;[\s\S]{0,180}object-fit: contain/);
+assert.match(hotList, /is-compact[\s\S]{0,1600}data-cover-presentation="portrait-uniform"[\s\S]{0,220}grid-template-columns: auto 36px minmax\(0, 1fr\)[\s\S]{0,100}min-height: 50px/);
+assert.match(hotList, /is-compact[\s\S]{0,1800}line\[data-cover-presentation="portrait-uniform"\] \.item-thumb[\s\S]{0,220}width: 36px;[\s\S]{0,80}height: 50px/);
+assert.match(hotList, /class="preview-cover-wrap"[\s\S]{0,240}@click\.stop="openFullImagePreview\(previewItem\.cover\)"/);
+assert.match(hotList, /class="hot-list__image-preview-trigger"[\s\S]{0,180}:preview-src="imagePreviewSrc"/);
+assert.match(hotList, /\.hot-item-preview \{[\s\S]{0,260}pointer-events: auto;[\s\S]{0,100}user-select: text;/);
+assert.match(hotList, /\.preview-cover-wrap \{[\s\S]{0,360}cursor: zoom-in/);
+assert.match(hotList, /\.cover \{[\s\S]{0,220}object-fit: contain;[\s\S]{0,80}object-position: center/);
+assert.match(coverPreviewGeometry, /portrait:[\s\S]{0,160}mediaOnly: \{ maxWidth: 168, maxHeight: 224 \}/);
+assert.match(coverPreviewGeometry, /square:[\s\S]{0,160}mediaOnly: \{ maxWidth: 200, maxHeight: 200 \}/);
+assert.match(coverPreviewGeometry, /landscape:[\s\S]{0,160}mediaOnly: \{ maxWidth: 240, maxHeight: 144 \}/);
+assert.match(component, /applyExpandableCoverGeometry\(\{/);
+assert.match(expandableCoverGeometry, /resolveCoverPreviewLayout\(naturalWidth, naturalHeight\)/);
+assert.match(expandableCoverGeometry, /preferredHover = previewLayout\?\.mediaOnly/);
+assert.match(expandableCoverGeometry, /availableWidth = mediaRect[\s\S]{0,180}mediaRect\.right - viewportPadding/);
+assert.match(component, /\.category-stream__media \{[\s\S]{0,120}width: 92px;[\s\S]{0,80}height: 56px;/);
+assert.match(globalStyle, /--ranking-stream-rank-width: 42px;/);
+assert.match(globalStyle, /--ranking-stream-media-width: 112px;/);
+assert.match(globalStyle, /--ranking-stream-media-height: 84px;/);
+assert.match(component, /category-stream\.is-source-page \.category-stream__row\.has-media[\s\S]{0,260}grid-template-columns: var\(--ranking-stream-rank-width\) var\(--ranking-stream-media-width\) minmax\(0, 1fr\)/);
+assert.doesNotMatch(component, /SQUARE_COVER_SOURCES|LANDSCAPE_COVER_SOURCES|FIXED_PORTRAIT_COVER_SOURCES|usesPreviewCoverProfile/);
+assert.doesNotMatch(template, /is-square-cover-source-page|is-landscape-cover-source-page|is-fixed-portrait-cover-source-page/);
+assert.match(template, /:data-cover-presentation="sourcePageMode \? currentCoverPresentationMode : undefined"/);
+assert.match(template, /:data-cover-presentation="coverPresentationModeForEntry\(entry\)"/);
+assert.match(template, /@load="handleCoverImageLoad\(\$event, entry\)"/);
+assert.match(component, /const configuredCoverPresentationModeForSource = \(sourceName\) =>[\s\S]{0,220}resolveCoverPresentationMode\([\s\S]{0,180}sourceCoverPresentationMeta\(sourceName\)[\s\S]{0,180}defaultCoverPresentationMeta\(sourceName\)/);
+assert.match(component, /const configuredCoverPresentationMode = computed\(\(\) =>[\s\S]{0,120}configuredCoverPresentationModeForSource\(props\.sourcePageSource\)/);
+assert.match(component, /const currentCoverPresentationSampleKey = computed\(\(\) =>[\s\S]{0,320}coverPresentationSampleKeyFor\([\s\S]{0,120}resultVariant \|\| sourceSubtypeFor\(sourceName\)/);
+assert.match(component, /const coverPresentationModeForEntry = \(entry\) =>[\s\S]{0,520}configuredCoverPresentationModeForSource\(sourceName\)[\s\S]{0,520}inferCoverPresentationMode/);
+assert.match(component, /inferCoverPresentationMode\([\s\S]{0,120}Object\.values\(coverPresentationSamples\[key\] \|\| \{\}\)/);
+assert.match(component, /configured === COVER_PRESENTATION_MODES\.AUTO[\s\S]{0,120}inferredCoverPresentationMode\.value/);
+assert.match(component, /const currentCoverObjectFit = computed\(\(\) => "contain"\)/);
+assert.match(component, /rememberCoverPresentationSample = \(image, entry = null\)/);
+assert.match(component, /image\?\.naturalWidth[\s\S]{0,80}image\?\.naturalHeight/);
+assert.match(component, /COVER_PRESENTATION_MODES\.AUTO,[\s\S]{0,100}COVER_PRESENTATION_MODES\.MIXED,[\s\S]{0,160}includes\(stream\?\.dataset\?\.coverPresentation\)/);
+assert.match(coverPresentation, /AUTO: "auto-fill"/);
+assert.match(coverPresentation, /LEGACY_CONTAIN: "auto-contain"/);
+assert.match(coverPresentation, /MIXED: "mixed"/);
+assert.match(coverPresentation, /PORTRAIT: "portrait-uniform"/);
+assert.match(coverPresentation, /SQUARE: "square-uniform"/);
+assert.match(coverPresentation, /LANDSCAPE: "landscape-uniform"/);
+assert.match(coverPresentation, /source\?\.coverPresentationMode \|\| fallbackSource\?\.coverPresentationMode/);
+assert.match(coverPreviewGeometry, /classifyCoverPresentationRatio/);
+assert.equal(classifyCoverPresentationRatio(600, 900), COVER_PRESENTATION_MODES.PORTRAIT);
+assert.equal(classifyCoverPresentationRatio(900, 900), COVER_PRESENTATION_MODES.SQUARE);
+assert.equal(classifyCoverPresentationRatio(1600, 900), COVER_PRESENTATION_MODES.LANDSCAPE);
+assert.equal(
+  inferCoverPresentationMode([{ width: 600, height: 900 }, { width: 620, height: 900 }]),
+  COVER_PRESENTATION_MODES.AUTO,
+);
+assert.equal(
+  inferCoverPresentationMode([
+    { width: 600, height: 900 },
+    { width: 620, height: 900 },
+    { width: 580, height: 900 },
+  ]),
+  COVER_PRESENTATION_MODES.PORTRAIT,
+);
+assert.equal(
+  inferCoverPresentationMode([
+    { width: 800, height: 800 },
+    { width: 900, height: 900 },
+    { width: 1000, height: 1000 },
+    { width: 1600, height: 900 },
+  ]),
+  COVER_PRESENTATION_MODES.SQUARE,
+);
+assert.equal(
+  inferCoverPresentationMode([
+    { width: 600, height: 900 },
+    { width: 620, height: 900 },
+    { width: 1600, height: 900 },
+    { width: 1500, height: 900 },
+  ]),
+  COVER_PRESENTATION_MODES.MIXED,
+);
+assert.match(store, /name: "douyin",[\s\S]{0,80}coverPresentationMode: "mixed"/);
+assert.match(store, /name: "xiaohongshu",[\s\S]{0,80}coverPresentationMode: "mixed"/);
+assert.match(store, /label: "百度",[\s\S]{0,80}name: "baidu",[\s\S]{0,80}order: 1/);
+assert.doesNotMatch(store, /label: "百度",[\s\S]{0,80}name: "baidu",[\s\S]{0,60}coverPresentationMode/);
+assert.match(store, /name: "kuaishou",[\s\S]{0,80}coverPresentationMode: "mixed"/);
+assert.match(store, /name: "douban-movie",[\s\S]{0,80}coverPresentationMode: "portrait-uniform"/);
+assert.match(store, /name: "weread",[\s\S]{0,80}coverPresentationMode: "portrait-uniform"/);
+assert.match(store, /"bilibili-live": \{[\s\S]{0,180}coverPresentationMode: "square-uniform"/);
+assert.match(store, /"qq-music": \{[\s\S]{0,180}coverPresentationMode: "square-uniform"/);
+assert.match(store, /"qidian-books": \{[\s\S]{0,180}coverPresentationMode: "portrait-uniform"/);
+assert.match(store, /"apple-app-store": \{[^\n]*coverPresentationMode: "square-uniform"/);
+assert.match(store, /name: "qq-news",[\s\S]{0,80}coverPresentationMode: "landscape-uniform"/);
+assert.match(store, /name: "miyoushe",[\s\S]{0,80}coverPresentationMode: "landscape-uniform"/);
+assert.doesNotMatch(store, /label: "原神",[\s\S]{0,80}name: "genshin"/);
+assert.doesNotMatch(store, /label: "崩坏：星穹铁道",[\s\S]{0,80}name: "starrail"/);
+assert.doesNotMatch(store, /label: "崩坏3",[\s\S]{0,80}name: "honkai"/);
+assert.match(store, /mergeGroup\(normalized, "miyoushe",[\s\S]{0,120}"genshin",[\s\S]{0,80}"starrail",[\s\S]{0,80}"honkai"/);
+assert.match(store, /promotedRankings: \[\]/);
+assert.match(store, /promoteRanking\(sourceName, variant, label = ""\)/);
+assert.doesNotMatch(home, /promotedRankings/);
+assert.doesNotMatch(home, /cardKey: `projection:\$\{projection\.id\}`/);
+assert.match(hotList, /isProjectionInstance/);
+assert.match(hotList, /projectionVariant/);
+assert.match(categoryRail, /sourceInstanceKey\(source\)/);
+assert.match(sourceSubtypes, /value: "genshin-news",[\s\S]{0,100}apiParams: \{ game: "2", type: "3" \}/);
+assert.match(sourceSubtypes, /option\?\.apiParams[\s\S]{0,100}return \{ \.\.\.option\.apiParams \}/);
+assert.match(sourceSubtypes, /genshin:[\s\S]{0,220}sourceName: "miyoushe"[\s\S]{0,220}genshin-news/);
+assert.match(sourceSubtypes, /starrail:[\s\S]{0,220}sourceName: "miyoushe"[\s\S]{0,220}starrail-news/);
+assert.match(sourceSubtypes, /honkai:[\s\S]{0,220}sourceName: "miyoushe"[\s\S]{0,220}bh3-news/);
+assert.match(router, /resolveLegacySourceProjection/);
+assert.match(router, /legacyProjection\.sourceName[\s\S]{0,100}legacyProjection\.variant/);
+assert.match(taxonomyV3, /export const TAXONOMY_VERSION = 3/);
+assert.match(taxonomyV3, /sourceName: "qq-news",[\s\S]{0,100}variant: "sports"[\s\S]{0,140}categoryIds: \["sports-general"\]/);
+assert.match(taxonomyV3, /sourceName: "baidu",[\s\S]{0,100}variant: "movie"[\s\S]{0,140}categoryIds: \["entertainment-video-movie"\]/);
+assert.match(home, /const systemProjected = VARIANT_CATEGORY_PROJECTIONS\.map/);
+assert.match(home, /getSourceVariantOptions\(projection\.sourceName\)/);
+assert.match(home, /availableVariants\.length[\s\S]{0,180}!availableVariants\.some/);
+assert.match(home, /import \{ getCategoryScopedVariantOptions \} from "@\/utils\/categoryVariantScope"/);
+assert.match(home, /const scopedOptions = getCategoryScopedVariantOptions\(/);
+assert.match(home, /splitSelectionFor\([\s\S]{0,100}targetCategory,[\s\S]{0,100}base\.name,[\s\S]{0,100}variants/);
+assert.match(home, /cardKey: "category-group:" \+ targetCategory \+ ":" \+ base\.name/);
+assert.match(categoryVariantScope, /const projectedVariants = new Set/);
+assert.match(categoryVariantScope, /scopedProjectionByVariant/);
+assert.match(categoryVariantScope, /!baseBelongs \|\| projectedVariants\.has\(option\.value\)/);
+assert.doesNotMatch(hotList, /projectionRemovable/);
+assert.doesNotMatch(categoryRail, /projectionRemovable/);
+assert.match(component, /data-cover-presentation="mixed"[\s\S]{0,260}grid-template-columns: var\(--ranking-stream-rank-width\) var\(--ranking-stream-media-width\) minmax\(0, 1fr\)/);
+assert.match(component, /data-cover-presentation="square-uniform"[\s\S]{0,220}grid-template-columns: 42px 84px minmax\(0, 1fr\)/);
+assert.match(component, /data-cover-presentation="portrait-uniform"[\s\S]{0,240}grid-template-columns: 42px 60px minmax\(0, 1fr\)/);
+assert.match(component, /category-stream\.is-source-page \.category-stream__list \{[\s\S]{0,100}overflow: visible;[\s\S]{0,100}border-radius: 14px;/);
+assert.match(component, /category-stream\.is-source-page \.category-stream__media \{[\s\S]{0,260}place-items: center;[\s\S]{0,260}width: var\(--ranking-stream-media-width\);[\s\S]{0,120}height: var\(--ranking-stream-media-height\);[\s\S]{0,220}overflow: visible;[\s\S]{0,100}border-radius: 0;[\s\S]{0,100}background: transparent;/);
+assert.match(component, /data-cover-presentation="mixed"\] \.category-stream__media \{[\s\S]{0,220}width: var\(--ranking-stream-media-width\);[\s\S]{0,120}height: var\(--ranking-stream-media-height\);[\s\S]{0,160}overflow: visible;/);
+assert.match(component, /data-cover-presentation="square-uniform"\] \.category-stream__media \{[\s\S]{0,180}width: 84px;[\s\S]{0,80}height: 84px;[\s\S]{0,100}overflow: visible;/);
+assert.match(component, /data-cover-presentation="portrait-uniform"\] \.category-stream__media \{[\s\S]{0,160}width: 60px;[\s\S]{0,80}height: 84px/);
+assert.match(component, /category-stream:not\(\.is-source-page\) \.category-stream__row\[data-cover-presentation="square-uniform"\][\s\S]{0,180}grid-template-columns: 42px 64px minmax\(0, 1fr\)/);
+assert.match(component, /category-stream:not\(\.is-source-page\) \.category-stream__row\[data-cover-presentation="portrait-uniform"\][\s\S]{0,180}grid-template-columns: 42px 46px minmax\(0, 1fr\)/);
+assert.match(component, /category-stream:not\(\.is-source-page\) \.category-stream__row\[data-cover-presentation="square-uniform"\] \.category-stream__media[\s\S]{0,180}width: 64px;[\s\S]{0,80}height: 64px/);
+assert.match(component, /category-stream:not\(\.is-source-page\) \.category-stream__row\[data-cover-presentation="portrait-uniform"\] \.category-stream__media[\s\S]{0,180}width: 46px;[\s\S]{0,80}height: 64px/);
+assert.match(component, /category-stream:not\(\.is-source-page\)[\s\S]{0,1000}data-cover-presentation="square-uniform"[\s\S]{0,1000}object-fit: contain/);
+assert.match(component, /category-stream\.is-source-page \.category-stream__media\.is-cover img \{[\s\S]{0,260}max-width: 100%;[\s\S]{0,80}max-height: 100%;[\s\S]{0,140}border-radius: var\(--ranking-stream-media-radius\);[\s\S]{0,100}object-fit: contain;/);
+assert.match(expandableCoverGeometry, /naturalWidth = Number\(image\?\.naturalWidth \|\| image\?\.offsetWidth/);
+assert.match(expandableCoverGeometry, /naturalRatio = naturalWidth \/ naturalHeight/);
+assert.match(expandableCoverGeometry, /baseViewportWidth = isMixed \? mediaWidth : fullWidth/);
+assert.match(expandableCoverGeometry, /baseViewportHeight = isMixed \? mediaHeight : fullHeight/);
+assert.match(expandableCoverGeometry, /baseImageWidth = isMixed \? fullWidth \* fillScale : fullWidth/);
+assert.match(expandableCoverGeometry, /baseImageHeight = isMixed \? fullHeight \* fillScale : fullHeight/);
+assert.match(expandableCoverGeometry, /--cover-base-viewport-width[\s\S]{0,120}baseViewportWidth/);
+assert.match(expandableCoverGeometry, /--cover-base-viewport-height[\s\S]{0,120}baseViewportHeight/);
+assert.match(expandableCoverGeometry, /--cover-base-image-width[\s\S]{0,120}baseImageWidth/);
+assert.match(expandableCoverGeometry, /--cover-base-image-height[\s\S]{0,120}baseImageHeight/);
+assert.match(expandableCoverGeometry, /--cover-base-image-right[\s\S]{0,120}baseImageRight/);
+assert.match(expandableCoverGeometry, /--cover-hover-width[\s\S]{0,120}hoverWidth/);
+assert.match(expandableCoverGeometry, /--cover-hover-height[\s\S]{0,120}hoverHeight/);
+assert.match(expandableCoverGeometry, /--cover-hover-center-y-shift[\s\S]{0,160}centerShiftY/);
+assert.match(expandableCoverGeometry, /classList\?\.add\?\.\(\"is-cover-geometry-ready\"\)/);
+assert.match(component, /const streamRoot = ref\(null\)/);
+assert.match(component, /const pendingCoverGeometryImages = new WeakSet\(\)/);
+assert.match(component, /const ensureCoverGeometry = \(image\) => \{[\s\S]{0,420}image\.complete[\s\S]{0,220}naturalWidth > 0[\s\S]{0,220}syncCoverHoverGeometry\(image\)[\s\S]{0,520}addEventListener\?\.\([\s\S]{0,80}\"load\"[\s\S]{0,260}once: true/);
+assert.match(component, /const syncReadyCoverGeometries = \(\) => \{[\s\S]{0,420}streamRoot\.value[\s\S]{0,420}querySelectorAll\?\.\(\"\.category-stream__preview-image img\"\)\.forEach\(ensureCoverGeometry\)/);
+assert.match(component, /const queueCoverGeometrySync = \(\) => \{[\s\S]{0,240}nextTick\(\(\) => window\.requestAnimationFrame\?\.\(syncReadyCoverGeometries\)\)/);
+assert.match(component, /onMounted\(\(\) => \{[\s\S]{0,180}queueCoverGeometrySync\(\)[\s\S]{0,180}addEventListener\(\"resize\", handleCoverGeometryViewportResize/);
+assert.match(component, /onBeforeUnmount\(\(\) => \{[\s\S]{0,220}removeEventListener\(\"resize\", handleCoverGeometryViewportResize\)/);
+assert.match(component, /pagedEntries\.value\.map[\s\S]{0,260}queueCoverGeometrySync[\s\S]{0,100}flush: \"post\"/);
+assert.match(component, /preview-image\.n-image\.is-cover-geometry-ready[\s\S]{0,520}right: 0;[\s\S]{0,160}width: var\(--cover-base-viewport-width[\s\S]{0,160}height: var\(--cover-base-viewport-height[\s\S]{0,160}max-width: none;[\s\S]{0,100}max-height: none;[\s\S]{0,120}overflow: hidden;[\s\S]{0,120}transform: translateY\(-50%\)/);
+assert.match(component, /preview-image\.n-image\.is-cover-geometry-ready img[\s\S]{0,520}right: var\(--cover-base-image-right[\s\S]{0,180}width: var\(--cover-base-image-width[\s\S]{0,160}height: var\(--cover-base-image-height[\s\S]{0,160}object-fit: contain !important/);
+assert.match(component, /row\.has-media:hover[\s\S]{0,280}preview-image\.n-image\.is-cover-geometry-ready[\s\S]{0,220}width: var\(--cover-hover-width[\s\S]{0,160}height: var\(--cover-hover-height[\s\S]{0,160}box-shadow:/);
+assert.match(component, /row\.has-media:hover[\s\S]{0,520}preview-image\.n-image\.is-cover-geometry-ready img[\s\S]{0,160}right: 0;[\s\S]{0,160}width: var\(--cover-hover-width[\s\S]{0,160}height: var\(--cover-hover-height/);
+assert.doesNotMatch(component, /category-stream\.is-source-page:not\(\[data-cover-presentation=\"mixed\"\]\)[\s\S]{0,500}transform: scale/);
+assert.doesNotMatch(component, /--cover-hover-scale|--cover-hover-shift-x/);
+assert.match(template, /<n-image[\s\S]{0,260}:src="coverSrc\(entry\.cover\)"[\s\S]{0,180}:preview-src="getCoverFullSrc\(entry\.cover\)"[\s\S]{0,320}:object-fit="currentCoverObjectFit"[\s\S]{0,320}onLoad: \(event\) => handleCoverImageLoad\(event, entry\)/);
+assert.match(template, /tabindex: 0[\s\S]{0,160}role: 'button'/);
+assert.match(component, /handleCoverPreviewKeydown[\s\S]{0,180}currentTarget\?\.click/);
+assert.match(expandableCoverGeometry, /hoverBoost = 1\.1/);
+assert.match(expandableCoverGeometry, /minScale = 1\.35/);
+assert.match(expandableCoverGeometry, /maxScale = 4\.5/);
+assert.match(expandableCoverGeometry, /fillScale = Math\.max\(mediaWidth \/ fullWidth, mediaHeight \/ fullHeight, 1\)/);
+assert.match(expandableCoverGeometry, /Math\.max\(fillScale \* hoverBoost, minScale\)/);
+assert.match(component, /transform-origin: right center/);
+assert.doesNotMatch(component, /hoverShiftX|--cover-hover-scale|--cover-hover-shift-x/);
+assert.doesNotMatch(component, /transform: scale\(var\(--cover-hover-scale/);
+assert.match(component, /box-shadow: 0 12px 28px rgba\(0, 0, 0, 0\.16\)/);
+assert.match(globalStyle, /--ranking-stream-mobile-rank-width: 34px;/);
+assert.match(globalStyle, /--ranking-stream-mobile-media-width: 76px;/);
+assert.match(globalStyle, /--ranking-stream-mobile-media-height: 64px;/);
+assert.match(component, /@media \(max-width: 680px\)[\s\S]*grid-template-columns: var\(--ranking-stream-mobile-rank-width\) var\(--ranking-stream-mobile-media-width\) minmax\(0, 1fr\)[\s\S]*data-cover-presentation="mixed"[\s\S]*grid-template-columns: var\(--ranking-stream-mobile-rank-width\) var\(--ranking-stream-mobile-media-width\) minmax\(0, 1fr\)[\s\S]*data-cover-presentation="square-uniform"[\s\S]*grid-template-columns: var\(--ranking-stream-mobile-rank-width\) 64px minmax\(0, 1fr\)[\s\S]*data-cover-presentation="portrait-uniform"[\s\S]*grid-template-columns: var\(--ranking-stream-mobile-rank-width\) 44px minmax\(0, 1fr\)/);
+assert.match(component, /@media \(max-width: 680px\)[\s\S]*data-cover-presentation="mixed"[\s\S]{0,360}width: var\(--ranking-stream-mobile-media-width\);[\s\S]{0,120}height: var\(--ranking-stream-mobile-media-height\);[\s\S]*data-cover-presentation="square-uniform"[\s\S]{0,300}width: 64px;[\s\S]{0,80}height: 64px;[\s\S]*data-cover-presentation="portrait-uniform"[\s\S]{0,300}width: 44px;[\s\S]{0,80}height: 64px/);
+assert.match(listView, /\.cover \{[\s\S]{0,100}width: 78px;[\s\S]{0,80}height: 104px;[\s\S]{0,80}object-fit: cover;/);
+assert.match(store, /showStreamDescriptions: true/);
+assert.match(store, /"showStreamDescriptions"/);
+assert.match(store, /categorySplitSources: \{\}/);
+assert.match(store, /categorySplitVariants: \{\}/);
+assert.match(store, /"categorySplitVariants"/);
+assert.match(store, /getCategorySplitScopeKey\(categoryRef\)/);
+assert.match(store, /if \(raw === "__all__"\) return raw/);
+assert.match(store, /getCategorySplitVariants\(categoryRef, sourceName\)/);
+assert.match(store, /setCategorySplitVariants\(categoryRef, sourceName, variants = \[\]\)/);
+assert.match(store, /setCategoryVariantSplit\(categoryRef, sourceName, variant, enabled = true\)/);
+assert.match(home, /categoryAllProjectionVariants: variants/);
+assert.match(home, /categorySplitVariants: splitVariants/);
+assert.match(home, /categorySplitProjection: true/);
+assert.match(home, /categorySplitPrimary:/);
+assert.match(home, /const ALL_SPLIT_SCOPE = "__all__"/);
+assert.match(home, /const allScopeNews = computed/);
+assert.match(home, /const showAllSplitDirectory = computed/);
+assert.match(home, /const allCategorySections = computed/);
+assert.match(home, /class="all-category-toc"/);
+assert.match(home, /category\?\.navOrder \?\? category\?\.order/);
+assert.match(home, /compareCategoryPaths/);
+assert.match(
+  home,
+  /const aGroupOrder = Number\(a\[1\]\?\.order \?\? 9999\)[\s\S]{0,280}const orderDiff = Number\(left\.order \|\| 0\) - Number\(right\.order \|\| 0\)[\s\S]{0,260}for \(let index = 2;/,
+  "all-split sections must group by second-level category, then source priority, then deeper category detail",
+);
+assert.doesNotMatch(home, /category-split-toolbar/);
+assert.doesNotMatch(home, /toggleAllCategorySplits/);
+assert.doesNotMatch(home, /music-platform-strip/);
+assert.match(home, /<DirectorySourceCard v-if="item\.directoryOnly"/);
+assert.match(home, /!item\.directoryOnly/);
+assert.match(directorySources, /"qq-music"/);
+assert.match(directorySources, /"netease-music"/);
+assert.match(directorySources, /"kugou-music"/);
+assert.match(directorySources, /"kuwo-music"/);
+assert.match(directorySourceCard, /getSourceSubtypeControlGroups/);
+assert.match(directorySourceCard, /getDirectoryOnlySourceDetails/);
+assert.doesNotMatch(directorySourceCard, /getSharedRanking|buildRankPath/);
+assert.match(store, /isDirectoryOnlySourceKey\(source\.key\)/);
+assert.match(store, /directoryOnly/);
+assert.match(musicSources, /"qq-music"/);
+assert.match(musicSources, /"netease-music"/);
+assert.match(musicSources, /"kugou-music"/);
+assert.match(musicSources, /"kuwo-music"/);
+assert.match(musicSources, /"apple-music"/);
+assert.match(musicSources, /export const isMusicArtistSource/);
+assert.match(hotList, /import \{ isMusicArtistSource \} from "@\/utils\/musicSources"/);
+assert.match(component, /import \{ isMusicArtistSource \} from "@\/utils\/musicSources"/);
+assert.match(
+  hotList,
+  /const displayAuthor = isMusicArtistSource\(props\.hotData\.name\)[\s\S]{0,180}String\(item\?\.author \|\| ""\)\.trim\(\)/,
+  "music ranking cards must derive the visible artist from the canonical item author through the shared source contract",
+);
+assert.match(
+  component,
+  /const displayArtist = isMusicArtistSource\(source\.name\)[\s\S]{0,180}stripText\(item\?\.author \|\| ""\)/,
+  "source detail streams must use the same shared music artist source contract",
+);
+assert.match(hotList, /authorVisible: Boolean\(displayAuthor\)/);
+assert.match(component, /authorVisible: Boolean\(displayArtist\)/);
+assert.match(
+  hotList,
+  /displayDesc: previewGovernance\.description,[\s\S]{0,120}displayAuthor,[\s\S]{0,120}previewHeat:/,
+  "governed preview decoration must keep the music artist on the visible row",
+);
+assert.match(hotList, /class="item-author notranslate"/);
+assert.match(hotList, /const resolveCardSecondaryMeta = \(item, displayDesc = "", authorVisible = false\) =>/);
+assert.match(hotList, /append\(item\?\.actors\)[\s\S]{0,260}append\(item\?\.extra\?\.cast\)[\s\S]{0,220}append\(displayDesc\)/);
+assert.match(hotList, /const shouldShowCardSecondaryMeta = \(item\) =>[\s\S]{0,180}COVER_PRESENTATION_MODES\.PORTRAIT[\s\S]{0,160}cardSecondaryMeta/);
+assert.match(hotList, /class="item-secondary-meta"[\s\S]{0,120}\{\{ item\.cardSecondaryMeta \}\}/);
+assert.match(hotList, /\.item-secondary-meta \{[\s\S]{0,260}color: var\(--n-text-color-3\)[\s\S]{0,220}text-overflow: ellipsis[\s\S]{0,120}white-space: nowrap/);
+assert.match(hotList, /class="item-author__mark"[\s\S]{0,80}>♪</);
+assert.match(component, /class="category-stream__artist notranslate"/);
+assert.match(component, /class="category-stream__artist-mark"[\s\S]{0,80}>♪</);
+assert.match(component, /\.category-stream__artist \{[\s\S]{0,240}color: var\(--n-text-color-3\)[\s\S]{0,180}font-weight: 560/);
+assert.match(hotList, /\.item-author \{[\s\S]{0,240}color: var\(--n-text-color-3\)[\s\S]{0,180}font-weight: 560/);
+assert.match(
+  hotList,
+  /const cardSubtitle = computed\(\(\) => \{[\s\S]{0,220}isProjectionInstance\.value[\s\S]{0,220}projectionLabel[\s\S]{0,160}return "";/,
+  "split projection cards must not inherit a stale base-source subtitle",
+);
+assert.doesNotMatch(
+  hotList,
+  /const categoryScopeFullySplit = computed/,
+  "fully split platforms must not hide their platform-level merge-all handoff",
+);
+assert.match(
+  hotList,
+  /:show-merge-all="Boolean\(hotData\.categorySplitPrimary\)"/,
+  "the primary split projection must inherit the platform-level merge-all affordance when the grouped card disappears",
+);
+assert.match(
+  rankingCardOperations,
+  /v-if="isProjection && showMergeAll"[\s\S]{0,420}@click\.stop="mergeAll"/,
+  "the primary projection must expose a one-click merge-all action alongside its individual merge action",
+);
+assert.doesNotMatch(home, /promotedRankings/);
+assert.match(contextToolbar, /const SPLIT_SCOPE_ALL = "__all__"/);
+assert.match(contextToolbar, /const splitScopeRef = computed/);
+assert.match(contextToolbar, /const splitTargets = computed/);
+assert.match(contextToolbar, /getCategoryScopedVariantOptions\(/);
+assert.match(contextToolbar, /const allScopeFullySplit = computed/);
+assert.match(contextToolbar, /const toggleScopeSplit = \(\) =>/);
+assert.match(
+  contextToolbar,
+  /class="context-view-switch"[\s\S]{0,1800}v-if="showScopeSplitControl"[\s\S]{0,320}class="context-view-split"/,
+  "page-level split control must live beside the view switch rather than in the breadcrumb",
+);
+assert.doesNotMatch(contextToolbar, /context-breadcrumb__scope-action/);
+assert.match(categoryRail, /import RankingSplitControl/);
+assert.match(categoryRail, /categoryAllProjectionVariants\(source\)/);
+assert.match(categoryRail, /STREAM_REQUEST_TIMEOUT_MS = 6000/);
+assert.match(categoryRail, /STREAM_FALLBACK_DELAY_MS = 600/);
+assert.match(categoryRail, /timeout: STREAM_REQUEST_TIMEOUT_MS/);
+assert.match(categoryRail, /fallbackDelay: STREAM_FALLBACK_DELAY_MS/);
+assert.match(categoryRail, /if \(source\?\.directoryOnly\) return/);
+assert.match(categoryRail, /!source\?\.directoryOnly/);
+assert.match(categoryRail, /getDirectoryOnlySourceDetails/);
+assert.match(categoryRail, /viewOfficialRanking/);
+assert.match(hotList, /import RankingCardOperations/);
+assert.doesNotMatch(hotList, /import RankingSplitControl/);
+assert.match(hotList, /categoryAllProjectionVariants/);
+assert.match(hotList, /return itemCount > 1 \? groups : \[\]/);
+assert.doesNotMatch(hotList, /promoteCurrentRanking|removeProjectionInstance|toggleCategorySplit/);
+assert.match(rankingSplitControl, /variantOptions\.length === 2/);
+assert.match(rankingSplitControl, /draftVariants/);
+assert.match(rankingSplitControl, /setCategorySplitVariants/);
+assert.match(rankingSplitControl, /const mergeCurrent =/);
+assert.match(rankingSplitControl, /const mergeAll =/);
+assert.match(
+  rankingCardOperations,
+  /const directSplitOnly = computed\([\s\S]{0,520}isProjection\.value \|\| normalizedVariants\.value\.length === 2/,
+  "exactly two child rankings or an already-split projection must be eligible for one direct action",
+);
+assert.match(
+  rankingCardOperations,
+  /v-if="directSplitOnly"[\s\S]{0,420}@click\.stop="runDirectSplitAction"/,
+  "direct split-only cards and projection cards must expose one top-right split or merge action",
+);
+assert.match(
+  rankingCardOperations,
+  /const splitMenuOnly = computed\([\s\S]{0,520}!isProjection\.value[\s\S]{0,180}normalizedVariants\.value\.length > 2/,
+  "three-or-more child rankings on the grouped primary card must use the selection-menu path",
+);
+assert.match(
+  rankingCardOperations,
+  /<n-popover[\s\S]{0,900}splitMenuOnly && splitVariantsNormalized\.length/,
+  "multi-ranking split must keep the single top-right popover entry and show split-count state",
+);
+assert.match(rankingCardOperations, /t\("hotList\.rankOperations"\)/);
+assert.match(
+  rankingCardOperations,
+  /<MarketRankDirectionControl[\s\S]{0,180}inline-menu[\s\S]{0,520}<MarketListSortControl[\s\S]{0,180}inline-menu/,
+  "cards with multiple operation families must keep sort controls inside the one top-right Actions menu",
+);
+for (const token of [
+  "variantOptions",
+  "draftVariants",
+  "toggleDraft",
+  "selectAll",
+  "applyDraft",
+  "selectRankingVariants",
+]) {
+  assert.match(
+    rankingCardOperations,
+    new RegExp(token),
+    `multi-ranking split contract is missing ${token}`,
+  );
+}
+assert.match(
+  rankingCardOperations,
+  /const persist = \(variants\)[\s\S]{0,240}setCategorySplitVariants/,
+  "ranking-card split actions must persist through the shared category store",
+);
+for (const action of ["splitAll", "mergeCurrent", "mergeAll"]) {
+  assert.match(
+    rankingCardOperations,
+    new RegExp(`const ${action} =`),
+    `ranking-card operations must keep the ${action} action`,
+  );
+}
+assert.doesNotMatch(
+  rankingCardOperations,
+  /import RankingSplitControl/,
+  "ranking-card operations must keep selection inside the single existing top-right menu rather than nesting a second component popover",
+);
+for (const [name, source] of [
+  ["native rank order", marketRankDirectionControl],
+  ["market sorting", marketListSortControl],
+]) {
+  assert.match(
+    source,
+    /inlineMenu: \{ type: Boolean, default: false \}/,
+    `${name} must expose an explicit inline-menu mode`,
+  );
+  assert.match(
+    source,
+    /v-if="!inlineMenu && !expanded"/,
+    `${name} must keep the old compact trigger outside the shared Actions menu`,
+  );
+  assert.match(
+    source,
+    /class="ranking-tool-options"/,
+    `${name} must expose directly selectable options inside the shared Actions menu`,
+  );
+}
+assert.doesNotMatch(subtypeBar, /subtype-menu-tools|showActions|#actions/);
+assert.match(component, /DETAIL_REQUEST_TIMEOUT_MS = 6000/);
+assert.match(component, /DETAIL_FALLBACK_DELAY_MS = 600/);
+assert.match(component, /timeout: DETAIL_REQUEST_TIMEOUT_MS/);
+assert.match(component, /fallbackDelay: DETAIL_FALLBACK_DELAY_MS/);
+assert.match(
+  component,
+  /if \(response\?\.result\?\.code !== 200\) \{[\s\S]{0,180}sourceStates\[source\.name\] = "failed"/,
+  "CategoryStream must leave loading state when a provider returns a failure",
+);
+assert.match(
+  component,
+  /catch \{[\s\S]{0,180}sourceStates\[source\.name\] = "failed"/,
+  "CategoryStream must leave loading state when a provider throws or times out",
+);
+assert.match(listView, /DETAIL_REQUEST_TIMEOUT_MS = 6000/);
+assert.match(listView, /DETAIL_FALLBACK_DELAY_MS = 600/);
+assert.equal(
+  (listView.match(/timeout: DETAIL_REQUEST_TIMEOUT_MS/g) || []).length,
+  3,
+  "legacy detail path requests and retries must stay bounded",
+);
+assert.equal(
+  (listView.match(/fallbackDelay: DETAIL_FALLBACK_DELAY_MS/g) || []).length,
+  3,
+  "legacy detail path fallback must remain progressive instead of blocking the page",
+);
+
+assert.doesNotMatch(categoryRail, /#\{\{ entry\.rank \}\}/);
+assert.match(categoryRail, /<span class="category-story-card__rank">\{\{ entry\.rank \}\}<\/span>/);
+assert.match(categoryRail, /category-source-section__freshness[\s\S]{0,500}sourceUpdateTime[\s\S]{0,500}Refresh/);
+assert.match(categoryRail, /<RankingBadgeGroup[\s\S]{0,180}category-story-card__badges[\s\S]{0,180}:badges="entry\.suffixBadges"/);
+assert.match(categoryRail, /showStreamImages = computed/);
+assert.match(categoryRail, /store\.showImages !== false && store\.showStreamImages !== false/);
+assert.match(categoryRail, /v-if="showStreamImages && entry\.cover"/);
+assert.match(categoryRail, /'has-cover': showStreamImages && Boolean\(entry\.cover\)/);
+assert.doesNotMatch(categoryRail, /category-story-card__badges span/);
+assert.match(categoryRail, /backdrop-filter: blur\(10px\) saturate\(1\.2\)/);
+assert.match(categoryRail, /is-one \.category-story-card__rank \{ background: rgba\(234,68,77,\.84\)/);
+assert.match(hotList, /<RankingBadgeGroup[\s\S]{0,160}:badges="item\.suffixBadges"/);
+assert.match(hotList, /<RankingBadgeGroup[\s\S]{0,160}:badges="item\.inlinePrefixBadges"/);
+assert.match(sharedBadges, /resolveRankingBadgeIconUrl/);
+assert.match(sharedBadges, /ranking-badge\.is-explosive/);
+assert.match(sharedBadges, /ranking-badge\.is-animated \.ranking-badge-icon/);
+
+assert.doesNotMatch(subtypeBar, /trigger-more-count|remainingOptionCount/);
+assert.doesNotMatch(subtypeBar, /trigger-meta|currentMeta|runtime-dot|runtimeMeta|menu-item-meta/);
+assert.doesNotMatch(subtypeBar, /color-mix/);
+assert.match(subtypeBar, /\.subtype-trigger \{[\s\S]{0,260}padding: 4px 9px/);
+assert.match(subtypeBar, /border: 1px solid var\(--n-border-color\)/);
+assert.match(subtypeBar, /color: var\(--n-text-color-2, var\(--n-text-color\)\)/);
+assert.match(subtypeBar, /\.subtype-trigger\.active \{[\s\S]{0,120}var\(--n-border-color\)/);
+assert.doesNotMatch(subtypeBar, /\.subtype-trigger\.active \{[^}]*#ea444d/s);
+assert.match(hotList, /\.header-subtype:deep\(\.subtype-chip\) \{[\s\S]{0,120}padding: 4px 9px/);
+for (const [name, source] of [
+  ["ranking card", hotList],
+  ["ranking list", listView],
+]) {
+  assert.match(
+    source,
+    /&\.one,[\s\S]{0,80}&\.two,[\s\S]{0,80}&\.three \{[\s\S]{0,180}background-color: var\(--n-border-color\)[\s\S]{0,120}font-size: 14px[\s\S]{0,100}font-weight: 820/,
+    `${name} top-three ranks must keep the neutral rank tile while emphasizing the numeral`,
+  );
+  assert.doesNotMatch(
+    source,
+    /&\.one \{[\s\S]{0,80}background-color: #ea444d|&\.two \{[\s\S]{0,80}background-color: #ed702d|&\.three \{[\s\S]{0,80}background-color: #eead3f/,
+    `${name} top-three ranks must not restore solid attention-grabbing backgrounds`,
+  );
+}
+
+assert.match(trendStrip, /title: "榜位趋势"/);
+assert.match(trendStrip, /重新上榜/);
+assert.match(trendStrip, /进入前十/);
+assert.match(trendStrip, /榜位上升/);
+assert.match(trendStrip, /榜位下降/);
+assert.match(trendStrip, /supportingSourceCount/);
+assert.doesNotMatch(trendStrip, /热度变化|再次翻红|正在升温|正在降温/);
+assert.match(trendStrip, /trend-card\.is-breakthrough/);
+assert.match(trendStrip, /trend-card\.is-rising/);
+assert.match(trendStrip, /trend-card\.is-reentry/);
+assert.match(trendStrip, /trend-card\.is-new/);
+assert.match(trendStrip, /trend-card\.is-falling/);
+
+assert.match(topicLaneGrid, /:class="\[`is-\$\{lane\.key\}`, \{ \'is-scrollable\': lane\.scrollable \}\]"/);
+assert.match(chigua, /grid-template-columns: 280px minmax\(520px, 720px\) 280px;[\s\S]{0,120}gap: 16px/);
+assert.match(chigua, /FEATURED_LANE_KEYS = \["fresh", "rising", "resonance", "hot"\]/);
+assert.match(chigua, /fresh: isFreshEvent/);
+assert.match(chigua, /rising: isRisingEvent/);
+assert.match(chigua, /resonance: isResonanceItem/);
+assert.match(chigua, /hot: isHotEvent/);
+assert.doesNotMatch(chigua, /featuredLaneOverrides/);
+assert.match(chigua, /FEATURED_LANE_ORDER_STORAGE/);
+assert.match(chigua, /FEATURED_LANE_INITIAL_RENDER = 8/);
+assert.match(chigua, /FEATURED_LANE_BATCH = 5/);
+assert.doesNotMatch(chigua, /FEATURED_LANE_VISIBLE/);
+assert.match(chigua, /@load-more="loadMoreFeaturedLane"/);
+assert.match(chigua, /topic-featured-workspace/);
+assert.doesNotMatch(chigua, /class="topic-trend-strip"/);
+assert.doesNotMatch(chigua, /const trendItems = computed/);
+assert.match(chigua, /#sticky-item="\{ lane, item, meta, index \}"/);
+assert.match(chigua, /class="event-lane-sticky"/);
+assert.doesNotMatch(chigua, /event-lane-sticky__signal/);
+assert.match(chigua, /background: color-mix\(in srgb, var\(--lane-tone, var\(--n-primary-color\)\) 8%, var\(--n-color\)\)/);
+assert.match(topicLaneGrid, /:index="activeSticky\[lane\.key\]\.index"/);
+assert.match(topicLaneGrid, /activeSticky\[lane\.key\]/);
+assert.match(topicLaneGrid, /return targetIsBelowViewport && !intersects/);
+assert.match(topicLaneGrid, /if \(atBottom\) \{[\s\S]{0,100}activeSticky\[lane\.key\] = null/);
+assert.match(topicLaneGrid, /onMounted\(\(\) => \{[\s\S]{0,180}nextTick\(refreshStickyVisibility\)/);
+assert.match(chigua, /const SPOTLIGHT_MIN_SCORE = 78/);
+assert.match(chigua, /const globalSpotlight = ordered/);
+assert.match(chigua, /spotlightLaneAffinity/);
+assert.match(chigua, /stickyCandidates = globalSpotlight\?\.laneKey === group\.key \? \[globalSpotlight\] : \[\]/);
+assert.doesNotMatch(chigua, /winnerByIdentity/);
+assert.match(chigua, /allItems\s*\.slice\(0, limit\)/);
+assert.match(chigua, /items: group\._allItems\.slice\(0, group\._renderLimit\)/);
+assert.doesNotMatch(chigua, /effectiveLimit/);
+
+assert.doesNotMatch(chigua, /showTrendAsFeaturedLane/);
+assert.doesNotMatch(chigua, /is-five-column/);
+assert.doesNotMatch(chigua, /topic-trend-card--featured/);
+assert.match(chigua, /resolveResponsiveCardColumns/);
+assert.match(chigua, /--chigua-featured-columns/);
+assert.match(chigua, /repeat\(var\(--chigua-featured-columns, 4\), minmax\(0, 1fr\)\)/);
+const chiguaLanesIndex = chigua.indexOf('class="topic-featured-lanes"');
+const chiguaFeedIndex = chigua.indexOf('class="topic-section topic-feed-section"');
+assert.ok(chiguaLanesIndex !== -1 && chiguaFeedIndex !== -1 && chiguaLanesIndex < chiguaFeedIndex, "featured lanes must remain above the focused realtime feed workspace");
+assert.match(chigua, /class="radar-refresh"/);
+assert.match(chigua, /@click="loadTopic\(true\)"/);
+assert.doesNotMatch(chigua, /trendMatchCount/);
+assert.match(chigua, /supportingConfirmations\(item\)/);
+assert.match(chigua, /class="event-source-cluster"/);
+assert.match(chigua, /class="event-evidence-icon"/);
+assert.match(chigua, /class="event-evidence-popover event-evidence-popover--single"/);
+assert.match(chigua, /confirmation\.url/);
+assert.match(chigua, /confirmation\.summary/);
+assert.match(chigua, /confirmation\.hot/);
+assert.match(chigua, /:component="Fire"/);
+assert.doesNotMatch(chigua, /class="event-evidence-summary"/);
+assert.doesNotMatch(chigua, /class="event-open"/);
+assert.match(chigua, /import \{ isSeriousEvent \} from "@\/utils\/seriousEvents"/);
+assert.doesNotMatch(chigua, /class="serious-event-badge"/);
+assert.doesNotMatch(chigua, /class="event-lane-serious"/);
+assert.doesNotMatch(chigua, /seriousTip/);
+assert.equal(isSeriousEventText("日本演员中村友理离世"), true);
+assert.equal(isSeriousEventText("乔任梁去世十年，父母备好粉色蛋糕去新家看他"), false);
+assert.equal(isSeriousEventText("著名演员病逝，享年82岁"), true);
+assert.equal(isSeriousEventText("某演员逝世三周年纪念"), false);
+assert.equal(isSeriousEventText("敬一丹告别仪式"), true);
+assert.equal(isSeriousEventText("敬一丹遗体告别仪式举行"), true);
+assert.equal(isSeriousEventText("敬一丹遗体告别仪式挽联令人动容"), true);
+assert.equal(isSeriousEventText("敬一丹告别仪式现场曝光，数百人排队吊唁"), true);
+assert.equal(isSeriousEventText("赵露思新剧告别信正式官宣"), false);
+assert.equal(isSeriousEventText("李小萌长文痛悼敬一丹"), false);
+assert.equal(isSeriousEventText("倪萍撰文《给敬大姐的一封信》：这些年，我一直学着你的样子"), false);
+assert.equal(isSeriousEventText("康辉全黑打扮现身敬一丹告别仪式，心情沉重，朱军朱迅水均益都到场"), false);
+assert.equal(isSeriousEventText("敬一丹告别仪式，康辉朱军朱迅水均益到场送别"), true);
+assert.equal(isSeriousEventText("歌手告别巡演最终场"), false);
+assert.equal(isSeriousEventText("运动员退役告别仪式举行"), false);
+assert.equal(isSeriousEvent({
+  title: "倪萍撰文《给敬大姐的一封信》：这些年，我一直学着你的样子",
+  desc: "敬一丹逝世后，倪萍撰文悼念。",
+  extra: { hotEvent: { confirmations: [{ title: "敬一丹遗体告别仪式举行" }] } },
+}), false);
+
+const shortWeiboSummary = { sourceKey: "weibo", summary: "剧集领域 · 热度 60万" };
+const richWeiboSummary = {
+  sourceKey: "weibo",
+  variant: "hot",
+  summary: "郑合惠子在热播剧《兰香如故》中饰演的杜翠雀，因一场高光戏份刷屏全网，被观众评价为一个人演出了千军万马的气势。",
+};
+const otherPlatformSummary = {
+  sourceKey: "douyin",
+  summary: "这是另一个平台提供的很长解释，但不应该越过主平台去替换摘要。",
+};
+assert.equal(
+  pickTopicSummary({
+    event: {},
+    primary: shortWeiboSummary,
+    mediaSource: shortWeiboSummary,
+    sources: [shortWeiboSummary, richWeiboSummary, otherPlatformSummary],
+  }),
+  richWeiboSummary.summary,
+);
+assert.equal(
+  pickTopicSummary({
+    event: { summary: "事件级摘要优先保留。" },
+    primary: shortWeiboSummary,
+    mediaSource: shortWeiboSummary,
+    sources: [shortWeiboSummary, richWeiboSummary],
+  }),
+  "事件级摘要优先保留。",
+);
+assert.equal(
+  pickTopicSummary({
+    event: {},
+    primary: shortWeiboSummary,
+    mediaSource: shortWeiboSummary,
+    sources: [shortWeiboSummary, otherPlatformSummary],
+  }),
+  shortWeiboSummary.summary,
+);
+assert.match(chigua, /fresh: "新瓜速递"/);
+assert.match(chigua, /rising: "热度上升"/);
+assert.match(chigua, /resonance: "多平台上榜"/);
+assert.match(chigua, /hot: "热榜前十"/);
+assert.match(chigua, /return `▲ \${change}`/);
+assert.match(chigua, /return `▼ \${Math\.abs\(change\)}`/);
+assert.match(chigua, /从第 \${baselineRank} 名/);
+assert.match(chigua, /trend\?\.signal === "falling"\) return null/);
+assert.match(chigua, /"first-release": 98/);
+assert.match(chigua, /boiling: 92/);
+assert.match(chigua, /\/独家\//);
+assert.match(chigua, /trend\?\.signal === "rising" && change >= 5/);
+assert.match(chigua, /candidate\.score < SPOTLIGHT_MIN_SCORE/);
+assert.doesNotMatch(chigua, /#\d+ [↑↓] #\d+/);
+assert.doesNotMatch(chigua, /radar-trend-item/);
+assert.match(chigua, /\.hero-stats > span \{[\s\S]{0,420}font-size: 12px/);
+assert.match(chigua, /\.hero-stats > span strong \{[\s\S]{0,160}font-size: 12px/);
+assert.match(chigua, /\.topic-category-item\.is-gossip \{ --category-tone: #d14b72; \}/);
+assert.match(chigua, /\.topic-category-item\.is-celebrity \{ --category-tone: #7c5ce7; \}/);
+assert.match(chigua, /\.topic-category-item\.is-film-tv \{ --category-tone: #4f7fd8; \}/);
+assert.match(chigua, /\.topic-category-item\.is-variety \{ --category-tone: #d97706; \}/);
+assert.match(chigua, /\.topic-category-item\.is-music \{ --category-tone: #6268c7; \}/);
+assert.match(chigua, /--chigua-featured-lane-height: 314px/);
+assert.match(chigua, /const featuredLaneColumns = computed\(\(\) => \{[\s\S]{0,180}const columns = Math\.min\(4, effectiveWorkspaceColumns\.value\);[\s\S]{0,120}return columns === 3 \? 2 : columns;/);
+assert.match(chigua, /is-compact \.topic-featured-workspace \{ --chigua-featured-lane-height: 300px; \}/);
+assert.match(chigua, /\.topic-controls-card :deep\(\.compact-filter__label\) \{ font-size: 12px; \}/);
+assert.match(chigua, /\.topic-controls-card :deep\(\.compact-filter__value\) \{ font-size: 12px; \}/);
+assert.doesNotMatch(chigua, /FEATURED_LANE_LIMIT = 3/);
+assert.doesNotMatch(chigua, /<TrendIntelligenceStrip/);
+assert.match(topicLaneGrid, /@scroll="handleItemsScroll\(\$event, lane\)"/);
+assert.match(topicLaneGrid, /'is-scrollable': lane\.scrollable/);
+assert.match(chigua, /scrollable: true/);
+assert.match(chigua, /hideSubtitle: true/);
+assert.match(chigua, /visibleCount: 3/);
+assert.match(chigua, /topic-lane__scrollbar[\s\S]{0,180}height: 266px;[\s\S]{0,60}max-height: 266px/);
+assert.match(chigua, /is-compact[\s\S]{0,320}topic-lane__scrollbar[\s\S]{0,180}height: 252px;[\s\S]{0,60}max-height: 252px/);
+assert.match(chigua, /getCoverCompactSrc/);
+assert.match(chigua, /getCoverDisplaySrc/);
+assert.match(chigua, /getCoverFullSrc/);
+assert.match(chigua, /const coverSrc = \(cover\) => getCoverCompactSrc\(cover\)/);
+assert.match(chigua, /const coverPreviewSrc = \(cover\) => getCoverDisplaySrc\(cover\)/);
+assert.match(chigua, /const coverFullSrc = \(cover\) => getCoverFullSrc\(cover\)/);
+assert.match(chigua, /class="event-cover"[\s\S]{0,180}:src="coverPreviewSrc\(item\.cover\)"[\s\S]{0,120}:preview-src="coverFullSrc\(item\.cover\)"/);
+assert.match(appShell, /<Footer class="site-footer" \/>/, "the compact footer rule must target the site footer explicitly");
+assert.ok(!appShell.includes(":deep(footer)"), "compact layout must not style every nested footer element");
+assert.match(chigua, /:src="coverSrc\(item\.cover\)"/);
+assert.match(chigua, /class="event-lane-cover"/);
+assert.doesNotMatch(chigua, /event-lane-hover-cover/);
+assert.match(chigua, /resolveFloatingCoverPreviewPosition\(\{/);
+assert.match(chigua, /resolveCoverPreviewLayout\(image\.naturalWidth, image\.naturalHeight\)/);
+assert.match(chigua, /FLOATING_COVER_PREVIEW_OPEN_DELAY/);
+assert.match(chigua, /FLOATING_COVER_PREVIEW_CLOSE_DELAY/);
+assert.doesNotMatch(globalStyle, /--ranking-card-featured-/);
+assert.match(chigua, /class="event-lane-rank"/);
+assert.match(chigua, /grid-template-columns: auto var\(--ranking-card-thumb-width\) minmax\(0, 1fr\)/);
+assert.match(chigua, /grid-template-columns: auto var\(--ranking-card-compact-thumb-width\) minmax\(0, 1fr\)/);
+assert.match(chigua, /width: var\(--ranking-card-compact-thumb-width\);[\s\S]{0,80}height: var\(--ranking-card-compact-thumb-height\);/);
+assert.match(chigua, /\.topic-lane__head\) \{[\s\S]{0,160}height: 28px;[\s\S]{0,80}min-height: 28px/);
+assert.match(chigua, /\.topic-lane__items\) \{[\s\S]{0,120}grid-auto-rows: max-content/);
+assert.doesNotMatch(chigua, /<div class="event-lane-copy">[\s\S]{0,520}<p>/);
+assert.match(chigua, /\.event-lane-title \{[\s\S]{0,220}font-size: var\(--chigua-list-font-size, 16px\);[\s\S]{0,80}font-weight: 400/);
+assert.match(chigua, /handleEventCoverViewportResize[\s\S]{0,320}queueEventCoverGeometrySync\(\)/);
+assert.match(chigua, /addEventListener\(\"resize\", handleEventCoverViewportResize/);
+assert.match(chigua, /removeEventListener\(\"resize\", handleEventCoverViewportResize\)/);
+assert.match(chigua, /class="event-lane-floating-preview"/);
+assert.match(chigua, /@pointerenter="cancelLanePreviewClose"[\s\S]{0,180}@pointerleave="scheduleLanePreviewClose"/);
+assert.match(chigua, /@error="markCoverError\(item\.cover\)"/);
+assert.match(chigua, /class="event-source-link event-source-link--primary"/);
+assert.match(chigua, /primaryRankPath\(item\)/);
+assert.match(chigua, /buildRankPath\(locale\.value, entry\.source, entry\.variant \|\| ""\)/);
+assert.match(chigua, /:class="\{ 'is-serious': isSeriousEvent\(item\), 'has-media': hasUsableCover\(item\) \}"/);
+assert.doesNotMatch(chigua, /hasUsableCover\(item\) \|\| !item\.cover/);
+assert.doesNotMatch(chigua, /event-cover is-logo/);
+assert.match(chigua, /applyExpandableCoverGeometry\(\{/);
+assert.match(chigua, /grid-template-columns: var\(--ranking-stream-rank-width\) var\(--ranking-stream-media-width\) minmax\(0, 1fr\);/);
+assert.match(chigua, /object-fit="cover"/);
+assert.match(chigua, /isMixed: true/);
+assert.match(chigua, /\.event-cover :deep\(img\) \{[\s\S]{0,240}object-fit: cover/);
+assert.match(chigua, /\.event-title h3 \{[\s\S]{0,180}font-size: var\(--ranking-stream-title-size\);[\s\S]{0,100}line-height: 1\.38;[\s\S]{0,80}font-weight: 650/);
+assert.match(chigua, /handleEventCoverPreviewKeydown/);
+assert.match(chigua, /align-content: start/);
+assert.match(chigua, /class="radar-watermelon"/);
+assert.match(chigua, /grid-template-columns: 280px minmax\(520px, 720px\) 280px;[\s\S]{0,120}gap: 16px/);
+assert.match(chigua, /\.topic-category-title,[\s\S]{0,120}box-sizing: border-box;[\s\S]{0,160}min-height: 38px/);
+assert.doesNotMatch(chigua, /topic-trend-title/);
+assert.doesNotMatch(chigua, /topic-trend-card/);
+assert.match(chigua, /\.event-toolbar \{[\s\S]{0,120}box-sizing: border-box;[\s\S]{0,140}min-height: 38px/);
+assert.match(chigua, /@media \(max-width: 1360px\)[\s\S]{0,180}minmax\(180px, 220px\) minmax\(0, 720px\) minmax\(180px, 220px\)/);
+assert.match(chigua, /@media \(max-width: 1120px\) and \(min-width: 821px\)/);
+assert.match(chigua, /@media \(max-width: 820px\)/);
+assert.match(topicLaneGrid, /lane\.subtitle && !lane\.hideSubtitle/);
+assert.match(topicLaneGrid, /:title="lane\.subtitle \|\| undefined"/);
+assert.doesNotMatch(aiTopic, /hideSubtitle/);
+assert.doesNotMatch(gameDealsTopic, /hideSubtitle/);
+assert.match(topicLaneGrid, /import draggable from "vuedraggable"/);
+assert.match(topicLaneGrid, /defineEmits\(\["select", "load-more", "reorder", "drag-start", "drag-end"\]\)/);
+assert.match(topicLaneGrid, /handle="\.topic-lane__drag-handle"/);
+assert.match(topicLaneGrid, /hideScrollbar/);
+assert.match(topicLaneGrid, /lane\.actionPlacement === 'header'/);
+assert.match(topicLaneGrid, /name="footer"/);
+assert.match(topicLaneGrid, /max-height: 320px/);
+assert.doesNotMatch(chigua, /lane\("gossip", "gossip"\)/);
+assert.match(chigua, /:sortable="true"/);
+assert.match(chigua, /:hover-scrollbar="true"/);
+assert.doesNotMatch(chigua, /:hide-scrollbar="true"/);
+assert.match(topicLaneGrid, /hoverScrollbar: \{ type: Boolean, default: false \}/);
+assert.match(topicLaneGrid, /'is-scrollbar-hover': hoverScrollbar/);
+assert.match(topicLaneGrid, /<n-scrollbar[\s\S]{0,180}trigger="hover"/);
+assert.match(topicLaneGrid, /class="topic-lane__scrollbar"/);
+assert.match(topicLaneGrid, /class="topic-lane__items topic-lane__items--overlay"/);
+assert.match(topicLaneGrid, /n-scrollbar-rail--vertical/);
+assert.match(chigua, /@reorder="saveFeaturedLaneOrder"/);
+assert.doesNotMatch(chigua, /FEATURED_LANE_REFRESH_COOLDOWN/);
+assert.doesNotMatch(chigua, /refreshFeaturedLane/);
+assert.doesNotMatch(chigua, /event-lane-update-time/);
+assert.match(chigua, /actionPlacement: "header"/);
+assert.match(chigua, /class="event-lane-meta"/);
+assert.match(chigua, /effectiveResonanceSourceCount\(item\) > 1/);
+assert.match(chigua, /class="topic-lane__drag-handle"/);
+assert.match(chigua, /<template #title-actions>/);
+assert.doesNotMatch(chigua, /<template #footer=/);
+assert.match(chigua, /\.topic-lane__drag-handle \{[\s\S]{0,260}opacity: 0;[\s\S]{0,120}pointer-events: none/);
+assert.match(chigua, /\.topic-lane:hover[\s\S]{0,180}\.topic-lane__drag-handle[\s\S]{0,180}opacity: \.72/);
+assert.doesNotMatch(chigua, /<span>\{\{ ui\.focus \}\}<\/span>/);
+assert.doesNotMatch(chigua, /<span>\{\{ ui\.source \}\}<\/span>/);
+assert.doesNotMatch(chigua, /<span>\{\{ ui\.sort \}\}<\/span>/);
+assert.match(chigua, /events: "热点数量"/);
+assert.match(chigua, /sources: "核心榜单"/);
+assert.match(chigua, /\.event-lane-meta \{[\s\S]{0,260}font-size: 12px/);
+assert.match(chigua, /\.event-source-cluster \{[\s\S]{0,260}max-width: 46%/);
+assert.match(chigua, /\.event-desc \{[\s\S]{0,220}font-size: 12px[\s\S]{0,120}-webkit-line-clamp: 2/);
+assert.match(chigua, /\.event-meta \{[\s\S]{0,260}font-size: 12px/);
+assert.match(chigua, /\.event-evidence-icon \{[\s\S]{0,260}width: 20px;[\s\S]{0,80}height: 20px/);
+assert.match(chigua, /\.event-evidence-popover p \{[\s\S]{0,260}font-size: 12px/);
+assert.doesNotMatch(chigua, /\.event-evidence-summary \{/);
+assert.doesNotMatch(chigua, /\.event-open \{/);
+assert.match(chigua, /\.event-pagination \{[\s\S]{0,260}font-size: 12px/);
+assert.match(chigua, /class="event-pagination event-pagination--mobile"/);
+assert.match(chigua, /class="topic-control-section topic-control-pagination"/);
+assert.match(chigua, /class="topic-pagination-control"/);
+assert.match(chigua, /class="topic-pagination-meta"/);
+assert.match(chigua, /\.event-pagination--mobile \{[\s\S]{0,80}display: none/);
+assert.match(chigua, /@media \(max-width: 1120px\) and \(min-width: 821px\)[\s\S]{0,900}\.topic-control-pagination \{[\s\S]{0,140}grid-column: 1 \/ -1/);
+assert.match(chigua, /@media \(max-width: 820px\)[\s\S]{0,3000}\.topic-control-pagination \{ display: none; \}[\s\S]{0,140}\.event-pagination--mobile \{ display: flex; \}/);
+assert.match(topicLaneGrid, /name="title-actions"/);
+
+assert.match(chigua, /height: 252px;[\s\S]{0,40}max-height: 252px/);
+assert.match(chigua, /const mediaSource = sources\.find\(\(source\) => source\?\.cover\) \|\| primary/);
+assert.match(chigua, /pickTopicSummary\(\{ event, sources, primary, mediaSource \}\)/);
+assert.match(chigua, /filter: grayscale\(1\)/);
+assert.match(chigua, /currentWaveStartedAt/);
+assert.match(chigua, /const FRESH_WINDOW_MS = 2 \* 60 \* 60 \* 1000/);
+assert.match(chigua, /title: source\.title/);
+assert.match(chigua, /v-if="visibleRankingBadges\(item\)\.length"[\s\S]{0,180}class="event-lane-title-badges"/);
+assert.match(chigua, /class="event-lane-meta"[\s\S]{0,260}v-if="laneTrendIndicator\(lane, item\)"[\s\S]{0,140}class="event-lane-trend"/);
+assert.match(chigua, /class="event-lane-title"[\s\S]{0,140}:title="item\.title"/);
+assert.match(chigua, /\.event-lane-sticky \.event-lane-title \{ -webkit-line-clamp: 1; \}/);
+assert.match(chigua, /class="event-lane-sticky"[\s\S]{0,320}@pointerenter="showLanePreview\(item, \$event\)"/);
+assert.match(chigua, /class="event-lane-cover event-lane-sticky__cover"[\s\S]{0,220}@click\.stop="openLaneFullImagePreview\(item\.cover\)"/);
+assert.match(chigua, /class="event-lane-floating-preview__info"/);
+assert.match(chigua, /\.event-lane-sticky\.is-serious \{[\s\S]{0,220}filter: grayscale\(1\);[\s\S]{0,220}background: linear-gradient/);
+assert.doesNotMatch(chigua, /\.event-lane-item\.is-serious \{[\s\S]{0,140}margin-inline: -4px/);
+assert.doesNotMatch(chigua, /\.event-lane-item\.is-serious \{[\s\S]{0,160}padding-inline: 5px/);
+assert.match(chigua, /:deep\(\.topic-lane__sticky\) \{[\s\S]{0,140}right: 12px;[\s\S]{0,80}bottom: 10px;[\s\S]{0,80}left: 12px/);
+assert.match(chigua, /@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]{0,180}\.event-lane-item:hover[\s\S]{0,120}background: color-mix/);
+assert.doesNotMatch(chigua, /event-lane-item:hover \.event-lane-copy[\s\S]{0,80}translateX/);
+assert.match(chigua, /@media \(max-width: 820px\)[\s\S]{0,2600}:deep\(\.topic-lane-grid\)[\s\S]{0,260}overflow-x: auto;[\s\S]{0,260}scroll-snap-type: x proximity/);
+assert.match(chigua, /@media \(max-width: 820px\)[\s\S]{0,3000}:deep\(\.topic-lane\)[\s\S]{0,160}flex: 0 0 min\(38vw, 286px\)/);
+assert.doesNotMatch(chigua, /class="event-source-badges"/);
+assert.match(chigua, /v-if="userVisibleTrend\(item\)"[\s\S]{0,220}class="trend-pill"/);
+assert.match(chigua, /v-if="visibleRankingBadges\(item\)\.length"[\s\S]{0,120}:badges="visibleRankingBadges\(item\)"/);
+assert.match(chigua, /class="trend-pill"[\s\S]{0,120}`is-\$\{userVisibleTrend\(item\)\.signal\}`/);
+assert.match(chigua, /const userVisibleTrend = \(item\) => \{[\s\S]{0,140}trend\?\.signal === "reentry" \? null : trend/);
+assert.match(chigua, /RISING_TREND_SIGNALS = new Set\(\["breakthrough", "rising"\]\)/);
+assert.match(chigua, /\.trend-pill\.is-breakthrough/);
+assert.match(chigua, /\.trend-pill\.is-rising/);
+assert.match(chigua, /\.trend-pill\.is-reentry/);
+assert.match(chigua, /\.trend-pill\.is-new/);
+assert.match(chigua, /\.trend-pill\.is-falling/);
+assert.match(chigua, /\.topic-category-rail[\s\S]{0,220}order: 1/);
+assert.match(chigua, /\.topic-controls[\s\S]{0,120}order: 2/);
+assert.match(chigua, /\.topic-main \{ order: 3; \}/);
+
+console.log("[stream-layout-contract] ranking workbench, source variants, category rail and chigua intelligence workspace verified");

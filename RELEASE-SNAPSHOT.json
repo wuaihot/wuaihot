@@ -1,0 +1,11 @@
+{
+  "schema": "wuaihot-public-release/v1",
+  "project": "wuaihot",
+  "version": "1.5.1",
+  "releaseTag": "v1.5.1",
+  "publicRepository": "https://github.com/wuaihot/wuaihot",
+  "exportedAt": "2026-09-29T11:44:22.448Z",
+  "policyVersion": 1,
+  "fileCount": 391,
+  "treeSha256": "3884738201083428f6abbfb2341c97d24b00286cd1c3ab7fc59c3517e7ac8f25"
+}

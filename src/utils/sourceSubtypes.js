@@ -1,0 +1,1305 @@
+import { flattenSubtypeOptions, projectTrendsCatalog } from "./trendsCatalogProjection.mjs";
+
+const STORAGE_PREFIX = "dailyhot:source-subtype:";
+
+const SOURCE_SUBTYPE_GROUPS = {
+  douyin: [
+    {
+      key: "rank",
+      label: "榜单",
+      items: [
+        { label: "热点榜", value: "hot" },
+        { label: "种草榜", value: "seeding" },
+        { label: "娱乐榜", value: "entertainment" },
+        { label: "社会榜", value: "society" },
+        { label: "挑战榜", value: "challenge" },
+      ],
+    },
+  ],
+  "qq-news": [
+    {
+      key: "rank",
+      label: "榜单",
+      items: [
+        { label: "热点榜", value: "hot" },
+        { label: "娱乐热点榜", value: "entertainment" },
+        { label: "体育热点榜", value: "sports" },
+      ],
+    },
+  ],
+  baidu: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "热搜", value: "realtime" },
+        { label: "小说", value: "novel" },
+        { label: "电影", value: "movie" },
+        { label: "电视剧", value: "teleplay" },
+        { label: "汽车", value: "car" },
+        { label: "游戏", value: "game" },
+      ],
+    },
+  ],
+  hostloc: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "最新回复", value: "new" },
+        { label: "最新发表", value: "newthread" },
+        { label: "最新热门", value: "hot" },
+        { label: "最新精华", value: "digest" },
+      ],
+    },
+  ],
+  tianya: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "首页", value: "index" },
+        { label: "默认", value: "default" },
+        { label: "排行", value: "rank" },
+      ],
+    },
+  ],
+  ithome: [
+    {
+      key: "period",
+      label: "周期",
+      items: [
+        { label: "日榜", value: "day" },
+        { label: "周榜", value: "week" },
+        { label: "月榜", value: "month" },
+        { label: "热评榜", value: "comments" },
+      ],
+    },
+    {
+      key: "feed",
+      label: "资讯",
+      items: [
+        { label: "资讯热榜", value: "hot" },
+        { label: "滚动新闻", value: "list" },
+      ],
+    },
+  ],
+  "sina-news": [
+    {
+      key: "rank",
+      label: "榜单",
+      items: [
+        { label: "总排行", value: "1" },
+        { label: "视频排行", value: "2" },
+        { label: "图片排行", value: "3" },
+        { label: "国内新闻", value: "4" },
+        { label: "国际新闻", value: "5" },
+        { label: "社会新闻", value: "6" },
+        { label: "体育新闻", value: "7" },
+        { label: "财经新闻", value: "8" },
+        { label: "娱乐新闻", value: "9" },
+        { label: "科技新闻", value: "10" },
+        { label: "军事新闻", value: "11" },
+      ],
+    },
+  ],
+  bilibili: [
+    {
+      key: "ranking",
+      label: "榜单",
+      param: "type",
+      items: [
+        { label: "综合热门", value: "popular", apiParams: { type: "all" } },
+        { label: "每周必看", value: "weekly", apiParams: { type: "weekly" } },
+        { label: "入站必刷", value: "history", apiParams: { type: "history" } },
+        { label: "排行榜", value: "rank", apiParams: { type: "rank" } },
+        { label: "全站音乐榜", value: "music", apiParams: { type: "music" } },
+      ],
+    },
+  ],
+  "super-deals": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "最新线报", value: "latest" },
+        { label: "1小时排行", value: "1h" },
+        { label: "3小时排行", value: "3h" },
+        { label: "6小时排行", value: "6h" },
+      ],
+    },
+  ],
+  "0818tuan": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "最新线报", value: "latest" },
+        { label: "长期优惠券", value: "coupon" },
+      ],
+    },
+  ],
+  "nodeloc-deals": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "羊毛党", value: "wool" },
+        { label: "优惠情报", value: "deals" },
+      ],
+    },
+  ],
+  "douban-wool": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "买组", value: "buy" },
+        { label: "拼组", value: "groupbuy" },
+      ],
+    },
+  ],
+  "douban-pet-wool": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "爱猫生活", value: "catlife" },
+        { label: "爱猫澡盆", value: "bathtub" },
+        { label: "狗组", value: "dog" },
+      ],
+    },
+  ],
+  "epic-free-games": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "正在免费", value: "current" },
+        { label: "即将免费", value: "upcoming" },
+      ],
+    },
+  ],
+  "xiaoheihe-deals": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "热门折扣", value: "popular" },
+        { label: "史低游戏", value: "lowest" },
+        { label: "90%+ 超低折扣", value: "discount90" },
+        { label: "10 元以内", value: "under10" },
+        { label: "30 元以内", value: "under30" },
+      ],
+    },
+  ],
+  ggdeals: [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "免费游戏", value: "freebies" },
+        { label: "优惠资讯", value: "deals" },
+        { label: "游戏包", value: "bundles" },
+      ],
+    },
+  ],
+  "gog-deals": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "热门折扣", value: "trending" },
+        { label: "正在免费", value: "free" },
+        { label: "75%+ 高折扣", value: "discount75" },
+        { label: "90%+ 超低折扣", value: "discount90" },
+        { label: "10 美元以内", value: "under10" },
+        { label: "30 美元以内", value: "under30" },
+      ],
+    },
+  ],
+  "sonkwo-deals": [
+    {
+      key: "feed",
+      label: "",
+      items: [
+        { label: "热门优惠", value: "popular" },
+        { label: "史低游戏", value: "lowest" },
+        { label: "超史低", value: "newlowest" },
+        { label: "90%+ 超低折扣", value: "discount90" },
+        { label: "10 元以内", value: "under10" },
+        { label: "30 元以内", value: "under30" },
+        { label: "销量榜", value: "sales" },
+      ],
+    },
+  ],
+  smzdm: [
+    {
+      key: "period",
+      label: "周期",
+      items: [
+        { label: "今日热门", value: "1" },
+        { label: "周热门", value: "7" },
+        { label: "月热门", value: "30" },
+      ],
+    },
+  ],
+  sina: [
+    {
+      key: "rank",
+      label: "榜单",
+      items: [
+        { label: "新浪热榜", value: "all" },
+        { label: "热议榜", value: "hotcmnt" },
+        { label: "视频热榜", value: "minivideo" },
+        { label: "娱乐热榜", value: "ent" },
+        { label: "AI热榜", value: "ai" },
+        { label: "汽车热榜", value: "auto" },
+        { label: "育儿热榜", value: "mother" },
+        { label: "时尚热榜", value: "fashion" },
+        { label: "旅游热榜", value: "travel" },
+        { label: "ESG热榜", value: "esg" },
+      ],
+    },
+  ],
+  weread: [
+    {
+      key: "rank",
+      label: "榜单",
+      items: [
+        { label: "飙升榜", value: "rising" },
+        { label: "热搜榜", value: "hot_search" },
+        { label: "新书榜", value: "newbook" },
+        { label: "小说榜", value: "general_novel_rising" },
+        { label: "总榜", value: "all" },
+      ],
+    },
+  ],
+  "36kr": [
+    {
+      key: "rank",
+      label: "榜单",
+      items: [
+        { label: "人气榜", value: "hot" },
+        { label: "视频榜", value: "video" },
+        { label: "热议榜", value: "comment" },
+        { label: "收藏榜", value: "collect" },
+      ],
+    },
+  ],
+  xueqiu: [
+    {
+      key: "rank",
+      label: "榜单",
+      param: "type",
+      items: [
+        { label: "热门话题", value: "topics" },
+        { label: "热股榜", value: "stocks" },
+        { label: "热门基金", value: "funds" },
+      ],
+    },
+  ],
+  sse: [
+    {
+      key: "rank",
+      label: "榜单",
+      param: "type",
+      items: [
+        { label: "成交额", value: "stock" },
+        { label: "成交量", value: "stock-volume" },
+        { label: "涨幅榜", value: "stock-gain" },
+        { label: "跌幅榜", value: "stock-loss" },
+        { label: "ETF成交额", value: "etf" },
+      ],
+    },
+  ],
+  szse: [
+    {
+      key: "rank",
+      label: "榜单",
+      param: "type",
+      items: [
+        { label: "成交额", value: "stock" },
+        { label: "成交量", value: "stock-volume" },
+        { label: "成交笔数", value: "stock-trades" },
+        { label: "涨幅榜", value: "stock-gain" },
+        { label: "跌幅榜", value: "stock-loss" },
+        { label: "换手率", value: "stock-turnover" },
+        { label: "ETF成交额", value: "etf" },
+      ],
+    },
+  ],
+  hkex: [
+    {
+      key: "rank",
+      label: "榜单",
+      param: "type",
+      items: [
+        { label: "成交额", value: "turnover" },
+        { label: "成交量", value: "volume" },
+        { label: "涨幅榜", value: "gain" },
+        { label: "跌幅榜", value: "loss" },
+      ],
+    },
+  ],
+  nasdaq: [
+    {
+      key: "rank",
+      label: "榜单",
+      param: "type",
+      items: [
+        { label: "成交额", value: "dollar" },
+        { label: "成交量", value: "volume" },
+        { label: "涨幅榜", value: "gain" },
+        { label: "跌幅榜", value: "loss" },
+      ],
+    },
+  ],
+  nyse: [
+    { key: "rank", label: "榜单", param: "type", items: [
+      { label: "成交额", value: "turnover" },
+      { label: "成交量", value: "volume" },
+      { label: "涨幅榜", value: "gain" },
+      { label: "跌幅榜", value: "loss" },
+    ] },
+  ],
+  twse: [
+    { key: "rank", label: "榜单", param: "type", items: [
+      { label: "成交额", value: "turnover" },
+      { label: "成交量", value: "volume" },
+      { label: "涨幅榜", value: "gain" },
+      { label: "跌幅榜", value: "loss" },
+    ] },
+  ],
+  nse: [
+    { key: "rank", label: "榜单", param: "type", items: [
+      { label: "成交额", value: "turnover" },
+      { label: "成交量", value: "volume" },
+      { label: "涨幅榜", value: "gain" },
+      { label: "跌幅榜", value: "loss" },
+    ] },
+  ],
+  asx: [
+    { key: "rank", label: "榜单", param: "type", items: [
+      { label: "成交额", value: "turnover" },
+      { label: "成交量", value: "volume" },
+      { label: "成交笔数", value: "trades" },
+    ] },
+  ],
+  nytimes: [
+    {
+      key: "region",
+      label: "地区",
+      param: "type",
+      items: [
+        { label: "中文网", value: "china" },
+        { label: "全球版", value: "global" },
+      ],
+    },
+  ],
+  hupu: [
+    {
+      key: "board",
+      label: "板块",
+      items: [
+        { label: "主干道", value: "1" },
+        { label: "恋爱区", value: "6" },
+        { label: "校园区", value: "11" },
+        { label: "历史区", value: "12" },
+        { label: "摄影区", value: "612" },
+      ],
+    },
+  ],
+  juejin: [
+    {
+      key: "category",
+      label: "分类",
+      items: [
+        { label: "综合", value: "1" },
+        { label: "后端", value: "6809637769959178254" },
+        { label: "前端", value: "6809637767543259144" },
+        { label: "Android", value: "6809635626879549454" },
+        { label: "iOS", value: "6809635626661445640" },
+        { label: "人工智能", value: "6809637773935378440" },
+        { label: "开发工具", value: "6809637771511070734" },
+        { label: "代码人生", value: "6809637776263217160" },
+        { label: "阅读", value: "6809637772874219534" },
+      ],
+    },
+  ],
+  v2ex: [
+    {
+      key: "topic",
+      label: "主题",
+      items: [
+        { label: "最热主题", value: "hot" },
+        { label: "最新主题", value: "latest" },
+      ],
+    },
+  ],
+  miyoushe: [
+    {
+      key: "ranking",
+      label: "游戏动态",
+      items: [
+        { label: "崩坏3 · 公告", value: "bh3-notice", apiParams: { game: "1", type: "1" } },
+        { label: "崩坏3 · 活动", value: "bh3-event", apiParams: { game: "1", type: "2" } },
+        { label: "崩坏3 · 资讯", value: "bh3-news", apiParams: { game: "1", type: "3" } },
+        { label: "原神 · 公告", value: "genshin-notice", apiParams: { game: "2", type: "1" } },
+        { label: "原神 · 活动", value: "genshin-event", apiParams: { game: "2", type: "2" } },
+        { label: "原神 · 资讯", value: "genshin-news", apiParams: { game: "2", type: "3" } },
+        { label: "崩坏学园2 · 公告", value: "houkai2-notice", apiParams: { game: "3", type: "1" } },
+        { label: "崩坏学园2 · 活动", value: "houkai2-event", apiParams: { game: "3", type: "2" } },
+        { label: "崩坏学园2 · 资讯", value: "houkai2-news", apiParams: { game: "3", type: "3" } },
+        { label: "未定事件簿 · 公告", value: "tot-notice", apiParams: { game: "4", type: "1" } },
+        { label: "未定事件簿 · 活动", value: "tot-event", apiParams: { game: "4", type: "2" } },
+        { label: "未定事件簿 · 资讯", value: "tot-news", apiParams: { game: "4", type: "3" } },
+        { label: "大别野 · 公告", value: "villa-notice", apiParams: { game: "5", type: "1" } },
+        { label: "大别野 · 活动", value: "villa-event", apiParams: { game: "5", type: "2" } },
+        { label: "大别野 · 资讯", value: "villa-news", apiParams: { game: "5", type: "3" } },
+        { label: "星穹铁道 · 公告", value: "starrail-notice", apiParams: { game: "6", type: "1" } },
+        { label: "星穹铁道 · 活动", value: "starrail-event", apiParams: { game: "6", type: "2" } },
+        { label: "星穹铁道 · 资讯", value: "starrail-news", apiParams: { game: "6", type: "3" } },
+        { label: "绝区零 · 公告", value: "zzz-notice", apiParams: { game: "8", type: "1" } },
+        { label: "绝区零 · 活动", value: "zzz-event", apiParams: { game: "8", type: "2" } },
+        { label: "绝区零 · 资讯", value: "zzz-news", apiParams: { game: "8", type: "3" } },
+      ],
+    },
+  ],
+  genshin: [
+    {
+      key: "news",
+      label: "动态",
+      items: [
+        { label: "公告", value: "1" },
+        { label: "活动", value: "2" },
+        { label: "资讯", value: "3" },
+      ],
+    },
+  ],
+  starrail: [
+    {
+      key: "news",
+      label: "动态",
+      items: [
+        { label: "公告", value: "1" },
+        { label: "活动", value: "2" },
+        { label: "资讯", value: "3" },
+      ],
+    },
+  ],
+  honkai: [
+    {
+      key: "news",
+      label: "动态",
+      items: [
+        { label: "公告", value: "1" },
+        { label: "活动", value: "2" },
+        { label: "资讯", value: "3" },
+      ],
+    },
+  ],
+  acfun: [
+    {
+      key: "partition",
+      label: "分区",
+      items: [
+        { label: "综合", value: "-1" },
+        { label: "动画", value: "1" },
+        { label: "音乐", value: "58" },
+        { label: "游戏", value: "59" },
+        { label: "娱乐", value: "60" },
+        { label: "影视", value: "68" },
+        { label: "体育", value: "69" },
+        { label: "科技", value: "70" },
+        { label: "舞蹈·偶像", value: "123" },
+        { label: "鱼塘", value: "125" },
+        { label: "番剧", value: "155" },
+        { label: "生活", value: "201" },
+      ],
+    },
+    {
+      key: "range",
+      label: "时间",
+      param: "range",
+      items: [
+        { label: "今日", value: "DAY" },
+        { label: "三日", value: "THREE_DAYS" },
+        { label: "本周", value: "WEEK" },
+      ],
+    },
+  ],
+  "52pojie": [
+    {
+      key: "topic",
+      label: "主题",
+      items: [
+        { label: "最新精华", value: "digest" },
+        { label: "最新热门", value: "hot" },
+        { label: "最新回复", value: "new" },
+        { label: "最新发表", value: "newthread" },
+      ],
+    },
+  ],
+  linuxdo: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "日榜", value: "daily" },
+        { label: "周榜", value: "weekly" },
+      ],
+    },
+  ],
+  "douban-movie": [
+    {
+      key: "cinema",
+      label: "热映",
+      items: [{ label: "热映", value: "movie_showing" }],
+    },
+    {
+      key: "new",
+      label: "新片榜",
+      items: [{ label: "新片榜", value: "movie_hot" }],
+    },
+    {
+      key: "movie",
+      label: "电影",
+      items: [
+        { label: "热门", value: "movie_hot_gaia" },
+        { label: "最新", value: "movie_latest" },
+      ],
+    },
+    {
+      key: "tv",
+      label: "电视剧",
+      items: [
+        { label: "综合", value: "tv_hot" },
+        { label: "国产剧", value: "tv_domestic" },
+        { label: "综艺", value: "show_hot" },
+        { label: "欧美剧", value: "tv_american" },
+        { label: "日剧", value: "tv_japanese" },
+        { label: "韩剧", value: "tv_korean" },
+        { label: "动画", value: "tv_animation" },
+        { label: "纪录片", value: "tv_documentary" },
+      ],
+    },
+  ],
+  designarena: [
+    {
+      key: "agentic",
+      label: "Web Dev (Agentic)",
+      items: [
+        { label: "Full-Stack ELO", value: "fullstack" },
+        { label: "Full-Stack Win Rate", value: "fullstack-win-rate" },
+        { label: "Frontend ELO", value: "agon_webapps" },
+        { label: "Frontend Win Rate", value: "agon_webapps-win-rate" },
+      ],
+    },
+    {
+      key: "quality",
+      label: "Quality & Usage",
+      items: [
+        { label: "Fullstack App Quality", value: "fullstack-quality" },
+        { label: "Backend Scores", value: "fullstack-backend" },
+        { label: "Daily Usage", value: "daily-usage" },
+        { label: "Real-World Reach", value: "real-world-reach" },
+        { label: "Returning Users", value: "retention" },
+        { label: "App Downloads", value: "downloads" },
+      ],
+    },
+    {
+      key: "code",
+      label: "Code",
+      items: [
+        { label: "Website", value: "website" },
+        { label: "Website Win Rate", value: "website-win-rate" },
+        { label: "UI Component", value: "uicomponent" },
+        { label: "Data Visualization", value: "dataviz" },
+        { label: "Game Dev", value: "gamedev" },
+        { label: "Agentic Game Dev", value: "agentic_gamedev" },
+        { label: "Mobile App", value: "mobileapps" },
+        { label: "Native App", value: "nativeapps" },
+        { label: "3D Design", value: "3d" },
+        { label: "SVG", value: "svg" },
+        { label: "ASCII Art", value: "ascii" },
+      ],
+    },
+    {
+      key: "slides",
+      label: "Slides",
+      items: [
+        { label: "Agentic Slides", value: "agon_slides" },
+        { label: "Agentic HTML Slides", value: "agon_slides_html" },
+        { label: "Slides", value: "slides" },
+      ],
+    },
+    {
+      key: "image",
+      label: "Image",
+      items: [
+        { label: "Image", value: "image" },
+        { label: "Image Editing", value: "imagetoimage" },
+        { label: "Graphic Design", value: "graphicdesign" },
+        { label: "Logo", value: "logo" },
+      ],
+    },
+    {
+      key: "video",
+      label: "Video",
+      items: [
+        { label: "Video", value: "video" },
+        { label: "Video Editing", value: "videotovideo" },
+        { label: "Image to Video", value: "imagetovideo" },
+        { label: "Multi to Video", value: "multitovideo" },
+        { label: "Multimodal to Video", value: "multimodaltovideo" },
+      ],
+    },
+    {
+      key: "audio",
+      label: "Audio",
+      items: [
+        { label: "TTS", value: "tts" },
+      ],
+    },
+    {
+      key: "builders",
+      label: "Builders",
+      items: [
+        { label: "AI Builder", value: "builders" },
+      ],
+    },
+  ],
+  "arena-ai": [
+    {
+      key: "chat",
+      label: "Chat",
+      items: [
+        { label: "综合", value: "text" },
+        { label: "Agent", value: "agent" },
+        { label: "Vision", value: "vision" },
+        { label: "Document", value: "document" },
+        { label: "Search", value: "search" },
+      ],
+    },
+    {
+      key: "code",
+      label: "Code",
+      items: [
+        { label: "WebDev", value: "code-webdev" },
+        { label: "HTML", value: "code-webdev-html" },
+        { label: "React", value: "code-webdev-react" },
+        { label: "Image to WebDev", value: "code-image-to-webdev" },
+      ],
+    },
+    {
+      key: "image",
+      label: "Image",
+      items: [
+        { label: "Text to Image", value: "text-to-image" },
+        { label: "Image Edit", value: "image-edit" },
+      ],
+    },
+    {
+      key: "video",
+      label: "Video",
+      items: [
+        { label: "Text to Video", value: "text-to-video" },
+        { label: "Image to Video", value: "image-to-video" },
+        { label: "Video Edit", value: "video-edit" },
+      ],
+    },
+  ],
+  "artificialanalysis": [
+    {
+      key: "core",
+      label: "核心",
+      items: [
+        { label: "模型榜", value: "models" },
+        { label: "API 提供商与端点榜", value: "providers" },
+        { label: "编码智能体榜", value: "coding-agents" },
+      ],
+    },
+    {
+      key: "media",
+      label: "媒体",
+      items: [
+        { label: "文生图榜", value: "text-to-image" },
+      ],
+    },
+  ],
+  "aicpb-rankings": [
+    {
+      key: "global",
+      label: "全球",
+      items: [
+        { label: "网站", value: "global-web" },
+        { label: "App", value: "global-app" },
+        { label: "云服务", value: "ai-cloud-web" },
+      ],
+    },
+    {
+      key: "segments",
+      label: "细分",
+      items: [
+        { label: "中国", value: "china-web" },
+        { label: "聊天", value: "chatbot-web" },
+        { label: "搜索", value: "search-web" },
+        { label: "Vibe Coding", value: "vibe-coding-web" },
+        { label: "Agent", value: "agent-web" },
+        { label: "Claw Agent", value: "openclaw-agent-web" },
+        { label: "角色", value: "character-web" },
+        { label: "图片生成", value: "image-generator-web" },
+        { label: "图片编辑", value: "image-editor-web" },
+        { label: "视频生成", value: "video-generator-web" },
+        { label: "视频编辑", value: "video-editor-web" },
+        { label: "PPT", value: "ppt-web" },
+        { label: "音乐", value: "music-web" },
+        { label: "会议", value: "meeting-web" },
+      ],
+    },
+    {
+      key: "growth",
+      label: "增速",
+      items: [
+        { label: "全球增长", value: "global-growth-web" },
+        { label: "中国增长", value: "china-growth-web" },
+        { label: "Claw 增长", value: "openclaw-growth-web" },
+        { label: "全球放缓", value: "global-slowdown-web" },
+      ],
+    },
+  ],
+  "llm-stats": [
+    {
+      key: "core",
+      label: "综合",
+      items: [
+        { label: "总榜", value: "llm-leaderboard" },
+        { label: "开源榜", value: "open-llm-leaderboard" },
+      ],
+    },
+    {
+      key: "scenario",
+      label: "场景",
+      items: [
+        { label: "编程", value: "best-ai-for-coding" },
+        { label: "写作", value: "best-ai-for-writing" },
+        { label: "数学", value: "best-ai-for-math" },
+        { label: "研究", value: "best-ai-for-research" },
+        { label: "长上下文", value: "best-ai-for-long-context" },
+        { label: "工具调用", value: "best-ai-for-tool-calling" },
+        { label: "推理", value: "best-ai-for-reasoning" },
+        { label: "图像生成", value: "best-ai-for-image-generation" },
+      ],
+    },
+  ],
+  openai: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "官方新闻", value: "news" },
+        { label: "官方研究", value: "research" },
+      ],
+    },
+  ],
+  huggingface: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "官方博客", value: "blog" },
+        { label: "模型榜", value: "models" },
+        { label: "论文榜", value: "papers" },
+      ],
+    },
+  ],
+  "openrouter-rankings": [
+    {
+      key: "usage",
+      label: "热度",
+      items: [
+        { label: "模型周榜", value: "models-week" },
+        { label: "厂商份额", value: "market-share" },
+        { label: "工具调用", value: "tools" },
+        { label: "多模态输入", value: "images" },
+        { label: "图像输出", value: "image-output" },
+      ],
+    },
+    {
+      key: "ecosystem",
+      label: "生态",
+      items: [
+        { label: "应用日榜", value: "apps-day" },
+        { label: "应用周榜", value: "apps-week" },
+        { label: "应用月榜", value: "apps-month" },
+        { label: "性能榜", value: "performance" },
+        { label: "AA 智能", value: "benchmarks-aa-intelligence" },
+      ],
+    },
+    {
+      key: "scene",
+      label: "场景",
+      items: [
+        { label: "编程", value: "use-case-programming" },
+        { label: "英文", value: "natural-language-english" },
+        { label: "Python", value: "programming-language-python" },
+        { label: "10K 上下文", value: "context-length-10k" },
+      ],
+    },
+  ],
+  github: [
+    {
+      key: "default",
+      label: "",
+      items: [
+        { label: "日榜", value: "daily" },
+        { label: "周榜", value: "weekly" },
+        { label: "月榜", value: "monthly" },
+      ],
+    },
+  ],
+  hellogithub: [
+    {
+      key: "sort",
+      label: "榜单",
+      param: "sort",
+      items: [
+        { label: "精选", value: "featured" },
+        { label: "全部", value: "all" },
+      ],
+    },
+  ],
+  clawhub: [
+    {
+      key: "skills",
+      label: "Skills",
+      items: [
+        { label: "Recommended Skills", value: "skills-recommended" },
+        { label: "Featured Skills", value: "skills-featured" },
+        { label: "Most starred Skills", value: "skills-stars" },
+        { label: "Most installed Skills", value: "skills-installs" },
+        { label: "Recently updated Skills", value: "skills-updated" },
+        { label: "Newest Skills", value: "skills-newest" },
+        { label: "Skill Name Index", value: "skills-name" },
+        { label: "MCP Tool Skills", value: "skills-mcp-tools" },
+        { label: "Prompt Skills", value: "skills-prompts" },
+        { label: "Workflow Skills", value: "skills-workflows" },
+        { label: "Developer Tool Skills", value: "skills-dev-tools" },
+        { label: "Data & API Skills", value: "skills-data" },
+        { label: "Security Skills", value: "skills-security" },
+        { label: "Automation Skills", value: "skills-automation" },
+        { label: "Other Skills", value: "skills-other" },
+      ],
+    },
+    {
+      key: "plugins",
+      label: "Plugins",
+      items: [
+        { label: "Recommended Plugins", value: "plugins-recommended" },
+        { label: "Featured Plugins", value: "plugins-featured" },
+        { label: "Most installed Plugins", value: "plugins-installs" },
+        { label: "Recently updated Plugins", value: "plugins-updated" },
+        { label: "Data & API Plugins", value: "plugins-data" },
+      ],
+    },
+  ],
+  "clawhub-skills": [
+    {
+      key: "sort",
+      label: "榜单",
+      items: [
+        { label: "Recommended", value: "recommended" },
+        { label: "Featured", value: "featured" },
+        { label: "Most starred", value: "stars" },
+        { label: "Most installed", value: "installs" },
+        { label: "Recently updated", value: "updated" },
+        { label: "Newest", value: "newest" },
+        { label: "Name", value: "name" },
+      ],
+    },
+    {
+      key: "category",
+      label: "分类",
+      items: [
+        { label: "MCP Tools", value: "mcp-tools" },
+        { label: "Prompts", value: "prompts" },
+        { label: "Workflows", value: "workflows" },
+        { label: "Dev Tools", value: "dev-tools" },
+        { label: "Data & APIs", value: "data" },
+        { label: "Security", value: "security" },
+        { label: "Automation", value: "automation" },
+        { label: "Other", value: "other" },
+      ],
+    },
+  ],
+  "clawhub-plugins": [
+    {
+      key: "sort",
+      label: "榜单",
+      items: [
+        { label: "Recommended", value: "recommended" },
+        { label: "Featured", value: "featured" },
+        { label: "Most installed", value: "installs" },
+        { label: "Recently updated", value: "updated" },
+      ],
+    },
+    {
+      key: "category",
+      label: "分类",
+      items: [
+        { label: "Data & APIs", value: "data" },
+      ],
+    },
+  ],
+};
+
+const AGGREGATE_SUBTYPE_SOURCES = ["clawhub"];
+const REMOTE_SOURCE_SUBTYPE_GROUPS = new Map();
+const REMOTE_SOURCE_CATALOG = new Map();
+const REMOTE_SOURCE_DEFAULT_SUBTYPES = new Map();
+const REMOTE_SOURCE_VARIANTS = new Map();
+const REMOTE_SOURCE_VARIANT_DIMENSIONS = new Map();
+const REMOTE_SOURCE_CATALOG_LISTENERS = new Set();
+let REMOTE_SOURCE_CATALOG_SIGNATURE = "";
+let REMOTE_SOURCE_CATALOG_REVISION = 0;
+
+const projectionSignature = (projection, sources = []) => JSON.stringify({
+  sources,
+  groups: [...projection.groupsBySource.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  defaults: [...projection.defaultsBySource.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  variants: [...projection.variantsBySource.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  dimensions: [...projection.dimensionsBySource.entries()].sort(([left], [right]) => left.localeCompare(right)),
+});
+
+export const getTrendsSourceCatalogRevision = () =>
+  REMOTE_SOURCE_CATALOG_REVISION;
+
+export const subscribeTrendsSourceCatalog = (listener) => {
+  if (typeof listener !== "function") return () => {};
+  REMOTE_SOURCE_CATALOG_LISTENERS.add(listener);
+  return () => REMOTE_SOURCE_CATALOG_LISTENERS.delete(listener);
+};
+
+export const applyTrendsSourceCatalog = (catalog = {}) => {
+  const sourceEntries = (Array.isArray(catalog?.sources) ? catalog.sources : [])
+    .map((source) => ({
+      key: String(source?.key || "").trim(),
+      name: String(source?.name || source?.key || "").trim(),
+      category: String(source?.category || "general").trim(),
+      priorityTier: String(source?.priorityTier || "").trim(),
+      rankingLabel: String(source?.rankingLabel || "").trim(),
+      defaultVariant: String(source?.defaultVariant || "").trim(),
+      publicAvailable: source?.publicAvailable === true,
+      displayAvailable: source?.displayAvailable === true,
+    }))
+    .filter((source) => source.key)
+    .sort((left, right) => left.key.localeCompare(right.key));
+  const projection = projectTrendsCatalog(catalog, SOURCE_SUBTYPE_GROUPS);
+  const nextSignature = projectionSignature(projection, sourceEntries);
+  const changed = nextSignature !== REMOTE_SOURCE_CATALOG_SIGNATURE;
+  REMOTE_SOURCE_SUBTYPE_GROUPS.clear();
+  REMOTE_SOURCE_CATALOG.clear();
+  REMOTE_SOURCE_DEFAULT_SUBTYPES.clear();
+  REMOTE_SOURCE_VARIANTS.clear();
+  REMOTE_SOURCE_VARIANT_DIMENSIONS.clear();
+  for (const source of sourceEntries) REMOTE_SOURCE_CATALOG.set(source.key, source);
+  for (const [sourceName, groups] of projection.groupsBySource) {
+    REMOTE_SOURCE_SUBTYPE_GROUPS.set(sourceName, groups);
+  }
+  for (const [sourceName, defaultSubtype] of projection.defaultsBySource) {
+    REMOTE_SOURCE_DEFAULT_SUBTYPES.set(sourceName, defaultSubtype);
+  }
+  for (const [sourceName, variants] of projection.variantsBySource) {
+    REMOTE_SOURCE_VARIANTS.set(sourceName, variants);
+  }
+  for (const [sourceName, dimensions] of projection.dimensionsBySource) {
+    REMOTE_SOURCE_VARIANT_DIMENSIONS.set(sourceName, dimensions);
+  }
+  REMOTE_SOURCE_CATALOG_SIGNATURE = nextSignature;
+  if (changed) {
+    REMOTE_SOURCE_CATALOG_REVISION += 1;
+    for (const listener of REMOTE_SOURCE_CATALOG_LISTENERS) listener();
+  }
+  return REMOTE_SOURCE_SUBTYPE_GROUPS.size;
+};
+
+export const canFallbackTrendsCatalogVariant = (sourceName, variant) => {
+  if (!REMOTE_SOURCE_SUBTYPE_GROUPS.has(sourceName)) return true;
+  const requested = String(variant || "").trim();
+  if (!requested || requested === REMOTE_SOURCE_DEFAULT_SUBTYPES.get(sourceName)) return true;
+  return flattenSubtypeOptions(SOURCE_SUBTYPE_GROUPS[sourceName] || []).some(
+    (item) => item.value === requested,
+  );
+};
+
+const normalizeValue = (value) => {
+  if (Array.isArray(value)) return value[0] || null;
+  return value ?? null;
+};
+
+export const getTrendsCatalogSources = () => [...REMOTE_SOURCE_CATALOG.values()].map((source) => ({ ...source }));
+
+export const filterReadableTrendsCatalogManagedSources = (items = []) => {
+  if (!REMOTE_SOURCE_CATALOG.size) return Array.isArray(items) ? [...items] : [];
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    if (!item?.catalogManaged) return true;
+    const source = REMOTE_SOURCE_CATALOG.get(String(item?.name || ""));
+    if (item?.directoryOnly === true) return Boolean(source);
+    return Boolean(source && (source.publicAvailable || source.displayAvailable));
+  });
+};
+
+export const getTrendsCatalogSource = (sourceName) => {
+  const source = REMOTE_SOURCE_CATALOG.get(String(sourceName || ""));
+  return source ? { ...source } : null;
+};
+
+export const hasTrendsCatalogSource = (sourceName) => REMOTE_SOURCE_CATALOG.has(String(sourceName || ""));
+
+export const hasTrendsPublicCatalogSource = (sourceName) => {
+  const source = REMOTE_SOURCE_CATALOG.get(String(sourceName || ""));
+  return Boolean(source?.publicAvailable);
+};
+
+export const hasTrendsDisplayCatalogSource = (sourceName) => {
+  const source = REMOTE_SOURCE_CATALOG.get(String(sourceName || ""));
+  return Boolean(source?.displayAvailable);
+};
+
+export const getTrendsCatalogReadSurface = (sourceName) => {
+  const source = REMOTE_SOURCE_CATALOG.get(String(sourceName || ""));
+  if (source?.publicAvailable) return "public";
+  if (source?.displayAvailable) return "display";
+  return null;
+};
+
+export const getSourceSubtypeGroups = (sourceName) =>
+  REMOTE_SOURCE_SUBTYPE_GROUPS.get(sourceName) || SOURCE_SUBTYPE_GROUPS[sourceName] || [];
+
+export const getSourceSubtypeOptions = (sourceName) =>
+  flattenSubtypeOptions(getSourceSubtypeGroups(sourceName));
+
+export const getSourceVariantOptions = (sourceName) =>
+  REMOTE_SOURCE_VARIANTS.get(sourceName) || getSourceSubtypeOptions(sourceName);
+
+export const getSourceVariantDimensions = (sourceName) =>
+  REMOTE_SOURCE_VARIANT_DIMENSIONS.get(sourceName) || [];
+
+export const getSourceVariantOption = (sourceName, variant) => {
+  const requested = String(variant || getDefaultSourceSubtype(sourceName) || "").trim();
+  return getSourceVariantOptions(sourceName).find((item) => item.value === requested) || null;
+};
+
+const isDimensionCompatible = (candidate = {}, desired = {}, changedKey = "") =>
+  Object.entries(desired).every(([key, value]) =>
+    key === changedKey || candidate[key] == null || candidate[key] === value
+  );
+
+export const getSourceSubtypeControlGroups = (sourceName, activeVariant) => {
+  const dimensions = getSourceVariantDimensions(sourceName);
+  if (!dimensions.length) return getSourceSubtypeGroups(sourceName);
+  const variants = getSourceVariantOptions(sourceName);
+  const activeOption = getSourceVariantOption(sourceName, activeVariant);
+  const activeValues = activeOption?.dimensionValues || {};
+  return dimensions
+    .map((dimension, index) => {
+      if (index > 0 && !Object.prototype.hasOwnProperty.call(activeValues, dimension.key)) return null;
+      const items = (dimension.items || []).map((dimensionItem) => {
+        const desired = { ...activeValues, [dimension.key]: dimensionItem.value };
+        const matched = variants.find((variant) => {
+          const values = variant?.dimensionValues || {};
+          return values[dimension.key] === dimensionItem.value &&
+            isDimensionCompatible(values, desired, dimension.key);
+        });
+        return matched ? { ...dimensionItem, value: matched.value } : null;
+      }).filter(Boolean);
+      return items.length > 1 ? { ...dimension, items } : null;
+    })
+    .filter(Boolean);
+};
+
+export const getDefaultSourceSubtype = (sourceName) =>
+  REMOTE_SOURCE_DEFAULT_SUBTYPES.get(sourceName) ||
+  getSourceSubtypeOptions(sourceName)[0]?.value ||
+  null;
+
+export const resolveTrendsCatalogVariant = (sourceName, params = {}) => {
+  const groups = REMOTE_SOURCE_SUBTYPE_GROUPS.get(sourceName);
+  if (!groups) return undefined;
+  const options = flattenSubtypeOptions(groups);
+  const remoteVariants = REMOTE_SOURCE_VARIANTS.get(sourceName) || options;
+  if (!groups.length) {
+    const requested = String(params?.variant ?? params?.type ?? "").trim();
+    if (requested) {
+      return remoteVariants.some((item) => item.value === requested) ? requested : null;
+    }
+    return getDefaultSourceSubtype(sourceName) || "";
+  }
+  let sawVariantParam = false;
+  for (const group of groups) {
+    const param = group?.param || "type";
+    if (!Object.prototype.hasOwnProperty.call(params || {}, param)) continue;
+    sawVariantParam = true;
+    const requested = String(params?.[param] ?? "").trim();
+    const option = (group.items || []).find(
+      (item) => item.value === requested || item.apiValue === requested
+    );
+    if (option) return option.value;
+  }
+  if (sawVariantParam) return null;
+  const explicitVariant = String(params?.variant || "").trim();
+  if (explicitVariant) {
+    return options.some((item) => item.value === explicitVariant) ? explicitVariant : null;
+  }
+  return getDefaultSourceSubtype(sourceName) || "";
+};
+
+export const shouldCanonicalizeDefaultSubtype = (sourceName) =>
+  Boolean(sourceName) &&
+  !AGGREGATE_SUBTYPE_SOURCES.includes(sourceName) &&
+  Boolean(getDefaultSourceSubtype(sourceName));
+
+const LEGACY_SOURCE_PROJECTION_ALIASES = {
+  "steam-deals": {
+    sourceName: "steam",
+    defaultVariant: "featured",
+    variants: {
+      featured: "featured",
+      discount75: "discount75",
+      discount90: "discount90",
+      under10: "under10",
+      under30: "under30",
+    },
+  },
+  "douban-wool": {
+    sourceName: "douban-group",
+    defaultVariant: "buy",
+    variants: {
+      buy: "buy",
+      groupbuy: "groupbuy",
+    },
+  },
+  "douban-pet-wool": {
+    sourceName: "douban-group",
+    defaultVariant: "catlife",
+    variants: {
+      catlife: "catlife",
+      bathtub: "bathtub",
+      dog: "dog",
+    },
+  },
+  genshin: {
+    sourceName: "miyoushe",
+    defaultVariant: "genshin-notice",
+    variants: {
+      "1": "genshin-notice",
+      notice: "genshin-notice",
+      "2": "genshin-event",
+      event: "genshin-event",
+      "3": "genshin-news",
+      news: "genshin-news",
+    },
+  },
+  starrail: {
+    sourceName: "miyoushe",
+    defaultVariant: "starrail-notice",
+    variants: {
+      "1": "starrail-notice",
+      notice: "starrail-notice",
+      "2": "starrail-event",
+      event: "starrail-event",
+      "3": "starrail-news",
+      news: "starrail-news",
+    },
+  },
+  honkai: {
+    sourceName: "miyoushe",
+    defaultVariant: "bh3-notice",
+    variants: {
+      "1": "bh3-notice",
+      notice: "bh3-notice",
+      "2": "bh3-event",
+      event: "bh3-event",
+      "3": "bh3-news",
+      news: "bh3-news",
+    },
+  },
+};
+
+export const resolveLegacySourceProjection = (sourceName, variant = "") => {
+  const alias = LEGACY_SOURCE_PROJECTION_ALIASES[String(sourceName || "")];
+  if (!alias) return null;
+  const requested = String(variant || "").trim();
+  return {
+    sourceName: alias.sourceName,
+    variant: alias.variants[requested] || alias.defaultVariant,
+  };
+};
+
+const LEGACY_SOURCE_SUBTYPE_STORAGE_ALIASES = {
+  steam: ["steam-deals"],
+};
+
+export const getSourceSubtypeStorageKey = (sourceName) =>
+  `${STORAGE_PREFIX}${sourceName}`;
+
+export const readSourceSubtype = (sourceName) => {
+  if (!sourceName || typeof localStorage === "undefined") return null;
+  const stored = normalizeValue(
+    localStorage.getItem(getSourceSubtypeStorageKey(sourceName)),
+  );
+  if (stored) return stored;
+
+  for (const legacySourceName of LEGACY_SOURCE_SUBTYPE_STORAGE_ALIASES[sourceName] || []) {
+    const legacyStored = normalizeValue(
+      localStorage.getItem(getSourceSubtypeStorageKey(legacySourceName)),
+    );
+    if (!legacyStored) continue;
+    return resolveLegacySourceProjection(legacySourceName, legacyStored)?.variant || null;
+  }
+  return null;
+};
+
+export const persistSourceSubtype = (sourceName, subtype) => {
+  if (!sourceName || typeof localStorage === "undefined") return;
+  const key = getSourceSubtypeStorageKey(sourceName);
+  const legacySourceNames = LEGACY_SOURCE_SUBTYPE_STORAGE_ALIASES[sourceName] || [];
+  if (!subtype) {
+    localStorage.removeItem(key);
+    legacySourceNames.forEach((legacySourceName) =>
+      localStorage.removeItem(getSourceSubtypeStorageKey(legacySourceName))
+    );
+    return;
+  }
+  localStorage.setItem(key, subtype);
+  legacySourceNames.forEach((legacySourceName) =>
+    localStorage.removeItem(getSourceSubtypeStorageKey(legacySourceName))
+  );
+};
+
+export const resolveSourceSubtype = (options, preferredSubtype) => {
+  const candidate = normalizeValue(preferredSubtype);
+  if (!options.length) return null;
+  if (candidate && options.some((item) => item.value === candidate)) {
+    return candidate;
+  }
+  return options[0]?.value || null;
+};
+
+export const buildSourceSubtypeParams = (sourceName, subtype) => {
+  const groups = getSourceSubtypeGroups(sourceName);
+  const resolved = resolveSourceSubtype(
+    groups.flatMap((group) => group.items || []),
+    subtype
+  );
+  if (!resolved) return {};
+  const group = groups.find((item) =>
+    (item.items || []).some((option) => option.value === resolved)
+  );
+  const option = (group?.items || []).find((item) => item.value === resolved);
+  if (option?.apiParams && typeof option.apiParams === "object") {
+    return { ...option.apiParams };
+  }
+  return { [group?.param || "type"]: option?.apiValue || resolved };
+};

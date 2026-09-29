@@ -1,0 +1,3609 @@
+<template>
+  <section
+    ref="chiguaTopicRef"
+    class="chigua-topic"
+    :class="{ 'is-compact': store.compactMode }"
+    :style="{
+      '--chigua-list-font-size': `${store.effectiveListFontSize}px`,
+      '--chigua-featured-columns': String(featuredLaneColumns),
+    }"
+  >
+    <n-alert
+      v-if="loadError"
+      type="error"
+      :show-icon="false"
+      class="topic-alert"
+    >
+      {{ loadError }}
+    </n-alert>
+    <n-alert
+      v-else-if="showDegradedWarning"
+      type="warning"
+      :show-icon="false"
+      class="topic-alert"
+    >
+      {{ copy.degraded }}
+    </n-alert>
+
+    <div class="topic-workspace-header">
+        <div class="radar-identity">
+          <div class="radar-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <circle cx="32" cy="32" r="24" />
+              <circle cx="32" cy="32" r="16" />
+              <circle cx="32" cy="32" r="8" />
+              <path d="M32 8v48M8 32h48M15 15l34 34M49 15 15 49" />
+              <path class="radar-mark__beam" d="M32 32 52 18" />
+              <circle class="radar-mark__ping" cx="45" cy="23" r="2.8" />
+            </svg>
+            <svg class="radar-watermelon" viewBox="0 0 28 18">
+              <path class="radar-watermelon__rind" d="M2 3h24c-.7 7.6-5.3 12.5-12 12.5S2.7 10.6 2 3Z" />
+              <path class="radar-watermelon__flesh" d="M4.6 4.7h18.8C22.3 10 18.7 13.2 14 13.2S5.7 10 4.6 4.7Z" />
+              <circle cx="10" cy="7.6" r=".8" /><circle cx="14" cy="9.2" r=".8" /><circle cx="18" cy="7.6" r=".8" />
+            </svg>
+          </div>
+          <div class="topic-workspace-title">
+            <span class="radar-eyebrow">{{ ui.radar }}</span>
+            <h1>{{ copy.title }}</h1>
+            <p>{{ copy.description }}</p>
+          </div>
+        </div>
+        <div class="radar-actions">
+          <div v-if="dashboard" class="hero-stats">
+            <span>{{ ui.events }} <strong>{{ dashboard.total || data.length }}</strong></span>
+            <span>{{ ui.sources }} <strong>{{ dashboard.sourceCount }}</strong></span>
+          </div>
+          <button
+            type="button"
+            class="radar-refresh"
+            :class="{ 'is-loading': loading }"
+            :disabled="loading"
+            :aria-label="ui.refresh"
+            @click="loadTopic(true)"
+          >
+            <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M14.5 6.1A6 6 0 1 0 15 10.2M14.5 3.5v3.2h-3.2" /></svg>
+            <span>{{ ui.refresh }}</span>
+          </button>
+        </div>
+    </div>
+
+    <div
+      v-if="featuredGroups.length"
+      class="topic-featured-workspace"
+    >
+    <TopicLaneGrid
+      class="topic-featured-lanes"
+      :lanes="featuredGroups"
+      :aria-label="copy.feedTitle"
+      :sortable="true"
+      :hover-scrollbar="true"
+      @select="selectFeaturedLane"
+      @load-more="loadMoreFeaturedLane"
+      @reorder="saveFeaturedLaneOrder"
+      @drag-start="hideLanePreview"
+    >
+      <template #title-actions>
+        <n-popover>
+          <template #trigger>
+            <span
+              class="topic-lane__drag-handle"
+              role="button"
+              tabindex="0"
+              :aria-label="t('hotList.dragSort')"
+              @click.stop.prevent
+              @keydown.stop.prevent
+            ><n-icon :component="Drag" /></span>
+          </template>
+          {{ t("hotList.dragSort") }}
+        </n-popover>
+      </template>
+      <template #item="{ lane, item, index }">
+        <article
+          class="event-lane-item"
+          :data-lane-item-key="`${lane.key}-${index}`"
+          :class="{ 'is-serious': isSeriousEvent(item), 'has-cover': hasUsableCover(item) }"
+          :aria-describedby="lanePreviewItem === item ? lanePreviewTooltipId : undefined"
+          @pointerenter="showLanePreview(item, $event)"
+          @pointerleave="scheduleLanePreviewClose"
+          @focusin="showLanePreview(item, $event)"
+          @focusout="scheduleLanePreviewClose"
+          @keydown.esc="hideLanePreview"
+        >
+          <span
+            class="event-lane-rank"
+            :class="{ one: index === 0, two: index === 1, three: index === 2 }"
+            :aria-label="`第 ${index + 1} 名`"
+          >{{ index + 1 }}</span>
+          <button
+            v-if="hasUsableCover(item)"
+            type="button"
+            class="event-lane-cover"
+            :title="item.title"
+            :aria-label="item.title"
+            @click.stop="openLaneFullImagePreview(item.cover)"
+          >
+            <img
+              :src="coverSrc(item.cover)"
+              :referrerpolicy="COVER_REFERRER_POLICY"
+              :alt="item.title"
+              loading="lazy"
+              @error="markCoverError(item.cover)"
+            />
+          </button>
+          <div class="event-lane-copy">
+            <div class="event-lane-title-row">
+              <a
+                class="event-lane-title"
+                :href="item.url"
+                :title="item.title"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span>{{ item.title }}</span>
+              </a>
+              <RankingBadgeGroup
+                v-if="visibleRankingBadges(item).length"
+                class="event-lane-title-badges"
+                :badges="visibleRankingBadges(item)"
+              />
+            </div>
+            <div class="event-lane-meta">
+              <a :href="primaryRankPath(item)" @click.stop>{{ sourceLabel(item) }}</a>
+              <em
+                v-if="laneTrendIndicator(lane, item)"
+                class="event-lane-trend"
+                :class="`is-${laneTrendIndicator(lane, item).signal}`"
+                :title="laneTrendIndicator(lane, item).ariaLabel"
+                :aria-label="laneTrendIndicator(lane, item).ariaLabel"
+              >{{ laneTrendIndicator(lane, item).label }}</em>
+              <span
+                v-if="effectiveResonanceSourceCount(item) > 1"
+                class="event-lane-resonance"
+                :title="`${effectiveResonanceSourceCount(item)} ${ui.platformResonance}`"
+                :aria-label="`${effectiveResonanceSourceCount(item)} ${ui.platformResonance}`"
+              >
+                {{ effectiveResonanceSourceCount(item) }}{{ ui.platforms }}
+              </span>
+            </div>
+          </div>
+        </article>
+      </template>
+      <template #sticky-item="{ lane, item, meta, index }">
+        <article
+          class="event-lane-sticky"
+          :class="{ 'has-cover': hasUsableCover(item), 'is-serious': isSeriousEvent(item) }"
+          :aria-label="meta?.ariaLabel || item.title"
+          :aria-describedby="lanePreviewItem === item ? lanePreviewTooltipId : undefined"
+          @pointerenter="showLanePreview(item, $event)"
+          @pointerleave="scheduleLanePreviewClose"
+          @focusin="showLanePreview(item, $event)"
+          @focusout="scheduleLanePreviewClose"
+          @keydown.esc="hideLanePreview"
+        >
+          <span
+            class="event-lane-rank"
+            :class="{ one: index === 0, two: index === 1, three: index === 2 }"
+            aria-hidden="true"
+          >{{ index + 1 }}</span>
+          <button
+            v-if="hasUsableCover(item)"
+            type="button"
+            class="event-lane-cover event-lane-sticky__cover"
+            :title="item.title"
+            :aria-label="item.title"
+            @click.stop="openLaneFullImagePreview(item.cover)"
+          >
+            <img
+              :src="coverSrc(item.cover)"
+              :referrerpolicy="COVER_REFERRER_POLICY"
+              :alt="item.title"
+              loading="lazy"
+              @error="markCoverError(item.cover)"
+            />
+          </button>
+          <div class="event-lane-copy">
+            <div class="event-lane-title-row">
+              <a
+                class="event-lane-title"
+                :href="item.url"
+                :title="item.title"
+                target="_blank"
+                rel="noopener noreferrer"
+              ><span>{{ item.title }}</span></a>
+              <RankingBadgeGroup
+                v-if="visibleRankingBadges(item).length"
+                class="event-lane-title-badges"
+                :badges="visibleRankingBadges(item)"
+              />
+            </div>
+            <div class="event-lane-meta">
+              <a :href="primaryRankPath(item)" @click.stop>{{ sourceLabel(item) }}</a>
+              <em
+                v-if="laneTrendIndicator(lane, item)"
+                class="event-lane-trend"
+                :class="`is-${laneTrendIndicator(lane, item).signal}`"
+                :title="laneTrendIndicator(lane, item).ariaLabel"
+                :aria-label="laneTrendIndicator(lane, item).ariaLabel"
+              >{{ laneTrendIndicator(lane, item).label }}</em>
+              <span
+                v-if="effectiveResonanceSourceCount(item) > 1"
+                class="event-lane-resonance"
+                :title="`${effectiveResonanceSourceCount(item)} ${ui.platformResonance}`"
+                :aria-label="`${effectiveResonanceSourceCount(item)} ${ui.platformResonance}`"
+              >
+                {{ effectiveResonanceSourceCount(item) }}{{ ui.platforms }}
+              </span>
+            </div>
+          </div>
+        </article>
+      </template>
+    </TopicLaneGrid>
+    </div>
+    <Teleport to="body">
+      <Transition name="item-preview">
+        <div
+          v-if="lanePreviewItem"
+          :id="lanePreviewTooltipId"
+          class="event-lane-floating-preview"
+          :class="{ 'is-serious': isSeriousEvent(lanePreviewItem) }"
+          :style="lanePreviewStyle"
+          role="group"
+          :aria-label="lanePreviewItem.title"
+          @pointerenter="cancelLanePreviewClose"
+          @pointerleave="scheduleLanePreviewClose"
+          @focusin="cancelLanePreviewClose"
+          @focusout="scheduleLanePreviewClose"
+        >
+          <button
+            type="button"
+            class="event-lane-floating-preview__media"
+            :title="lanePreviewItem.title"
+            :aria-label="lanePreviewItem.title"
+            @click.stop="openLaneFullImagePreview(lanePreviewItem.cover)"
+          >
+            <img
+              :src="coverPreviewSrc(lanePreviewItem.cover)"
+              :referrerpolicy="COVER_REFERRER_POLICY"
+              :alt="lanePreviewItem.title"
+              @error="handleLanePreviewCoverError(lanePreviewItem.cover)"
+            />
+          </button>
+          <div
+            v-if="lanePreviewItem.desc || lanePreviewItem.hot"
+            class="event-lane-floating-preview__info"
+          >
+            <p v-if="lanePreviewItem.desc">{{ lanePreviewItem.desc }}</p>
+            <div>
+              <span>{{ sourceLabel(lanePreviewItem) }}</span>
+              <strong v-if="lanePreviewItem.hot">{{ formatHot(lanePreviewItem.hot) }}</strong>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <n-image
+      v-if="laneImagePreviewSrc"
+      ref="laneImagePreviewRef"
+      class="event-lane-image-preview-trigger"
+      :src="laneImagePreviewSrc"
+      :preview-src="laneImagePreviewSrc"
+      :show-toolbar="true"
+      :img-props="{ referrerpolicy: COVER_REFERRER_POLICY }"
+    />
+
+    <section class="topic-section topic-feed-section">
+      <div class="topic-layout">
+        <aside class="topic-category-rail" :aria-label="ui.categoryNav">
+          <div class="topic-category-card">
+            <div class="topic-category-title">
+              <strong>{{ ui.categoryNav }}</strong>
+              <span>{{ data.length }}</span>
+            </div>
+            <nav>
+              <button
+                type="button"
+                class="topic-category-item is-all"
+                :class="{ active: activeCategory === 'all' }"
+                :aria-current="activeCategory === 'all' ? 'true' : undefined"
+                @click="setCategory('all')"
+              >
+                <span>{{ ui.all }}</span>
+                <em>{{ data.length }}</em>
+              </button>
+              <button
+                v-for="option in categoryOptions.slice(1)"
+                :key="option.value"
+                type="button"
+                class="topic-category-item"
+                :class="[`is-${option.value}`, { active: activeCategory === option.value }]"
+                :aria-current="activeCategory === option.value ? 'true' : undefined"
+                @click="setCategory(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <em>{{ option.count }}</em>
+              </button>
+            </nav>
+          </div>
+        </aside>
+
+        <main class="topic-main">
+          <div class="event-toolbar">
+            <div class="toolbar-primary">
+              <div class="toolbar-title">
+                <h2>{{ copy.feedTitle }}</h2>
+                <span>{{ formatUpdated(result?.updateTime) }}</span>
+              </div>
+              <label class="topic-search">
+                <span class="sr-only">{{ ui.search }}</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" />
+                </svg>
+                <input
+                  v-model.trim="searchQuery"
+                  type="search"
+                  :placeholder="ui.searchPlaceholder"
+                  @keydown.esc="searchQuery = ''"
+                />
+              </label>
+            </div>
+          </div>
+
+
+
+          <div v-if="loading && !result" class="topic-loading">
+            <n-skeleton text :repeat="9" />
+          </div>
+          <div v-else-if="filteredData.length" ref="eventListRef" class="event-list">
+            <article
+              v-for="(item, index) in pagedData"
+              :key="item.id"
+              class="event-item"
+              :class="{ 'is-serious': isSeriousEvent(item), 'has-media': hasUsableCover(item) }"
+              @mouseenter="prepareEventCoverHover"
+            >
+              <span class="event-rank" :class="rankClass(pageStart + index + 1)">{{ pageStart + index + 1 }}</span>
+              <div v-if="hasUsableCover(item)" class="event-media">
+                <n-image
+                  class="event-cover"
+                  :src="coverPreviewSrc(item.cover)"
+                  :preview-src="coverFullSrc(item.cover)"
+                  :alt="item.title"
+                  lazy
+                  object-fit="cover"
+                  :img-props="{ tabindex: 0, role: 'button', referrerpolicy: COVER_REFERRER_POLICY, 'data-cover-source': item.cover, onKeydown: handleEventCoverPreviewKeydown, onLoad: handleEventCoverImageLoad, onError: () => markCoverError(item.cover) }"
+                  @error="markCoverError(item.cover)"
+                />
+              </div>
+              <div class="event-main">
+                <div class="event-title-row">
+                  <a
+                    class="event-title"
+                    :href="item.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <h3>{{ item.title }}</h3>
+                  </a>
+                  <RankingBadgeGroup
+                    v-if="visibleRankingBadges(item).length"
+                    :badges="visibleRankingBadges(item)"
+                  />
+                </div>
+                <p v-if="item.desc" class="event-desc">{{ item.desc }}</p>
+                <div class="event-meta">
+                  <div class="event-source-cluster">
+                    <a
+                      class="event-source-link event-source-link--primary"
+                      :href="primaryRankPath(item)"
+                      :title="sourceLabel(item)"
+                    >
+                      <img
+                        :src="getSourceLogo(primarySource(item))"
+                        :alt="sourceLabel(item)"
+                        @error="onLogoError"
+                      />
+                      <span>{{ sourceLabel(item) }}</span>
+                    </a>
+                    <div
+                      v-if="supportingConfirmations(item).length"
+                      class="event-evidence-icons"
+                      :aria-label="ui.evidenceSources"
+                    >
+                      <n-popover
+                        v-for="confirmation in supportingConfirmations(item)"
+                        :key="`${item.id}-evidence-${confirmation.source}-${confirmation.variant || 'default'}`"
+                        trigger="hover"
+                        placement="top-start"
+                        :show-arrow="false"
+                        :delay="80"
+                      >
+                        <template #trigger>
+                          <a
+                            class="event-evidence-icon"
+                            :href="confirmation.url || rankPathForEvidence(confirmation)"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            :title="evidenceLabel(confirmation)"
+                            :aria-label="evidenceLabel(confirmation)"
+                          >
+                            <img
+                              :src="getSourceLogo(confirmation.source)"
+                              :alt="evidenceLabel(confirmation)"
+                              @error="onLogoError"
+                            />
+                          </a>
+                        </template>
+                        <div class="event-evidence-popover event-evidence-popover--single">
+                          <div class="event-evidence-popover__head">
+                            <img
+                              :src="getSourceLogo(confirmation.source)"
+                              :alt="evidenceLabel(confirmation)"
+                              @error="onLogoError"
+                            />
+                            <div>
+                              <strong>{{ evidenceLabel(confirmation) }}</strong>
+                              <span v-if="confirmation.rank">#{{ confirmation.rank }}</span>
+                            </div>
+                            <small>{{ evidenceRoleLabel(confirmation) }}</small>
+                          </div>
+                          <a
+                            v-if="confirmation.url"
+                            class="event-evidence-title"
+                            :href="confirmation.url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >{{ confirmation.title || evidenceLabel(confirmation) }}</a>
+                          <strong v-else class="event-evidence-title">
+                            {{ confirmation.title || evidenceLabel(confirmation) }}
+                          </strong>
+                          <p v-if="confirmation.summary">{{ confirmation.summary }}</p>
+                          <div class="event-evidence-popover__meta">
+                            <span v-if="confirmation.hot" class="event-evidence-hot">
+                              <n-icon :component="Fire" />
+                              {{ formatHot(confirmation.hot) }}
+                            </span>
+                            <span v-if="confirmation.author">{{ confirmation.author }}</span>
+                          </div>
+                        </div>
+                      </n-popover>
+                    </div>
+                  </div>
+                  <span
+                    v-if="userVisibleTrend(item)"
+                    class="trend-pill"
+                    :class="`is-${userVisibleTrend(item).signal}`"
+                    :aria-label="trendAccessibleLabel(userVisibleTrend(item))"
+                    :title="trendAccessibleLabel(userVisibleTrend(item))"
+                  >
+                    <span aria-hidden="true">{{ trendVisualLabel(userVisibleTrend(item)) }}</span>
+                    <b v-if="trendSecondaryMetric(userVisibleTrend(item))" aria-hidden="true">{{ trendSecondaryMetric(userVisibleTrend(item)) }}</b>
+                  </span>
+                  <span
+                    v-if="isResonanceItem(item)"
+                    class="event-resonance"
+                    :title="confirmationTitle(item)"
+                  >
+                    {{ effectiveResonanceSourceCount(item) }} {{ ui.platformResonance }}
+                  </span>
+                  <span class="category-pill" :class="`is-${eventCategory(item)}`">{{
+                    categoryLabel(eventCategory(item))
+                  }}</span>
+                  <strong v-if="item.hot" class="event-hot">
+                    <n-icon :component="Fire" />
+                    <span>{{ formatHot(item.hot) }}</span>
+                  </strong>
+                  <time
+                    v-if="item.timestamp"
+                    :title="formatFullTime(item.timestamp)"
+                    >{{ formatFreshness(item.timestamp) }}</time
+                  >
+                </div>
+              </div>
+            </article>
+            <div class="event-pagination event-pagination--mobile">
+              <div class="event-pagination__meta">
+                <span>{{ pageRangeText }}</span>
+                <CompactFilter
+                  v-model="pageSize"
+                  :label="ui.perPage"
+                  :aria-label="ui.perPage"
+                  :options="pageSizeOptions"
+                  :show-count="false"
+                  :default-value="30"
+                />
+              </div>
+              <n-pagination
+                v-if="pageCount > 1"
+                v-model:page="currentPage"
+                :page-count="pageCount"
+                :page-slot="7"
+                size="small"
+                @update:page="handlePageChange"
+              />
+            </div>
+          </div>
+          <n-empty v-else :description="copy.empty" class="topic-empty" />
+        </main>
+
+        <aside class="topic-controls" :aria-label="ui.browseSettings">
+          <div class="topic-controls-card">
+            <div class="topic-controls-title">
+              <strong>{{ ui.browseSettings }}</strong>
+              <span>{{ filteredData.length }}</span>
+            </div>
+            <section class="topic-control-section">
+              <CompactFilter v-model="activeFocus" :label="ui.focus" :aria-label="ui.focus" :options="focusOptions" />
+            </section>
+            <section class="topic-control-section">
+              <CompactFilter v-model="activeSource" :label="ui.source" :aria-label="ui.source" :options="sourceOptions" />
+            </section>
+            <section class="topic-control-section">
+              <CompactFilter v-model="activeSort" :label="ui.sort" :aria-label="ui.sort" :options="sortOptions" :show-count="false" />
+            </section>
+            <section class="topic-control-section topic-control-pagination">
+              <div class="topic-pagination-control">
+                <div class="topic-pagination-meta">
+                  <span>{{ pageRangeText }}</span>
+                  <CompactFilter
+                    v-model="pageSize"
+                    :label="ui.perPage"
+                    :aria-label="ui.perPage"
+                    :options="pageSizeOptions"
+                    :show-count="false"
+                    :default-value="30"
+                  />
+                </div>
+                <n-pagination
+                  v-if="pageCount > 1"
+                  v-model:page="currentPage"
+                  :page-count="pageCount"
+                  :page-slot="5"
+                  size="small"
+                  @update:page="handlePageChange"
+                />
+              </div>
+            </section>
+            <button
+              v-if="resonanceMatchCount"
+              type="button"
+              class="resonance-toggle"
+              :class="{ active: activeConfirmed }"
+              :aria-pressed="activeConfirmed"
+              @click="activeConfirmed = !activeConfirmed"
+            >{{ ui.resonance }} <span>{{ resonanceMatchCount }}</span></button>
+            <button v-if="hasFilters" type="button" class="reset-filter" @click="resetFilters">{{ ui.reset }}</button>
+
+          </div>
+        </aside>
+      </div>
+    </section>
+  </section>
+</template>
+
+<script setup>
+import CompactFilter from "@/components/CompactFilter.vue";
+import TopicLaneGrid from "@/components/TopicLaneGrid.vue";
+import RankingBadgeGroup from "@/components/RankingBadgeGroup.vue";
+import { Drag, Fire } from "@icon-park/vue-next";
+import { getTopicFeed } from "@/api";
+import { CHIGUA_TOPIC_METADATA } from "@/config/site-metadata.mjs";
+import { DATA_REFRESH_EVENT } from "@/utils/dataRefresh";
+import { buildRankPath, getLocaleFromRoute, normalizeLocale } from "@/utils/locale";
+import { getSourceLabel } from "@/utils/sourceLabels";
+import { getSourceLogo, getSourceLogoFallback } from "@/utils/sourceLogos";
+import { normalizeRankingBadges } from "@/utils/rankingBadges";
+import { isSeriousEvent } from "@/utils/seriousEvents";
+import { pickTopicSummary } from "@/utils/topicSummary";
+import {
+  COVER_REFERRER_POLICY,
+  getCoverCompactSrc,
+  getCoverDisplaySrc,
+  getCoverFullSrc,
+} from "@/utils/imageProxy";
+import { resolveCoverPreviewLayout } from "@/utils/coverPreviewGeometry";
+import { applyExpandableCoverGeometry } from "@/utils/expandableCoverGeometry";
+import { resolveResponsiveCardColumns } from "@/utils/responsiveColumns";
+import {
+  FLOATING_COVER_PREVIEW_CLOSE_DELAY,
+  FLOATING_COVER_PREVIEW_OPEN_DELAY,
+  resolveFloatingCoverPreviewPosition,
+} from "@/utils/floatingCoverPreview";
+import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
+import { mainStore } from "@/store";
+
+const route = useRoute();
+const store = mainStore();
+const { t } = useI18n({ useScope: "global" });
+const result = ref(null);
+const chiguaTopicRef = ref(null);
+const chiguaWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1400);
+let chiguaResizeObserver = null;
+const coverImageErrors = reactive({});
+const loading = ref(false);
+const loadError = ref("");
+const searchQuery = ref(
+  typeof route.query.q === "string" ? route.query.q.trim() : "",
+);
+const activeCategory = ref(
+  typeof route.query.category === "string" ? route.query.category : "all",
+);
+const activeFocus = ref(
+  ["fresh", "rising", "resonance", "hot"].includes(route.query.focus)
+    ? route.query.focus
+    : "all",
+);
+const activeSource = ref(
+  typeof route.query.source === "string" ? route.query.source : "all",
+);
+const activeSort = ref(
+  ["smart", "resonance", "latest"].includes(route.query.sort)
+    ? route.query.sort
+    : "smart",
+);
+const activeConfirmed = ref(route.query.confirmed === "1");
+const PAGE_SIZE_VALUES = [20, 30, 50, 100];
+const routePage = Number.parseInt(String(route.query.page || "1"), 10);
+const routePageSize = Number.parseInt(String(route.query.size || "30"), 10);
+const currentPage = ref(Number.isFinite(routePage) && routePage > 0 ? routePage : 1);
+const pageSize = ref(PAGE_SIZE_VALUES.includes(routePageSize) ? routePageSize : 30);
+const eventListRef = ref(null);
+const lanePreviewItem = ref(null);
+const lanePreviewStyle = ref({});
+const lanePreviewMediaCache = new Map();
+const laneImagePreviewRef = ref(null);
+const laneImagePreviewSrc = ref("");
+const lanePreviewTooltipId = "chigua-lane-cover-preview";
+let lanePreviewRequestId = 0;
+let lanePreviewOpenTimer = null;
+let lanePreviewCloseTimer = null;
+let lanePreviewViewportListenersBound = false;
+const locale = computed(() => normalizeLocale(getLocaleFromRoute(route)));
+const copy = computed(
+  () => CHIGUA_TOPIC_METADATA[locale.value] || CHIGUA_TOPIC_METADATA["zh-CN"],
+);
+const data = computed(() => result.value?.data || []);
+const dashboard = computed(() => result.value?.dashboard || null);
+const failedSourceCount = computed(() =>
+  Number(dashboard.value?.failedSourceCount || 0),
+);
+const showDegradedWarning = computed(() => failedSourceCount.value > 0);
+
+const UI_COPY = {
+  "zh-CN": {
+    events: "热点数量",
+    sources: "核心榜单",
+    source: "核心榜单",
+    corroboration: "佐证",
+    support: "支撑",
+    search: "搜索事件",
+    searchPlaceholder: "搜索人物、事件、关键词…",
+    matches: "条结果",
+    resonance: "多平台共振",
+    refresh: "刷新",
+    updateFailed: "更新失败",
+    radar: "娱乐热点态势雷达",
+    trend: "榜位趋势",
+    evidenceSources: "佐证来源",
+    scrollMore: "继续滚动加载",
+    filters: "吃瓜事件筛选",
+    perPage: "每页",
+    category: "分类",
+    categoryNav: "吃瓜分类",
+    browseSettings: "追瓜设置",
+    focus: "情报状态",
+    focusAll: "全部动态",
+    sort: "排序",
+    smart: "吃瓜热度",
+    resonanceFirst: "共振优先",
+    latest: "最新优先",
+    reset: "清除筛选",
+    all: "全部",
+    platforms: "个平台",
+    platformResonance: "平台共振",
+    open: "查看事件",
+    featured: {
+      fresh: "新瓜速递",
+      rising: "热度上升",
+      resonance: "多平台上榜",
+      hot: "热榜前十",
+    },
+    featuredSubtitles: {
+      fresh: "优先看刚进入这一轮热议的新事件",
+      rising: "优先看热度正在上升或刚冲进前十的事件",
+      resonance: "优先看同时出现在多个独立平台榜单里的事件",
+      hot: "优先看已经进入任一核心榜单前十的热门事件",
+    },
+    trendSignals: { reentry: "重新上榜", breakthrough: "进入前十", rising: "榜位上升", falling: "榜位下降", new: "新上榜" },
+    categories: {
+      gossip: "明星八卦",
+      celebrity: "明星艺人",
+      "film-tv": "影视剧",
+      variety: "综艺",
+      music: "音乐",
+      creator: "网红主播",
+      other: "其他娱乐",
+    },
+  },
+  en: {
+    events: "Hotspots",
+    sources: "Key rankings",
+    source: "Core board",
+    corroboration: "corroboration",
+    support: "support",
+    search: "Search events",
+    searchPlaceholder: "Search people, events or keywords…",
+    matches: "results",
+    resonance: "Cross-platform",
+    refresh: "Refresh",
+    updateFailed: "Update failed",
+    radar: "Entertainment signal radar",
+    trend: "Rank movement",
+    evidenceSources: "Evidence sources",
+    scrollMore: "Scroll to load more",
+    filters: "Entertainment filters",
+    perPage: "Per page",
+    category: "Category",
+    categoryNav: "Entertainment topics",
+    browseSettings: "Tracking settings",
+    focus: "Signal",
+    focusAll: "All signals",
+    sort: "Sort",
+    smart: "Buzz score",
+    resonanceFirst: "Resonance first",
+    latest: "Latest",
+    reset: "Reset",
+    all: "All",
+    platforms: "platforms",
+    platformResonance: "platforms",
+    open: "View event",
+    featured: {
+      fresh: "Just in",
+      rising: "Rising",
+      resonance: "Multi-platform",
+      hot: "Top 10",
+    },
+    featuredSubtitles: { fresh: "New events entering the current buzz cycle", rising: "Moving up, re-entering or breaking into the top 10", resonance: "Entertainment events appearing across independent platforms", hot: "Events already ranked in the top 10 of a core board" },
+    trendSignals: { reentry: "Re-entered", breakthrough: "Top 10", rising: "Rank up", falling: "Rank down", new: "New entry" },
+    categories: {
+      gossip: "Celebrity Gossip",
+      celebrity: "Celebrities",
+      "film-tv": "Film & TV",
+      variety: "Variety",
+      music: "Music",
+      creator: "Creators & Streamers",
+      other: "Other Entertainment",
+    },
+  },
+  "zh-TW": {
+    events: "熱點數量",
+    sources: "核心榜單",
+    source: "核心榜單",
+    corroboration: "佐證",
+    support: "支撐",
+    search: "搜尋事件",
+    searchPlaceholder: "搜尋人物、事件、關鍵字…",
+    matches: "筆結果",
+    resonance: "多平台共振",
+    refresh: "重新整理",
+    updateFailed: "更新失敗",
+    radar: "娛樂熱點態勢雷達",
+    trend: "榜位趨勢",
+    evidenceSources: "佐證來源",
+    scrollMore: "繼續捲動載入",
+    filters: "吃瓜事件篩選",
+    perPage: "每頁",
+    category: "分類",
+    categoryNav: "吃瓜分類",
+    browseSettings: "追瓜設定",
+    focus: "情報狀態",
+    focusAll: "全部動態",
+    sort: "排序",
+    smart: "吃瓜熱度",
+    resonanceFirst: "共振優先",
+    latest: "最新優先",
+    reset: "清除篩選",
+    all: "全部",
+    platforms: "個平台",
+    platformResonance: "平台共振",
+    open: "查看事件",
+    featured: {
+      fresh: "新瓜速遞",
+      rising: "熱度上升",
+      resonance: "多平台上榜",
+      hot: "熱榜前十",
+    },
+    featuredSubtitles: { fresh: "優先看剛進入這一輪熱議的新事件", rising: "優先看熱度正在上升或剛衝進前十的事件", resonance: "優先看同時出現在多個獨立平台榜單裡的事件", hot: "優先看已經進入任一核心榜單前十的熱門事件" },
+    trendSignals: { reentry: "重新上榜", breakthrough: "進入前十", rising: "榜位上升", falling: "榜位下降", new: "新上榜" },
+    categories: {
+      gossip: "明星八卦",
+      celebrity: "明星藝人",
+      "film-tv": "影視劇",
+      variety: "綜藝",
+      music: "音樂",
+      creator: "網紅主播",
+      other: "其他娛樂",
+    },
+  },
+  ja: {
+    events: "注目トピック",
+    sources: "主要ランキング",
+    source: "主要ランキング",
+    corroboration: "補強",
+    support: "補助",
+    search: "話題を検索",
+    searchPlaceholder: "人物・出来事・キーワードを検索…",
+    matches: "件",
+    resonance: "複数平台",
+    refresh: "更新",
+    updateFailed: "更新失敗",
+    radar: "エンタメ動向レーダー",
+    trend: "順位トレンド",
+    evidenceSources: "補強ソース",
+    scrollMore: "スクロールしてさらに表示",
+    filters: "エンタメフィルター",
+    perPage: "件数",
+    category: "分類",
+    categoryNav: "エンタメ分類",
+    browseSettings: "追跡設定",
+    focus: "シグナル",
+    focusAll: "すべて",
+    sort: "並び順",
+    smart: "話題度",
+    resonanceFirst: "共振優先",
+    latest: "新着順",
+    reset: "解除",
+    all: "すべて",
+    platforms: "平台",
+    platformResonance: "平台共振",
+    open: "イベントを見る",
+    featured: {
+      fresh: "新着速報",
+      rising: "上昇中",
+      resonance: "複数サイトでランクイン",
+      hot: "トップ10",
+    },
+    featuredSubtitles: { fresh: "現在の話題サイクルに入った新しいイベント", rising: "順位上昇・再ランクイン・トップ10入り", resonance: "複数の独立プラットフォームで同時に出現", hot: "主要ランキングですでにトップ10入り" },
+    trendSignals: { reentry: "再ランクイン", breakthrough: "トップ10入り", rising: "順位上昇", falling: "順位下降", new: "新規ランクイン" },
+    categories: {
+      gossip: "芸能ゴシップ",
+      celebrity: "芸能人",
+      "film-tv": "映画・ドラマ",
+      variety: "バラエティ",
+      music: "音楽",
+      creator: "配信者・クリエイター",
+      other: "その他エンタメ",
+    },
+  },
+  ko: {
+    events: "핫이슈 수",
+    sources: "핵심 랭킹",
+    source: "핵심 랭킹",
+    corroboration: "보강",
+    support: "지원",
+    search: "이슈 검색",
+    searchPlaceholder: "인물, 사건, 키워드 검색…",
+    matches: "개 결과",
+    resonance: "다중 플랫폼",
+    refresh: "새로고침",
+    updateFailed: "업데이트 실패",
+    radar: "엔터테인먼트 동향 레이더",
+    trend: "순위 추세",
+    evidenceSources: "근거 출처",
+    scrollMore: "스크롤하여 더 불러오기",
+    filters: "엔터테인먼트 필터",
+    perPage: "페이지당",
+    category: "분류",
+    categoryNav: "엔터테인먼트 분류",
+    browseSettings: "추적 설정",
+    focus: "신호",
+    focusAll: "전체",
+    sort: "정렬",
+    smart: "화제 점수",
+    resonanceFirst: "공명 우선",
+    latest: "최신순",
+    reset: "초기화",
+    all: "전체",
+    platforms: "플랫폼",
+    platformResonance: "플랫폼 공명",
+    open: "이벤트 보기",
+    featured: {
+      fresh: "새 소식",
+      rising: "상승 중",
+      resonance: "여러 플랫폼 동시 진입",
+      hot: "TOP 10",
+    },
+    featuredSubtitles: { fresh: "현재 화제 흐름에 새로 진입한 이벤트", rising: "순위 상승·재진입·TOP 10 진입", resonance: "여러 독립 플랫폼에서 동시에 포착", hot: "핵심 랭킹 TOP 10에 이미 진입" },
+    trendSignals: { reentry: "재진입", breakthrough: "TOP 10 진입", rising: "순위 상승", falling: "순위 하락", new: "신규 진입" },
+    categories: {
+      gossip: "연예 가십",
+      celebrity: "연예인",
+      "film-tv": "영화·드라마",
+      variety: "예능",
+      music: "음악",
+      creator: "크리에이터·스트리머",
+      other: "기타 엔터테인먼트",
+    },
+  },
+};
+const ui = computed(() => UI_COPY[locale.value] || UI_COPY["zh-CN"]);
+const viewAllLabel = computed(() =>
+  ({
+    "zh-CN": "查看全部",
+    en: "View all",
+    "zh-TW": "查看全部",
+    ja: "すべて見る",
+    ko: "전체 보기",
+  })[locale.value] || "查看全部",
+);
+const CATEGORY_ORDER = [
+  "gossip",
+  "celebrity",
+  "film-tv",
+  "variety",
+  "music",
+  "creator",
+  "other",
+];
+const eventMeta = (item) => item?.extra?.hotEvent || {};
+const eventCategory = (item) => eventMeta(item).category || "other";
+const eventScore = (item) => Number(eventMeta(item).score || 0);
+const eventSourceCount = (item) => Number(eventMeta(item).sourceCount || 1);
+const eventBestRank = (item) => Number(eventMeta(item).bestRank || 0);
+const eventTrend = (item) => eventMeta(item).trend || null;
+const userVisibleTrend = (item) => {
+  const trend = eventTrend(item);
+  return trend?.signal === "reentry" ? null : trend;
+};
+const FRESH_WINDOW_MS = 2 * 60 * 60 * 1000;
+const RISING_TREND_SIGNALS = new Set(["breakthrough", "rising"]);
+const eventWaveStartedAt = (item) => {
+  const value = Date.parse(eventMeta(item).currentWaveStartedAt || "");
+  return Number.isFinite(value) && value > 0 ? value : Number(item?.timestamp || 0);
+};
+const topicReferenceTime = () => Date.parse(result.value?.updateTime || "") || Date.now();
+const isFreshEvent = (item) => {
+  const startedAt = eventWaveStartedAt(item);
+  const age = topicReferenceTime() - startedAt;
+  return startedAt > 0 && age >= -120000 && age <= FRESH_WINDOW_MS;
+};
+const isRisingEvent = (item) => RISING_TREND_SIGNALS.has(eventTrend(item)?.signal);
+const isHotEvent = (item) => eventBestRank(item) > 0 && eventBestRank(item) <= 10;
+const eventSources = (item) =>
+  Array.isArray(eventMeta(item).sources)
+    ? eventMeta(item).sources
+    : [primarySource(item)];
+const confirmations = (item) =>
+  Array.isArray(eventMeta(item).confirmations)
+    ? eventMeta(item).confirmations
+    : [];
+const evidenceKey = (entry) =>
+  `${entry?.source || ""}::${entry?.variant || ""}`;
+const sourceNameForEvidence = (entry) => {
+  const canonical = String(entry?.sourceLabel || "").trim();
+  if (locale.value === "zh-CN" && canonical) return canonical;
+  return getSourceLabel(
+    entry?.source,
+    locale.value,
+    canonical || entry?.source || "",
+  );
+};
+const evidenceLabel = (entry, { includeRole = false } = {}) => {
+  const source = sourceNameForEvidence(entry);
+  const variant = String(entry?.variantLabel || "").trim();
+  const role =
+    entry?.role === "corroboration"
+      ? ui.value.corroboration
+      : entry?.role === "support"
+        ? ui.value.support
+        : "";
+  return [source, variant, includeRole ? role : ""].filter(Boolean).join(" · ");
+};
+const primarySource = (item) =>
+  confirmations(item)[0]?.source || eventSources(item)[0] || "douyin";
+const sourceLabel = (item) =>
+  confirmations(item)[0]
+    ? evidenceLabel(confirmations(item)[0])
+    : getSourceLabel(primarySource(item), locale.value, primarySource(item));
+const primaryEvidence = (item) => confirmations(item)[0] || null;
+const rankPathForEvidence = (entry) =>
+  entry?.source ? buildRankPath(locale.value, entry.source, entry.variant || "") : buildRankPath(locale.value, "");
+const primaryRankPath = (item) => {
+  const entry = primaryEvidence(item);
+  return entry?.source
+    ? rankPathForEvidence(entry)
+    : buildRankPath(locale.value, primarySource(item));
+};
+const categoryLabel = (category) => ui.value.categories[category] || category;
+const visibleRankingBadges = (item) =>
+  normalizeRankingBadges(item?.badges, 2).filter((badge) => badge.placement !== "prefix");
+const trendSignalLabel = (signal) => ui.value.trendSignals?.[signal] || signal || "";
+const trendRankChange = (trend) => {
+  const currentRank = Number(trend?.currentRank || 0);
+  const baselineRank = Number(trend?.baselineRank || 0);
+  if (baselineRank > 0 && currentRank > 0) return baselineRank - currentRank;
+  const rawDelta = Number(trend?.rankDelta || 0);
+  if (!Number.isFinite(rawDelta)) return 0;
+  if (["rising", "breakthrough"].includes(trend?.signal)) return Math.abs(rawDelta);
+  if (trend?.signal === "falling") return -Math.abs(rawDelta);
+  return 0;
+};
+const trendVisualLabel = (trend) => {
+  if (trend?.signal === "new") return trendSignalLabel(trend.signal);
+  const change = trendRankChange(trend);
+  if (change > 0) return `▲ ${change}`;
+  if (change < 0) return `▼ ${Math.abs(change)}`;
+  return trendSignalLabel(trend?.signal);
+};
+const trendAccessibleLabel = (trend) => {
+  if (!trend?.signal) return "";
+  const signal = trendSignalLabel(trend.signal);
+  const currentRank = Number(trend?.currentRank || 0);
+  const baselineRank = Number(trend?.baselineRank || 0);
+  if (trend.signal === "new") {
+    return currentRank > 0 ? `${signal}，当前第 ${currentRank} 名` : signal;
+  }
+  const change = trendRankChange(trend);
+  if (baselineRank > 0 && currentRank > 0 && change !== 0) {
+    return `${signal}，从第 ${baselineRank} 名${change > 0 ? "上升" : "下降"}到第 ${currentRank} 名，${change > 0 ? "上升" : "下降"} ${Math.abs(change)} 名`;
+  }
+  return currentRank > 0 ? `${signal}，当前第 ${currentRank} 名` : signal;
+};
+const trendSecondaryMetric = (trend) => {
+  if (trend?.signal !== "new") return "";
+  const currentRank = Number(trend?.currentRank || 0);
+  return currentRank > 0 ? `#${currentRank}` : "";
+};
+const laneTrendIndicator = (_lane, item) => {
+  const trend = userVisibleTrend(item);
+  if (!trend?.signal) return null;
+  const label = trendVisualLabel(trend);
+  return label ? { signal: trend.signal, label, ariaLabel: trendAccessibleLabel(trend) } : null;
+};
+
+const SPOTLIGHT_MIN_SCORE = 78;
+const SPOTLIGHT_BADGE_WEIGHTS = {
+  explosive: 100,
+  "first-release": 98,
+  boiling: 92,
+  "hot-live": 88,
+  new: 76,
+  hot: 64,
+};
+const spotlightBadge = (item) => {
+  const badges = normalizeRankingBadges(item?.badges, 8);
+  let best = null;
+  for (const badge of badges) {
+    const label = String(badge?.label || "").trim();
+    const labelScore = /独家/.test(label) ? 99
+      : /首发/.test(label) ? 98
+        : /爆/.test(label) ? 100
+          : /沸/.test(label) ? 92
+            : /^热$|热榜|热议/.test(label) ? 64
+              : /^新$|新上榜/.test(label) ? 76
+                : 0;
+    const score = Math.max(labelScore, SPOTLIGHT_BADGE_WEIGHTS[badge.kind] || 0);
+    if (score > Number(best?.score || 0)) best = { score, label: label || badge.kind };
+  }
+  return best;
+};
+const spotlightMeta = (item) => {
+  const trend = userVisibleTrend(item);
+  if (trend?.signal === "falling") return null;
+
+  const badge = spotlightBadge(item);
+  const change = trendRankChange(trend);
+  let trendCandidate = null;
+  if (trend?.signal === "breakthrough" && change > 0) {
+    trendCandidate = { score: 96 + Math.min(change, 30) / 10, label: ui.value.trendSignals?.breakthrough || "进入前十" };
+  } else if (trend?.signal === "rising" && change >= 5) {
+    trendCandidate = { score: 82 + Math.min(change, 30) / 10, label: "快速上升" };
+  } else if (trend?.signal === "new") {
+    trendCandidate = { score: 78, label: ui.value.trendSignals?.new || "新上榜" };
+  }
+
+  const candidate = Number(badge?.score || 0) >= Number(trendCandidate?.score || 0) ? badge : trendCandidate;
+  if (!candidate || candidate.score < SPOTLIGHT_MIN_SCORE) return null;
+  const metric = trend?.signal
+    ? (trend.signal === "new" ? trendSecondaryMetric(trend) : trendVisualLabel(trend))
+    : "";
+  const trendA11y = trendAccessibleLabel(trend);
+  return {
+    score: candidate.score,
+    label: candidate.label,
+    metric,
+    ariaLabel: [candidate.label, item.title, sourceLabel(item), trendA11y].filter(Boolean).join("，"),
+  };
+};
+const rankClass = (rank) => ({
+  "is-one": rank === 1,
+  "is-two": rank === 2,
+  "is-three": rank === 3,
+  "is-top10": rank > 3 && rank <= 10,
+});
+const supportingConfirmations = (item) =>
+  confirmations(item).slice(1).filter((entry) => entry?.source);
+const evidenceRoleLabel = (entry) =>
+  entry?.role === "corroboration"
+    ? ui.value.corroboration
+    : entry?.role === "support"
+      ? ui.value.support
+      : "";
+const confirmationTitle = (item) =>
+  confirmations(item)
+    .map((entry) => evidenceLabel(entry, { includeRole: true }))
+    .join(" + ");
+const coreEvidenceKeys = (item) =>
+  confirmations(item)
+    .filter((entry) => entry.role === "primary" || entry.role === "support")
+    .map(evidenceKey);
+const textFor = (item) =>
+  `${item.title || ""} ${item.desc || ""} ${confirmationTitle(item)}`.toLowerCase();
+const isResonanceItem = (item) => eventSourceCount(item) > 1;
+const effectiveResonanceSourceCount = (item) => eventSourceCount(item);
+const resonanceMatchCount = computed(
+  () => data.value.filter((item) => isResonanceItem(item)).length,
+);
+const requestedWorkspaceColumns = computed(() =>
+  store.compactMode
+    ? Number(store.homeCompactColumns || 5)
+    : Number(store.homeCardColumns || 4),
+);
+const effectiveWorkspaceColumns = computed(() =>
+  resolveResponsiveCardColumns({
+    width: chiguaWidth.value,
+    requested: requestedWorkspaceColumns.value,
+    compact: store.compactMode,
+  }),
+);
+const featuredLaneColumns = computed(() => {
+  const columns = Math.min(4, effectiveWorkspaceColumns.value);
+  return columns === 3 ? 2 : columns;
+});
+
+const categoryOptions = computed(() => [
+  { value: "all", label: ui.value.all, count: data.value.length },
+  ...CATEGORY_ORDER.map((category) => ({
+    value: category,
+    label: categoryLabel(category),
+    count: data.value.filter((item) => eventCategory(item) === category).length,
+  })).filter((item) => item.count > 0),
+]);
+const focusOptions = computed(() => [
+  { value: "all", label: ui.value.focusAll, count: data.value.length },
+  { value: "fresh", label: ui.value.featured.fresh, count: data.value.filter(isFreshEvent).length },
+  { value: "rising", label: ui.value.featured.rising, count: data.value.filter(isRisingEvent).length },
+  { value: "resonance", label: ui.value.featured.resonance, count: data.value.filter(isResonanceItem).length },
+  { value: "hot", label: ui.value.featured.hot, count: data.value.filter(isHotEvent).length },
+].filter((item) => item.value === "all" || item.count > 0));
+const sourceOptions = computed(() => {
+  const evidence = new Map();
+  for (const item of data.value) {
+    const seen = new Set();
+    for (const entry of confirmations(item)) {
+      if (entry.role !== "primary" && entry.role !== "support") continue;
+      const key = evidenceKey(entry);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const current = evidence.get(key) || { entry, count: 0 };
+      current.count += 1;
+      evidence.set(key, current);
+    }
+  }
+  const options = [...evidence.entries()]
+    .map(([value, current]) => ({
+      value,
+      label: evidenceLabel(current.entry),
+      count: current.count,
+      status: "ok",
+      detail:
+        current.entry.role === "support" ? ui.value.support : current.entry.variantLabel || "",
+    }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  return [
+    {
+      value: "all",
+      label: ui.value.all,
+      count: data.value.length,
+      status: failedSourceCount.value ? "partial" : "ok",
+      detail: failedSourceCount.value ? copy.value.degraded : formatUpdated(result.value?.updateTime),
+    },
+    ...options,
+  ];
+});
+const sortOptions = computed(() => [
+  { value: "smart", label: ui.value.smart },
+  { value: "resonance", label: ui.value.resonanceFirst },
+  { value: "latest", label: ui.value.latest },
+]);
+const pageSizeOptions = computed(() =>
+  PAGE_SIZE_VALUES.map((value) => ({ value, label: String(value) })),
+);
+
+const matchesFocus = (item, focus = activeFocus.value) => {
+  if (focus === "fresh") return isFreshEvent(item);
+  if (focus === "rising") return isRisingEvent(item);
+  if (focus === "resonance") return isResonanceItem(item);
+  if (focus === "hot") return isHotEvent(item);
+  return true;
+};
+const setCategory = (category) => {
+  activeCategory.value = category || "all";
+  currentPage.value = 1;
+  nextTick(() => eventListRef.value?.scrollIntoView({ behavior: "smooth", block: "start" }));
+};
+const filteredData = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase();
+  const rows = data.value.filter((item) => {
+    if (query && !textFor(item).includes(query)) return false;
+    if (
+      activeCategory.value !== "all" &&
+      eventCategory(item) !== activeCategory.value
+    )
+      return false;
+    if (!matchesFocus(item)) return false;
+    if (
+      activeSource.value !== "all" &&
+      !coreEvidenceKeys(item).includes(activeSource.value)
+    )
+      return false;
+    if (activeConfirmed.value && !isResonanceItem(item)) return false;
+    return true;
+  });
+  return rows.slice().sort((a, b) => {
+    if (activeSort.value === "resonance")
+      return (
+        effectiveResonanceSourceCount(b) - effectiveResonanceSourceCount(a) ||
+        eventScore(b) - eventScore(a)
+      );
+    if (activeSort.value === "latest")
+      return (
+        Number(b.timestamp || 0) - Number(a.timestamp || 0) ||
+        eventScore(b) - eventScore(a)
+      );
+    return (
+      eventScore(b) - eventScore(a) ||
+      effectiveResonanceSourceCount(b) - effectiveResonanceSourceCount(a)
+    );
+  });
+});
+
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(filteredData.value.length / pageSize.value)),
+);
+const pageStart = computed(() => (currentPage.value - 1) * pageSize.value);
+const pagedData = computed(() =>
+  filteredData.value.slice(pageStart.value, pageStart.value + pageSize.value),
+);
+const pageRangeText = computed(() => {
+  if (!filteredData.value.length) return "0 / 0";
+  const start = pageStart.value + 1;
+  const end = Math.min(pageStart.value + pageSize.value, filteredData.value.length);
+  return `${start}–${end} / ${filteredData.value.length}`;
+});
+const handlePageChange = () => {
+  nextTick(() => {
+    eventListRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+};
+
+const FEATURED_LANE_INITIAL_RENDER = 8;
+const FEATURED_LANE_BATCH = 5;
+const FEATURED_LANE_KEYS = ["fresh", "rising", "resonance", "hot"];
+const FEATURED_LANE_ORDER_STORAGE = "dailyhot:chigua-featured-lane-order";
+const readFeaturedLaneOrder = () => {
+  if (typeof localStorage === "undefined") return FEATURED_LANE_KEYS.slice();
+  try {
+    const saved = JSON.parse(localStorage.getItem(FEATURED_LANE_ORDER_STORAGE) || "[]");
+    const valid = Array.isArray(saved) ? saved.filter((key) => FEATURED_LANE_KEYS.includes(key)) : [];
+    return [...valid, ...FEATURED_LANE_KEYS.filter((key) => !valid.includes(key))];
+  } catch {
+    return FEATURED_LANE_KEYS.slice();
+  }
+};
+const featuredLaneOrder = ref(readFeaturedLaneOrder());
+const featuredLaneRenderLimits = reactive(
+  Object.fromEntries(FEATURED_LANE_KEYS.map((key) => [key, FEATURED_LANE_INITIAL_RENDER])),
+);
+const resetFeaturedLaneRenderLimits = () => {
+  FEATURED_LANE_KEYS.forEach((key) => {
+    featuredLaneRenderLimits[key] = FEATURED_LANE_INITIAL_RENDER;
+  });
+};
+const loadMoreFeaturedLane = (lane) => {
+  const key = lane?.key;
+  if (!FEATURED_LANE_KEYS.includes(key)) return;
+  const total = Number(lane?.count || 0);
+  featuredLaneRenderLimits[key] = Math.min(
+    total || featuredLaneRenderLimits[key] + FEATURED_LANE_BATCH,
+    featuredLaneRenderLimits[key] + FEATURED_LANE_BATCH,
+  );
+};
+const featuredLanePredicate = (key) => ({
+  fresh: isFreshEvent,
+  rising: isRisingEvent,
+  resonance: isResonanceItem,
+  hot: isHotEvent,
+}[key] || (() => false));
+const sortFeaturedLaneItems = (key, items) =>
+  items.slice().sort((a, b) => {
+    if (key === "fresh")
+      return eventWaveStartedAt(b) - eventWaveStartedAt(a) || eventScore(b) - eventScore(a);
+    if (key === "rising")
+      return Math.abs(Number(eventTrend(b)?.rankDelta || 0)) - Math.abs(Number(eventTrend(a)?.rankDelta || 0)) || eventScore(b) - eventScore(a);
+    if (key === "resonance")
+      return effectiveResonanceSourceCount(b) - effectiveResonanceSourceCount(a) || eventScore(b) - eventScore(a);
+    if (key === "hot")
+      return eventBestRank(a) - eventBestRank(b) || eventScore(b) - eventScore(a);
+    return eventScore(b) - eventScore(a);
+  });
+const spotlightLaneAffinity = (laneKey, item) => {
+  const signal = userVisibleTrend(item)?.signal;
+  if (signal === "new" && laneKey === "fresh") return 40;
+  if (["rising", "breakthrough"].includes(signal) && laneKey === "rising") return 40;
+  if (signal === "breakthrough" && laneKey === "hot") return 32;
+  if (laneKey === "hot") return 18;
+  if (laneKey === "resonance") return 14;
+  if (laneKey === "fresh") return 10;
+  if (laneKey === "rising") return 8;
+  return 0;
+};
+const buildFeaturedLane = (key, sourceData) => {
+  const allItems = sortFeaturedLaneItems(
+    key,
+    sourceData.filter(featuredLanePredicate(key)),
+  );
+  const limit = featuredLaneRenderLimits[key] || FEATURED_LANE_INITIAL_RENDER;
+  const spotlightCandidates = allItems
+    .slice(0, limit)
+    .map((item, index) => ({
+      item,
+      index,
+      key: `${key}-${index}`,
+      meta: spotlightMeta(item),
+    }))
+    .filter((candidate) => candidate.index >= 3 && candidate.meta)
+    .sort((left, right) =>
+      right.meta.score - left.meta.score
+      || eventScore(right.item) - eventScore(left.item)
+      || left.index - right.index);
+  return {
+    key,
+    label: ui.value.featured[key],
+    subtitle: ui.value.featuredSubtitles?.[key] || "",
+    hideSubtitle: true,
+    visibleCount: 3,
+    count: allItems.length,
+    scrollable: true,
+    loadMoreLabel: ui.value.scrollMore,
+    actionLabel: viewAllLabel.value,
+    actionPlacement: "header",
+    filter: { focus: key },
+    _allItems: allItems,
+    _renderLimit: limit,
+    _spotlightCandidates: spotlightCandidates,
+  };
+};
+const featuredGroups = computed(() => {
+  const groups = FEATURED_LANE_KEYS
+    .map((key) => buildFeaturedLane(key, data.value))
+    .filter((group) => group.count > 0);
+  const byKey = new Map(groups.map((group) => [group.key, group]));
+  const ordered = featuredLaneOrder.value.map((key) => byKey.get(key)).filter(Boolean);
+
+  const globalSpotlight = ordered
+    .flatMap((group) => group._spotlightCandidates.map((candidate) => ({
+      ...candidate,
+      laneKey: group.key,
+      affinity: spotlightLaneAffinity(group.key, candidate.item),
+    })))
+    .sort((left, right) =>
+      right.meta.score - left.meta.score
+      || right.affinity - left.affinity
+      || eventScore(right.item) - eventScore(left.item)
+      || left.index - right.index)[0] || null;
+
+  return ordered.map((group) => {
+    const stickyCandidates = globalSpotlight?.laneKey === group.key ? [globalSpotlight] : [];
+    return {
+      key: group.key,
+      label: group.label,
+      subtitle: group.subtitle,
+      hideSubtitle: group.hideSubtitle,
+      visibleCount: group.visibleCount,
+      count: group.count,
+      items: group._allItems.slice(0, group._renderLimit),
+      hasMore: group._allItems.length > group._renderLimit,
+      stickyCandidates,
+      scrollable: group.scrollable,
+      loadMoreLabel: group.loadMoreLabel,
+      actionLabel: group.actionLabel,
+      actionPlacement: group.actionPlacement,
+      filter: group.filter,
+    };
+  });
+});
+const saveFeaturedLaneOrder = (ordered = []) => {
+  const keys = ordered.map((lane) => lane?.key).filter((key) => FEATURED_LANE_KEYS.includes(key));
+  featuredLaneOrder.value = [...keys, ...FEATURED_LANE_KEYS.filter((key) => !keys.includes(key))];
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(FEATURED_LANE_ORDER_STORAGE, JSON.stringify(featuredLaneOrder.value));
+  }
+};
+const selectFeaturedLane = (lane) => {
+  activeSource.value = "all";
+  activeSort.value = lane?.key === "resonance" ? "resonance" : "smart";
+  activeCategory.value = "all";
+  activeFocus.value = lane?.filter?.focus || "all";
+  activeConfirmed.value = false;
+  currentPage.value = 1;
+  nextTick(() =>
+    eventListRef.value?.scrollIntoView({ behavior: "smooth", block: "start" }),
+  );
+};
+
+const hasFilters = computed(() =>
+  Boolean(
+    searchQuery.value ||
+    activeCategory.value !== "all" ||
+    activeFocus.value !== "all" ||
+    activeSource.value !== "all" ||
+    activeSort.value !== "smart" ||
+    activeConfirmed.value,
+  ),
+);
+const resetFilters = () => {
+  searchQuery.value = "";
+  activeCategory.value = "all";
+  activeFocus.value = "all";
+  activeSource.value = "all";
+  activeSort.value = "smart";
+  activeConfirmed.value = false;
+  currentPage.value = 1;
+};
+
+const formatHot = (value) => {
+  const num = Number(value || 0);
+  if (!num) return "";
+  if (num >= 100000000)
+    return `${(num / 100000000).toFixed(1).replace(/\.0$/, "")}亿`;
+  if (num >= 10000)
+    return `${(num / 10000).toFixed(num >= 100000 ? 0 : 1).replace(/\.0$/, "")}万`;
+  return new Intl.NumberFormat(locale.value).format(num);
+};
+const formatUpdated = (value) =>
+  value
+    ? new Intl.DateTimeFormat(locale.value, {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(value))
+    : "";
+const formatFullTime = (value) =>
+  new Date(Number(value)).toLocaleString(locale.value);
+const formatFreshness = (value) => {
+  const diff = Date.now() - Number(value || 0);
+  if (!Number.isFinite(diff) || diff < 0) return "";
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return ui.value.latest;
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return new Intl.DateTimeFormat(locale.value, {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(Number(value)));
+};
+const coverSrc = (cover) => getCoverCompactSrc(cover);
+const coverPreviewSrc = (cover) => getCoverDisplaySrc(cover);
+const coverFullSrc = (cover) => getCoverFullSrc(cover);
+const hasUsableCover = (item) => Boolean(item?.cover && !coverImageErrors[item.cover]);
+const markCoverError = (cover) => {
+  if (!cover) return;
+  coverImageErrors[cover] = true;
+  if (lanePreviewItem.value?.cover === cover) hideLanePreview();
+};
+const onLogoError = (event) => {
+  if (event?.target) event.target.src = getSourceLogoFallback();
+};
+
+const getLanePreviewMediaLayout = (cover) => {
+  if (lanePreviewMediaCache.has(cover)) return lanePreviewMediaCache.get(cover);
+  const mediaPromise = new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const layout = resolveCoverPreviewLayout(image.naturalWidth, image.naturalHeight);
+      if (!layout) {
+        reject(new Error("Invalid lane preview image layout"));
+        return;
+      }
+      resolve(layout);
+    };
+    image.onerror = reject;
+    image.referrerPolicy = COVER_REFERRER_POLICY;
+    image.src = coverPreviewSrc(cover);
+  });
+  lanePreviewMediaCache.set(cover, mediaPromise);
+  return mediaPromise;
+};
+const cancelLanePreviewClose = () => {
+  if (!lanePreviewCloseTimer) return;
+  window.clearTimeout(lanePreviewCloseTimer);
+  lanePreviewCloseTimer = null;
+};
+const scheduleLanePreviewClose = () => {
+  cancelLanePreviewClose();
+  lanePreviewCloseTimer = window.setTimeout(() => {
+    lanePreviewCloseTimer = null;
+    hideLanePreview();
+  }, FLOATING_COVER_PREVIEW_CLOSE_DELAY);
+};
+const openLaneFullImagePreview = (cover) => {
+  if (!cover) return;
+  cancelLanePreviewClose();
+  laneImagePreviewSrc.value = coverFullSrc(cover);
+  nextTick(() => laneImagePreviewRef.value?.click?.());
+};
+const bindLanePreviewViewportListeners = () => {
+  if (lanePreviewViewportListenersBound) return;
+  window.addEventListener("scroll", hideLanePreview, true);
+  window.addEventListener("blur", hideLanePreview);
+  lanePreviewViewportListenersBound = true;
+};
+const unbindLanePreviewViewportListeners = () => {
+  if (!lanePreviewViewportListenersBound) return;
+  window.removeEventListener("scroll", hideLanePreview, true);
+  window.removeEventListener("blur", hideLanePreview);
+  lanePreviewViewportListenersBound = false;
+};
+const hideLanePreview = () => {
+  if (lanePreviewOpenTimer) {
+    window.clearTimeout(lanePreviewOpenTimer);
+    lanePreviewOpenTimer = null;
+  }
+  if (lanePreviewCloseTimer) {
+    window.clearTimeout(lanePreviewCloseTimer);
+    lanePreviewCloseTimer = null;
+  }
+  lanePreviewRequestId += 1;
+  lanePreviewItem.value = null;
+  lanePreviewStyle.value = {};
+  unbindLanePreviewViewportListeners();
+};
+const positionLanePreview = (item, target, mediaLayout) => {
+  if (!target?.isConnected || !mediaLayout?.mediaOnly) return false;
+  const targetRect = target.getBoundingClientRect();
+  const lane = target.closest?.(".topic-lane");
+  const containerRect = lane?.getBoundingClientRect?.();
+  const textRects = Array.from(lane?.querySelectorAll?.(".event-lane-copy") || []).map((node) =>
+    node.getBoundingClientRect(),
+  );
+  const previewWidth = mediaLayout.mediaOnly.width;
+  const previewHeight = mediaLayout.mediaOnly.height;
+  const position = resolveFloatingCoverPreviewPosition({
+    targetRect,
+    containerRect,
+    textRects,
+    previewWidth,
+    previewHeight,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+  if (!position) return false;
+  lanePreviewItem.value = item;
+  lanePreviewStyle.value = {
+    left: `${position.left}px`,
+    top: `${position.top}px`,
+    width: `${previewWidth}px`,
+    height: `${previewHeight}px`,
+  };
+  bindLanePreviewViewportListeners();
+  return true;
+};
+const openLanePreview = async (item, target, requestId) => {
+  try {
+    const mediaLayout = await getLanePreviewMediaLayout(item.cover);
+    if (requestId !== lanePreviewRequestId || !target?.isConnected) return;
+    if (!positionLanePreview(item, target, mediaLayout)) hideLanePreview();
+  } catch {
+    markCoverError(item.cover);
+  }
+};
+const showLanePreview = (item, event) => {
+  if (typeof window === "undefined" || window.innerWidth <= 680 || !event?.currentTarget || !hasUsableCover(item)) return;
+  cancelLanePreviewClose();
+  if (lanePreviewOpenTimer) window.clearTimeout(lanePreviewOpenTimer);
+  const target = event.currentTarget;
+  const requestId = ++lanePreviewRequestId;
+  lanePreviewOpenTimer = window.setTimeout(() => {
+    lanePreviewOpenTimer = null;
+    void openLanePreview(item, target, requestId);
+  }, FLOATING_COVER_PREVIEW_OPEN_DELAY);
+};
+const handleLanePreviewCoverError = (cover) => markCoverError(cover);
+
+const syncEventCoverGeometry = (image) => {
+  if (!image?.isConnected) return;
+  applyExpandableCoverGeometry({
+    image,
+    media: image.closest?.(".event-media"),
+    preview: image.closest?.(".event-cover.n-image"),
+    row: image.closest?.(".event-item"),
+    isMixed: true,
+  });
+};
+const handleEventCoverImageLoad = (event) => {
+  const image = event?.currentTarget;
+  if (!image) return;
+  window.requestAnimationFrame?.(() => syncEventCoverGeometry(image));
+};
+const prepareEventCoverHover = (event) => {
+  const image = event?.currentTarget?.querySelector?.(".event-cover img");
+  if (image?.complete) syncEventCoverGeometry(image);
+};
+const pendingEventCoverGeometryImages = new WeakSet();
+const markBrokenEventCoverImage = (image) => {
+  const cover = image?.dataset?.coverSource || "";
+  pendingEventCoverGeometryImages.delete(image);
+  if (cover) markCoverError(cover);
+};
+const ensureEventCoverGeometry = (image) => {
+  if (!image) return;
+  if (image.complete) {
+    if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+      pendingEventCoverGeometryImages.delete(image);
+      syncEventCoverGeometry(image);
+    } else {
+      markBrokenEventCoverImage(image);
+    }
+    return;
+  }
+  if (pendingEventCoverGeometryImages.has(image)) return;
+  pendingEventCoverGeometryImages.add(image);
+  image.addEventListener?.("load", () => {
+    pendingEventCoverGeometryImages.delete(image);
+    syncEventCoverGeometry(image);
+  }, { once: true });
+  image.addEventListener?.("error", () => markBrokenEventCoverImage(image), { once: true });
+};
+const syncReadyEventCoverGeometries = () => {
+  eventListRef.value?.querySelectorAll?.(".event-cover img").forEach(ensureEventCoverGeometry);
+};
+const queueEventCoverGeometrySync = () => {
+  if (typeof window === "undefined") return;
+  nextTick(() => window.requestAnimationFrame?.(syncReadyEventCoverGeometries));
+};
+let eventCoverResizeFrame = 0;
+const handleEventCoverViewportResize = () => {
+  if (eventCoverResizeFrame) window.cancelAnimationFrame?.(eventCoverResizeFrame);
+  eventCoverResizeFrame = window.requestAnimationFrame?.(() => {
+    eventCoverResizeFrame = 0;
+    hideLanePreview();
+    queueEventCoverGeometrySync();
+  }) || 0;
+};
+const handleEventCoverPreviewKeydown = (event) => {
+  if (event?.key !== "Enter" && event?.key !== " ") return;
+  event.preventDefault();
+  event.currentTarget?.click?.();
+};
+
+let querySyncTimer;
+const syncQuery = () => {
+  clearTimeout(querySyncTimer);
+  querySyncTimer = setTimeout(() => {
+    const query = {};
+    if (searchQuery.value.trim()) query.q = searchQuery.value.trim();
+    if (activeCategory.value !== "all") query.category = activeCategory.value;
+    if (activeFocus.value !== "all") query.focus = activeFocus.value;
+    if (activeSource.value !== "all") query.source = activeSource.value;
+    if (activeSort.value !== "smart") query.sort = activeSort.value;
+    if (activeConfirmed.value) query.confirmed = "1";
+    if (currentPage.value > 1) query.page = String(currentPage.value);
+    if (pageSize.value !== 30) query.size = String(pageSize.value);
+    const params = new URLSearchParams(query);
+    const search = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${route.path}${search ? `?${search}` : ""}`,
+    );
+  }, 180);
+};
+watch(
+  [
+    searchQuery,
+    activeCategory,
+    activeFocus,
+    activeSource,
+    activeSort,
+    activeConfirmed,
+    currentPage,
+    pageSize,
+  ],
+  syncQuery,
+);
+watch(
+  [searchQuery, activeCategory, activeFocus, activeSource, activeSort, activeConfirmed, pageSize],
+  () => {
+    currentPage.value = 1;
+  },
+);
+watch(pageCount, (count) => {
+  if (currentPage.value > count) currentPage.value = count;
+});
+watch(
+  () => pagedData.value.map((item) => `${item.id}:${item.cover || ""}`).join("|"),
+  queueEventCoverGeometrySync,
+  { flush: "post" },
+);
+watch(categoryOptions, (options) => {
+  if (
+    activeCategory.value !== "all" &&
+    !options.some((item) => item.value === activeCategory.value)
+  )
+    activeCategory.value = "all";
+});
+watch(focusOptions, (options) => {
+  if (
+    activeFocus.value !== "all" &&
+    !options.some((item) => item.value === activeFocus.value)
+  )
+    activeFocus.value = "all";
+});
+watch(sourceOptions, (options) => {
+  if (
+    activeSource.value !== "all" &&
+    !options.some((item) => item.value === activeSource.value)
+  )
+    activeSource.value = "all";
+});
+
+const normalizeTopicFeed = (feed) => {
+  const targets = Array.isArray(feed?.coverage?.targets) ? feed.coverage.targets : [];
+  const events = Array.isArray(feed?.events) ? feed.events : [];
+  const groupedFeeds = new Map();
+  for (const target of targets) {
+    const key = String(target?.sourceKey || "").trim();
+    if (!key) continue;
+    const current = groupedFeeds.get(key) || {
+      source: key,
+      label: target.sourceName || key,
+      status: "ok",
+      count: 0,
+      variants: [],
+    };
+    current.count += Number(target.itemCount || 0);
+    if (target.variantLabel && !current.variants.includes(target.variantLabel)) current.variants.push(target.variantLabel);
+    if (target.status !== "active") current.status = target.status || "empty";
+    groupedFeeds.set(key, current);
+  }
+  const data = events.map((event, index) => {
+    const sources = Array.isArray(event.sources) ? event.sources : [];
+    const primary = sources[0] || {};
+    const mediaSource = sources.find((source) => source?.cover) || primary;
+    const desc = pickTopicSummary({ event, sources, primary, mediaSource });
+    const sourceKeys = [...new Set(sources.map((source) => source.sourceKey).filter(Boolean))];
+    const confirmations = sources.map((source) => ({
+      source: source.sourceKey,
+      sourceLabel: source.sourceName || source.sourceKey,
+      variant: source.variant,
+      variantLabel: source.variantLabel,
+      role: source.role,
+      rank: source.rank,
+      title: source.title,
+      url: source.url,
+      mobileUrl: source.mobileUrl,
+      summary: source.summary,
+      author: source.author,
+      hot: source.hot,
+      badges: source.badges || [],
+      lastSeenAt: source.lastSeenAt,
+      currentEntryType: source.currentEntryType,
+      rankDelta: source.rankDelta,
+    }));
+    return {
+      id: event.eventKey || `chigua-${index + 1}`,
+      title: event.title,
+      url: primary.url || "#",
+      mobileUrl: primary.mobileUrl || primary.url || "#",
+      cover: mediaSource.cover || "",
+      desc,
+      hot: primary.hot,
+      timestamp: Date.parse(event.lastSeenAt || feed.generatedAt || "") || Date.now(),
+      badges: primary.badges || [],
+      extra: {
+        hotEvent: {
+          category: event.subtype || "other",
+          score: Number(event.score || 0),
+          sourceCount: Number(event.sourceCount || sourceKeys.length || 1),
+          sources: sourceKeys,
+          confirmations,
+          bestRank: event.bestRank,
+          currentWaveStartedAt: event.currentWaveStartedAt,
+          trend: event.trend || null,
+        },
+      },
+    };
+  });
+  return {
+    code: 200,
+    name: "chigua-topic",
+    title: feed?.topic?.label || "吃瓜",
+    type: "娱乐热点追踪",
+    description: feed?.topic?.description || "",
+    total: data.length,
+    updateTime: feed?.generatedAt || new Date().toISOString(),
+    dynamics: feed?.dynamics || null,
+    data,
+    dashboard: {
+      sourceCount: targets.filter(
+        (target) =>
+          target.status === "active" &&
+          (target.role === "primary" || target.role === "support"),
+      ).length,
+      failedSourceCount: targets.filter((target) => target.status === "failed").length,
+      total: data.length,
+      multiSourceCount: Number(feed?.coverage?.multiSourceEventCount || 0),
+      feeds: [...groupedFeeds.values()],
+    },
+  };
+};
+
+const loadTopic = async (force = false) => {
+  if (force) resetFeaturedLaneRenderLimits();
+  loading.value = true;
+  loadError.value = "";
+  try {
+    const feed = await getTopicFeed("chigua", { limit: 160, maxRank: 80, minSources: 1, force });
+    result.value = normalizeTopicFeed(feed);
+  } catch (error) {
+    loadError.value = error?.message || "Failed to load";
+  } finally {
+    loading.value = false;
+  }
+};
+const handleGlobalDataRefresh = (event) => {
+  void loadTopic(Boolean(event?.detail?.force));
+};
+onMounted(() => {
+  const updateChiguaWidth = () => {
+    if (chiguaTopicRef.value) chiguaWidth.value = chiguaTopicRef.value.getBoundingClientRect().width;
+  };
+  updateChiguaWidth();
+  if (typeof ResizeObserver !== "undefined" && chiguaTopicRef.value) {
+    chiguaResizeObserver = new ResizeObserver(updateChiguaWidth);
+    chiguaResizeObserver.observe(chiguaTopicRef.value);
+  } else {
+    window.addEventListener("resize", updateChiguaWidth);
+    chiguaResizeObserver = { disconnect: () => window.removeEventListener("resize", updateChiguaWidth) };
+  }
+  window.addEventListener(DATA_REFRESH_EVENT, handleGlobalDataRefresh);
+  window.addEventListener("resize", handleEventCoverViewportResize, { passive: true });
+  queueEventCoverGeometrySync();
+  void loadTopic(false);
+});
+onActivated(() => {
+  window.removeEventListener(DATA_REFRESH_EVENT, handleGlobalDataRefresh);
+  window.addEventListener(DATA_REFRESH_EVENT, handleGlobalDataRefresh);
+  queueEventCoverGeometrySync();
+});
+onDeactivated(() => {
+  hideLanePreview();
+  window.removeEventListener(DATA_REFRESH_EVENT, handleGlobalDataRefresh);
+});
+onBeforeUnmount(() => {
+  chiguaResizeObserver?.disconnect?.();
+  chiguaResizeObserver = null;
+  clearTimeout(querySyncTimer);
+  hideLanePreview();
+  if (eventCoverResizeFrame) window.cancelAnimationFrame?.(eventCoverResizeFrame);
+  window.removeEventListener("resize", handleEventCoverViewportResize);
+  window.removeEventListener(DATA_REFRESH_EVENT, handleGlobalDataRefresh);
+});
+watch(locale, () => void loadTopic(false));
+</script>
+
+<style scoped>
+.chigua-topic {
+  display: grid;
+  gap: 14px;
+  width: min(100%, var(--site-container-width, 1400px));
+  margin: 0 auto;
+}
+.topic-section {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.18));
+  border-radius: 16px;
+  background: var(--n-color, #fff);
+}
+.topic-alert {
+  border-radius: 12px;
+}
+.topic-workspace-header {
+  --radar-cyan: #168a84;
+  --radar-violet: #705ac8;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 11px 16px;
+  margin-bottom: 0;
+  padding: 13px 15px 11px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--radar-cyan) 18%, var(--n-border-color));
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 7% -15%, color-mix(in srgb, var(--radar-cyan) 12%, transparent), transparent 34%),
+    radial-gradient(circle at 92% 5%, color-mix(in srgb, var(--radar-violet) 8%, transparent), transparent 32%),
+    color-mix(in srgb, var(--n-color) 97%, var(--radar-cyan) 3%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--n-color) 70%, transparent);
+}
+.topic-workspace-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(108deg, transparent 0 67%, color-mix(in srgb, var(--radar-cyan) 4%, transparent) 67% 68%, transparent 68%);
+}
+.radar-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.radar-mark {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  color: var(--radar-cyan);
+}
+.radar-watermelon {
+  position: absolute;
+  right: -3px;
+  bottom: -1px;
+  width: 25px !important;
+  height: 16px !important;
+  overflow: visible;
+  filter: drop-shadow(0 2px 4px color-mix(in srgb, #dc4969 18%, transparent));
+}
+.radar-mark { position: relative; }
+.radar-watermelon__rind { fill: #2f9f68; stroke: #217b51 !important; stroke-width: .6 !important; opacity: .98 !important; }
+.radar-watermelon__flesh { fill: #e95872; stroke: none !important; opacity: .98 !important; }
+.radar-watermelon circle { fill: #53323a !important; stroke: none !important; opacity: .9 !important; }
+.radar-mark svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: .75;
+  opacity: .86;
+}
+.radar-mark svg circle:not(.radar-mark__ping),
+.radar-mark svg > path:not(.radar-mark__beam) { opacity: .38; }
+.radar-mark__beam { stroke: var(--radar-violet); stroke-width: 1.4; }
+.radar-mark__ping {
+  fill: var(--radar-violet);
+  stroke: color-mix(in srgb, var(--radar-violet) 44%, transparent);
+  stroke-width: 5;
+  transform-origin: 45px 23px;
+  animation: radar-ping 1.8s ease-out infinite;
+}
+@keyframes radar-ping {
+  0%, 38% { opacity: .95; transform: scale(.78); }
+  100% { opacity: .28; transform: scale(1.28); }
+}
+.radar-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--radar-cyan);
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: .12em;
+}
+.topic-workspace-title { min-width: 0; }
+.topic-workspace-title h1 {
+  margin: 0;
+  font-size: clamp(20px, 2vw, 26px);
+  line-height: 1.18;
+  letter-spacing: -.015em;
+}
+.topic-workspace-title p {
+  max-width: 820px;
+  margin: 4px 0 0;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.radar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.radar-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--radar-cyan) 24%, var(--n-border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--radar-cyan) 6%, var(--n-color));
+  color: var(--radar-cyan);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 680;
+  cursor: pointer;
+}
+.radar-refresh:disabled { cursor: default; opacity: .62; }
+.radar-refresh svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.radar-refresh.is-loading svg { animation: radar-refresh-spin .8s linear infinite; }
+@keyframes radar-refresh-spin { to { transform: rotate(360deg); } }
+.hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hero-stats > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--n-border-color) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--n-color) 82%, transparent);
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hero-stats > span strong {
+  color: var(--n-text-color);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .radar-mark__ping { animation: none; }
+}
+.event-toolbar {
+  margin-bottom: 9px;
+}
+.toolbar-primary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.toolbar-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.toolbar-title h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.toolbar-title span {
+  color: var(--n-text-color-3);
+  font-size: 12px;
+}
+.topic-search {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex: 0 1 220px;
+  width: clamp(170px, 18vw, 230px);
+  min-width: 150px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 7px;
+}
+.topic-search:focus-within {
+  border-color: var(--n-text-color-3);
+}
+.topic-search svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  color: var(--n-text-color-3);
+}
+.topic-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--n-text-color);
+  font: inherit;
+  font-size: 12px;
+}
+.toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.toolbar-filters :deep(.compact-filter) {
+  max-width: 150px;
+}
+.toolbar-filters :deep(.compact-filter:nth-child(2)) {
+  max-width: 180px;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
+}
+.result-count {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.result-count strong {
+  font-size: 16px;
+}
+.result-count span {
+  color: var(--n-text-color-3);
+  font-size: 12px;
+}
+.resonance-toggle,
+.reset-filter {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--n-border-color);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--n-text-color-2);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.resonance-toggle:hover,
+.reset-filter:hover,
+.resonance-toggle.active {
+  border-color: currentColor;
+  color: var(--n-text-color);
+  background: var(--n-action-color);
+}
+@media (max-width: 1100px) and (min-width: 721px) {
+  .toolbar-primary {
+    flex-wrap: wrap;
+  }
+  .toolbar-filters {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+.chigua-topic :deep(.topic-lane-grid) {
+  grid-template-columns: repeat(var(--chigua-featured-columns, 4), minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.topic-featured-workspace {
+  --chigua-featured-lane-height: 314px;
+  min-width: 0;
+}
+.chigua-topic.is-compact .topic-featured-workspace { --chigua-featured-lane-height: 300px; }
+.chigua-topic :deep(.topic-lane) {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--n-color);
+}
+.chigua-topic :deep(.topic-lane__head) {
+  box-sizing: border-box;
+  align-items: center;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 0 5px;
+}
+.chigua-topic :deep(.topic-lane__head strong) {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.chigua-topic :deep(.topic-lane__head em) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 20px;
+  padding-block: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+.event-lane-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--ranking-card-item-gap);
+  min-width: 0;
+  min-height: var(--ranking-card-item-min-height);
+  margin-bottom: var(--ranking-card-item-margin);
+  padding: 0 2px 2px;
+  border-radius: 8px;
+  color: inherit;
+  transition: background-color .18s ease, color .18s ease;
+}
+.event-lane-item.has-cover {
+  grid-template-columns: auto var(--ranking-card-thumb-width) minmax(0, 1fr);
+}
+.event-lane-item:last-child { margin-bottom: 0; }
+.event-lane-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ranking-card-rank-size);
+  height: var(--ranking-card-rank-size);
+  min-width: var(--ranking-card-rank-size);
+  margin-right: var(--ranking-card-rank-gap);
+  border-radius: 8px;
+  background: var(--n-border-color);
+  color: var(--n-text-color-2);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  transition: background-color .18s ease, color .18s ease;
+}
+.event-lane-rank.one { background: #ea444d; color: #fff; }
+.event-lane-rank.two { background: #ed702d; color: #fff; }
+.event-lane-rank.three { background: #eead3f; color: #fff; }
+.event-lane-copy {
+  position: relative;
+  min-width: 0;
+}
+.event-lane-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.event-lane-title {
+  display: -webkit-box;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--n-text-color);
+  font-size: var(--chigua-list-font-size, 16px);
+  font-weight: 400;
+  line-height: 1.6;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.event-lane-title:hover,
+.event-lane-title:focus-visible {
+  color: var(--n-primary-color);
+  outline: none;
+}
+.event-lane-trend {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: 0;
+  color: var(--n-text-color-3);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.event-lane-trend.is-rising,
+.event-lane-trend.is-breakthrough { color: #c46d13; }
+.event-lane-trend.is-falling { color: #60788f; }
+.event-lane-trend.is-new { color: #168a84; }
+.event-lane-trend.is-reentry { color: #705ac8; }
+.event-lane-title-badges {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.event-lane-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 1px;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.event-lane-meta a {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-lane-meta a:hover,
+.event-lane-meta a:focus-visible { color: var(--n-text-color-2); outline: none; }
+.event-lane-meta > span { flex: 0 0 auto; }
+.event-lane-meta :deep(.ranking-badges) { gap: 3px; }
+.event-lane-meta :deep(.ranking-badge),
+.event-lane-title-row :deep(.ranking-badge) {
+  min-width: 16px;
+  height: 16px;
+  padding-inline: 3px;
+  font-size: 10px;
+  line-height: 16px;
+}
+.event-lane-meta :deep(.ranking-badge-icon),
+.event-lane-title-row :deep(.ranking-badge-icon) {
+  max-width: 30px;
+  height: 16px;
+}
+.event-lane-source-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-lane-resonance {
+  color: var(--n-text-color-3);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.event-lane-sticky {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--ranking-card-item-gap);
+  min-width: 0;
+  min-height: var(--ranking-card-item-min-height);
+  padding: 0 2px 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--lane-tone, var(--n-primary-color)) 8%, var(--n-color));
+  color: inherit;
+  text-decoration: none;
+}
+.event-lane-sticky.has-cover {
+  grid-template-columns: auto var(--ranking-card-thumb-width) minmax(0, 1fr);
+}
+.event-lane-sticky .event-lane-copy { display: block; }
+.event-lane-sticky .event-lane-title { -webkit-line-clamp: 1; }
+.event-lane-sticky .event-lane-meta { margin-top: 1px; }
+.event-lane-sticky__cover { pointer-events: auto; }
+.event-lane-sticky.is-serious {
+  filter: grayscale(1);
+  background: linear-gradient(90deg, color-mix(in srgb, #6b7280 18%, var(--n-color)) 0%, color-mix(in srgb, #6b7280 8%, var(--n-color)) 52%, var(--n-color) 100%);
+}
+.event-lane-sticky:focus-within {
+  outline: 2px solid color-mix(in srgb, var(--lane-tone, var(--n-primary-color)) 72%, transparent);
+  outline-offset: 2px;
+}
+.chigua-topic :deep(.topic-lane__sticky) {
+  right: 12px;
+  bottom: 10px;
+  left: 12px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .event-lane-item:hover {
+    background: color-mix(in srgb, var(--lane-tone, var(--n-primary-color)) 5%, transparent);
+  }
+}
+.event-lane-item:focus-within {
+  background: color-mix(in srgb, var(--lane-tone, var(--n-primary-color)) 6%, transparent);
+}
+.event-lane-cover {
+  display: block;
+  box-sizing: border-box;
+  width: var(--ranking-card-thumb-width);
+  height: var(--ranking-card-thumb-height);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--ranking-card-thumb-radius);
+  background: var(--n-action-color);
+  cursor: zoom-in;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--n-border-color) 70%, transparent);
+}
+.event-lane-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transition: transform .18s ease;
+}
+.event-lane-cover:hover img,
+.event-lane-cover:focus-visible img { transform: scale(1.04); }
+.event-lane-cover:focus-visible {
+  outline: 2px solid var(--n-primary-color);
+  outline-offset: 2px;
+}
+.chigua-topic.is-compact .event-lane-item {
+  column-gap: var(--ranking-card-compact-item-gap);
+  min-height: var(--ranking-card-compact-item-min-height);
+  margin-bottom: var(--ranking-card-compact-item-margin);
+}
+.chigua-topic.is-compact .event-lane-item.has-cover {
+  grid-template-columns: auto var(--ranking-card-compact-thumb-width) minmax(0, 1fr);
+}
+.chigua-topic.is-compact .event-lane-rank {
+  width: var(--ranking-card-compact-rank-size);
+  height: var(--ranking-card-compact-rank-size);
+  min-width: var(--ranking-card-compact-rank-size);
+  margin-right: var(--ranking-card-compact-rank-gap);
+  border-radius: 6px;
+}
+.chigua-topic.is-compact .event-lane-cover {
+  width: var(--ranking-card-compact-thumb-width);
+  height: var(--ranking-card-compact-thumb-height);
+}
+.chigua-topic.is-compact .event-lane-sticky {
+  column-gap: var(--ranking-card-compact-item-gap);
+  min-height: var(--ranking-card-compact-item-min-height);
+}
+.chigua-topic.is-compact .event-lane-sticky.has-cover {
+  grid-template-columns: auto var(--ranking-card-compact-thumb-width) minmax(0, 1fr);
+}
+.chigua-topic.is-compact .event-lane-title {
+  font-size: var(--chigua-list-font-size, 16px);
+}
+.event-lane-floating-preview {
+  position: fixed;
+  z-index: 3000;
+  display: block;
+  overflow: visible;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+  pointer-events: auto;
+}
+.event-lane-floating-preview__media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: zoom-in;
+}
+.event-lane-floating-preview__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: contain;
+  object-position: center;
+}
+.event-lane-floating-preview__info {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  gap: 4px;
+  padding: 26px 10px 9px;
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, .72) 42%, rgba(0, 0, 0, .86) 100%);
+  color: #fff;
+  pointer-events: none;
+}
+.event-lane-floating-preview__info p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.event-lane-floating-preview__info div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11px;
+  opacity: .92;
+}
+.event-lane-floating-preview__info span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-lane-floating-preview__info strong { flex: 0 0 auto; }
+.event-lane-floating-preview.is-serious img { filter: grayscale(.88) saturate(.18) contrast(.96); }
+.event-lane-image-preview-trigger {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.item-preview-enter-active,
+.item-preview-leave-active { transition: opacity .16s ease, transform .16s ease; }
+.item-preview-enter-from,
+.item-preview-leave-to { opacity: 0; transform: scale(.98); }
+.event-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-source-link:hover,
+.event-source-link:focus-visible {
+  color: var(--n-primary-color);
+  text-decoration: underline;
+  outline: none;
+}
+.event-source-link img {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  object-fit: contain;
+}
+.event-source-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-lane-item.is-serious {
+  filter: grayscale(1);
+  border-radius: 6px;
+  background: linear-gradient(90deg, color-mix(in srgb, #6b7280 18%, transparent) 0%, color-mix(in srgb, #6b7280 8%, transparent) 52%, transparent 100%);
+}
+.event-lane-item.is-serious .event-lane-cover img { filter: grayscale(.88) saturate(.18) contrast(.96); }
+.event-list {
+  display: grid;
+}
+.event-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ranking-stream-rank-width) var(--ranking-stream-media-width) minmax(0, 1fr);
+  gap: var(--ranking-stream-row-gap);
+  align-items: center;
+  min-width: 0;
+  min-height: var(--ranking-stream-row-min-height);
+  padding: var(--ranking-stream-row-padding-block) var(--ranking-stream-row-padding-inline-end) var(--ranking-stream-row-padding-block) var(--ranking-stream-row-padding-inline-start);
+  border-top: 1px solid var(--n-border-color);
+  transition: background-color .16s ease;
+}
+.event-item:hover { background: var(--n-action-color); }
+.event-item:not(.has-media) {
+  grid-template-columns: var(--ranking-stream-rank-width) minmax(0, 1fr);
+}
+.chigua-topic :deep(.topic-lane__head-actions) { gap: 4px; }
+.chigua-topic :deep(.topic-lane__header-action) {
+  padding: 2px 3px;
+  border-radius: 5px;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1;
+}
+.chigua-topic :deep(.topic-lane__header-action:hover) {
+  background: var(--n-action-color);
+  color: var(--n-text-color);
+}
+.topic-lane__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--n-text-color-3);
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-3px);
+  touch-action: none;
+  transition: opacity .16s ease, transform .16s ease, color .16s ease, background-color .16s ease;
+}
+.chigua-topic :deep(.topic-lane:hover) .topic-lane__drag-handle,
+.chigua-topic :deep(.topic-lane:focus-within) .topic-lane__drag-handle {
+  opacity: .72;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+.topic-lane__drag-handle:hover {
+  color: var(--n-text-color);
+  background: var(--n-action-color);
+  opacity: 1 !important;
+}
+.topic-lane__drag-handle:focus-visible {
+  opacity: 1 !important;
+  outline: 2px solid var(--n-close-color-pressed);
+  outline-offset: 1px;
+}
+.topic-lane__drag-handle:active { cursor: grabbing; }
+@media (hover: none) {
+  .topic-lane__drag-handle { opacity: .72; pointer-events: auto; transform: none; }
+}
+.event-rank {
+  align-self: center;
+  padding-top: 0;
+  color: var(--n-text-color-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.event-media {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: var(--ranking-stream-media-width);
+  height: var(--ranking-stream-media-height);
+  max-width: var(--ranking-stream-media-width);
+  max-height: var(--ranking-stream-media-height);
+  overflow: visible;
+}
+.event-cover {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--ranking-stream-media-radius);
+  background: var(--n-action-color);
+}
+.event-cover :deep(img) {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: var(--ranking-stream-media-radius);
+  object-fit: cover;
+  object-position: center;
+  cursor: zoom-in;
+}
+.event-cover :deep(img:focus-visible) {
+  outline: 2px solid var(--n-primary-color);
+  outline-offset: 2px;
+}
+.event-cover.is-cover-geometry-ready {
+  position: absolute;
+  top: calc(50% + var(--cover-hover-center-y-shift, 0px));
+  right: 0;
+  width: var(--cover-base-viewport-width, 100%);
+  height: var(--cover-base-viewport-height, 100%);
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+  border-radius: var(--ranking-stream-media-radius);
+  transform: translateY(-50%);
+  transition: width .24s cubic-bezier(.22,1,.36,1), height .24s cubic-bezier(.22,1,.36,1), top .24s cubic-bezier(.22,1,.36,1), box-shadow .18s ease;
+  will-change: width, height;
+}
+.event-cover.is-cover-geometry-ready :deep(img) {
+  position: absolute;
+  top: 50%;
+  right: var(--cover-base-image-right, 0px);
+  left: auto;
+  width: var(--cover-base-image-width, 100%);
+  height: var(--cover-base-image-height, 100%);
+  max-width: none;
+  max-height: none;
+  border-radius: var(--ranking-stream-media-radius);
+  object-fit: contain !important;
+  transform: translateY(-50%);
+  transform-origin: right center;
+  transition: width .24s cubic-bezier(.22,1,.36,1), height .24s cubic-bezier(.22,1,.36,1), right .24s cubic-bezier(.22,1,.36,1);
+  will-change: width, height, right;
+}
+@media (hover: hover) and (pointer: fine) {
+  .event-item.has-media:hover { z-index: 4; }
+  .event-item.has-media:hover .event-cover.is-cover-geometry-ready {
+    z-index: 5;
+    width: var(--cover-hover-width, 113.4px);
+    height: var(--cover-hover-height, 113.4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+  }
+  .event-item.has-media:hover .event-cover.is-cover-geometry-ready :deep(img) {
+    right: 0;
+    width: var(--cover-hover-width, 113.4px);
+    height: var(--cover-hover-height, 113.4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .event-cover.is-cover-geometry-ready,
+  .event-cover.is-cover-geometry-ready :deep(img),
+  .item-preview-enter-active,
+  .item-preview-leave-active { transition: none; }
+  .item-preview-enter-from,
+  .item-preview-leave-to { transform: none; }
+}
+.event-main {
+  min-width: 0;
+}
+.event-title {
+  color: inherit;
+  text-decoration: none;
+}
+.event-title h3 {
+  margin: 4px 0 0;
+  font-size: var(--ranking-stream-title-size);
+  line-height: 1.38;
+  font-weight: 650;
+}
+.event-desc {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.event-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.event-meta strong {
+  color: var(--n-text-color);
+  font-size: 12px;
+}
+.event-source-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 46%;
+  flex: 0 1 auto;
+}
+.event-source-link--primary {
+  flex: 0 1 auto;
+  max-width: 190px;
+  color: var(--n-text-color-2);
+  font-weight: 650;
+}
+.event-evidence-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.event-evidence-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 5px;
+  color: inherit;
+  opacity: .72;
+  text-decoration: none;
+  transition: opacity .16s ease, background-color .16s ease, transform .16s ease;
+}
+.event-evidence-icon:hover,
+.event-evidence-icon:focus-visible {
+  background: var(--n-action-color);
+  opacity: 1;
+  outline: none;
+  transform: translateY(-1px);
+}
+.event-evidence-icon img {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: contain;
+}
+.event-evidence-popover {
+  display: grid;
+  gap: 7px;
+  min-width: 300px;
+  max-width: 380px;
+  padding: 7px;
+}
+.event-evidence-popover__head {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.event-evidence-popover__head > img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.event-evidence-popover__head > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.event-evidence-popover__head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--n-text-color);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-evidence-popover__head span {
+  flex: 0 0 auto;
+  color: var(--n-text-color-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.event-evidence-popover__head small {
+  color: var(--n-text-color-3);
+  font-size: 10px;
+}
+.event-evidence-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--n-text-color);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.42;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+a.event-evidence-title:hover { color: var(--n-primary-color); }
+.event-evidence-popover p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  line-height: 1.48;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.event-evidence-popover__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--n-text-color-3);
+  font-size: 11px;
+}
+.event-evidence-hot {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--n-text-color-2);
+  font-variant-numeric: tabular-nums;
+}
+.event-evidence-hot :deep(.n-icon) {
+  color: #ed702d;
+  font-size: 13px;
+}
+.event-hot {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--n-text-color-2) !important;
+  font-variant-numeric: tabular-nums;
+}
+.event-hot :deep(.n-icon) {
+  color: #ed702d;
+  font-size: 13px;
+}
+.source-pill,
+.intelligence-pill,
+.verified-resonance-pill {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--n-action-color);
+}
+.category-pill {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--n-text-color-2);
+  font-weight: 650;
+}
+.source-pill {
+  color: var(--n-text-color-3);
+}
+.intelligence-pill {
+  border: 1px solid color-mix(in srgb, var(--n-primary-color) 22%, transparent);
+  background: color-mix(in srgb, var(--n-primary-color) 8%, transparent);
+  color: var(--n-primary-color);
+  font-weight: 650;
+}
+.verified-resonance-pill {
+  border: 1px solid color-mix(in srgb, var(--n-success-color, #18a058) 28%, transparent);
+  background: color-mix(in srgb, var(--n-success-color, #18a058) 9%, transparent);
+  color: var(--n-success-color, #18a058);
+  font-weight: 680;
+}
+.event-title:hover h3 {
+  text-decoration: underline;
+}
+.event-list {
+  scroll-margin-top: 74px;
+}
+.event-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 2px 2px;
+  border-top: 1px solid var(--n-border-color);
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.topic-loading {
+  padding: 10px 2px;
+}
+.topic-empty {
+  padding: 44px 0;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.event-pagination__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.event-pagination__meta :deep(.compact-filter) {
+  max-width: 110px;
+}
+@media (max-width: 720px) {
+  .chigua-topic {
+    gap: 10px;
+  }
+  .topic-workspace-header { grid-template-columns: minmax(0, 1fr); padding: 11px; }
+  .radar-mark { width: 44px; height: 44px; flex-basis: 44px; }
+  .radar-actions { justify-content: space-between; }
+  .hero-stats { min-width: 0; justify-items: initial; }
+  .hero-stats > span { min-height: 28px; padding: 4px 6px; }
+  .hero-stats > span strong { font-size: 14px; }
+  .topic-section {
+    padding: 13px;
+    border-radius: 12px;
+  }
+  .topic-workspace-header {
+    gap: 6px;
+    padding-bottom: 8px;
+    margin-bottom: 0;
+  }
+  .topic-workspace-title h1 {
+    font-size: 18px;
+  }
+  .topic-workspace-title p {
+    display: -webkit-box;
+    margin-top: 3px;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .toolbar-primary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .toolbar-title {
+    display: none;
+  }
+  .topic-search {
+    min-width: 0;
+    max-width: none;
+    height: 30px;
+  }
+  .toolbar-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .result-count {
+    display: none;
+  }
+  .toolbar-filters {
+    margin-right: -13px;
+    padding-right: 13px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .toolbar-filters::-webkit-scrollbar {
+    display: none;
+  }
+  .toolbar-filters :deep(.compact-filter) {
+    max-width: 165px;
+    flex: 0 0 auto;
+  }
+  .event-item {
+    grid-template-columns: var(--ranking-stream-mobile-rank-width) var(--ranking-stream-mobile-media-width) minmax(0, 1fr);
+    gap: var(--ranking-stream-mobile-row-gap);
+    min-height: var(--ranking-stream-mobile-row-min-height);
+    padding: var(--ranking-stream-mobile-row-padding-block) var(--ranking-stream-mobile-row-padding-inline-end) var(--ranking-stream-mobile-row-padding-block) var(--ranking-stream-mobile-row-padding-inline-start);
+  }
+  .event-item:not(.has-media) {
+    grid-template-columns: var(--ranking-stream-mobile-rank-width) minmax(0, 1fr);
+  }
+  .event-media {
+    width: var(--ranking-stream-mobile-media-width);
+    height: var(--ranking-stream-mobile-media-height);
+    max-width: var(--ranking-stream-mobile-media-width);
+    max-height: var(--ranking-stream-mobile-media-height);
+  }
+  .event-source-cluster {
+    max-width: 62%;
+  }
+  .event-source-link--primary {
+    max-width: 138px;
+  }
+  .event-evidence-icon {
+    width: 18px;
+    height: 18px;
+  }
+  .event-title h3 {
+    font-size: 13px;
+  }
+  .event-desc {
+    -webkit-line-clamp: 2;
+  }
+  .event-meta {
+    gap: 5px;
+  }
+  .event-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    overflow-x: auto;
+  }
+}
+
+/* Chigua intelligence workspace */
+.chigua-topic {
+  width: min(100%, var(--site-container-width, 1400px));
+}
+.topic-section {
+  padding: 16px 18px 18px;
+}
+.topic-feed-section {
+  box-sizing: border-box;
+  width: min(100%, var(--site-focus-container-width, 1360px));
+  margin: 0 auto;
+}
+.topic-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(520px, 720px) 280px;
+  align-items: start;
+  justify-content: center;
+  gap: 16px;
+  min-width: 0;
+}
+.topic-main {
+  min-width: 0;
+}
+.topic-category-rail,
+.topic-controls {
+  position: sticky;
+  top: 82px;
+  min-width: 0;
+}
+.topic-controls {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.topic-category-card,
+.topic-controls-card {
+  overflow: hidden;
+  border: 1px solid var(--n-border-color);
+  border-radius: 12px;
+  background: var(--n-color);
+}
+.topic-category-title,
+.topic-controls-title {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--n-border-color);
+  font-size: 13px;
+  font-weight: 700;
+}
+.topic-category-title span,
+.topic-controls-title span {
+  color: var(--n-text-color-3);
+  font-variant-numeric: tabular-nums;
+}
+.topic-category-card nav {
+  display: grid;
+  gap: 2px;
+  padding: 7px;
+}
+.topic-category-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  --category-tone: var(--n-text-color-2);
+  color: var(--category-tone);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.topic-category-item:hover {
+  background: color-mix(in srgb, var(--category-tone) 8%, var(--n-action-color));
+  color: var(--category-tone);
+}
+.topic-category-item.active {
+  background: color-mix(in srgb, var(--category-tone) 10%, var(--n-action-color));
+  color: var(--category-tone);
+  box-shadow: inset 2px 0 0 var(--category-tone);
+  font-weight: 700;
+}
+.topic-category-item em {
+  color: color-mix(in srgb, var(--category-tone) 72%, var(--n-text-color-3));
+  font-size: 12px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.topic-category-item.is-all { --category-tone: var(--n-primary-color); }
+.topic-category-item.is-gossip { --category-tone: #d14b72; }
+.topic-category-item.is-celebrity { --category-tone: #7c5ce7; }
+.topic-category-item.is-film-tv { --category-tone: #4f7fd8; }
+.topic-category-item.is-variety { --category-tone: #d97706; }
+.topic-category-item.is-music { --category-tone: #6268c7; }
+.topic-category-item.is-creator { --category-tone: #168a84; }
+.topic-category-item.is-other { --category-tone: #6b7280; }
+.topic-category-item.active em { color: currentColor; }
+.topic-controls-card {
+  display: grid;
+  gap: 0;
+  padding-bottom: 8px;
+}
+.topic-control-section {
+  display: grid;
+  gap: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--n-border-color);
+}
+.topic-control-section :deep(.compact-filter) {
+  width: 100%;
+  max-width: none;
+}
+.topic-control-pagination {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.topic-pagination-control {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.topic-pagination-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--n-text-color-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.topic-pagination-meta :deep(.compact-filter) {
+  width: auto;
+  min-width: 96px;
+}
+.topic-pagination-control :deep(.n-pagination) {
+  justify-content: flex-start;
+  min-width: 0;
+}
+.event-pagination--mobile {
+  display: none;
+}
+.topic-controls-card :deep(.compact-filter__label) { font-size: 12px; }
+.topic-controls-card :deep(.compact-filter__value) { font-size: 12px; }
+.topic-controls-card > .resonance-toggle,
+.topic-controls-card > .reset-filter,
+.topic-controls-card > :deep(.n-button) {
+  width: calc(100% - 20px);
+  margin: 8px 10px 0;
+}
+.event-toolbar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  margin-bottom: 0;
+}
+.toolbar-primary {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.topic-search {
+  justify-self: end;
+  width: min(100%, 320px);
+  max-width: 320px;
+}
+.chigua-topic :deep(.topic-lane-grid) {
+  grid-template-columns: repeat(var(--chigua-featured-columns, 4), minmax(0, 1fr));
+  gap: 8px;
+}
+.chigua-topic :deep(.topic-lane) {
+  position: relative;
+  overflow: hidden;
+  min-height: 182px;
+}
+.chigua-topic :deep(.topic-lane::before) {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--lane-tone, var(--n-primary-color));
+  opacity: .78;
+}
+.chigua-topic :deep(.topic-lane.is-fresh) { --lane-tone: #18a058; }
+.chigua-topic :deep(.topic-lane.is-rising) { --lane-tone: #d97706; }
+.chigua-topic :deep(.topic-lane.is-resonance) { --lane-tone: #7c5ce7; }
+.chigua-topic :deep(.topic-lane.is-hot) { --lane-tone: #e5484d; }
+.chigua-topic :deep(.topic-lane__head strong) {
+  color: var(--lane-tone, var(--n-text-color));
+}
+.chigua-topic :deep(.topic-lane__items) {
+  box-sizing: border-box;
+  grid-auto-rows: max-content;
+  align-content: start;
+  padding-top: 6px;
+}
+.chigua-topic :deep(.topic-lane.is-scrollable .topic-lane__items:not(.topic-lane__items--overlay)),
+.chigua-topic :deep(.topic-lane.is-scrollable .topic-lane__scrollbar) {
+  height: 266px;
+  max-height: 266px;
+}
+.chigua-topic.is-compact :deep(.topic-lane.is-scrollable .topic-lane__items:not(.topic-lane__items--overlay)),
+.chigua-topic.is-compact :deep(.topic-lane.is-scrollable .topic-lane__scrollbar) {
+  height: 252px;
+  max-height: 252px;
+}
+.event-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--n-text-color-3);
+  font-size: 16px;
+  font-weight: 720;
+  line-height: 1.4;
+  text-align: center;
+}
+.event-rank.is-one,
+.event-rank.is-two,
+.event-rank.is-three {
+  font-size: 18px;
+  font-weight: 820;
+}
+.event-rank.is-one { color: #ea444d; }
+.event-rank.is-two { color: #ed702d; }
+.event-rank.is-three { color: #eead3f; }
+.event-rank.is-top10 { color: var(--n-text-color-2); font-weight: 720; }
+.event-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+.event-title-row .event-title {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.event-title-row :deep(.ranking-badges) {
+  margin-top: 2px;
+}
+.event-title-row :deep(.ranking-badge:not(.has-icon)) {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--n-text-color-2);
+  line-height: 1.2;
+  text-shadow: none !important;
+  transform: none !important;
+}
+.event-title-row :deep(.ranking-badge.is-hot),
+.event-title-row :deep(.ranking-badge.is-boiling) { color: #d97706; }
+.event-title-row :deep(.ranking-badge.is-new),
+.event-title-row :deep(.ranking-badge.is-first-release),
+.event-title-row :deep(.ranking-badge.is-discussion) { color: #d14b72; }
+.event-title-row :deep(.ranking-badge.is-explosive) { color: #e5484d; }
+.event-title-row :deep(.ranking-badge.is-interpretation),
+.event-title-row :deep(.ranking-badge.is-depth) { color: #6268c7; }
+.event-title-row :deep(.ranking-badge.is-rumor) { color: #2788f5; }
+.event-title-row :deep(.ranking-badge.is-challenge) { color: #d14b72; }
+.event-title-row :deep(.ranking-badge.is-live),
+.event-title-row :deep(.ranking-badge.is-hot-live) { color: #e5484d; }
+.event-title-row :deep(.ranking-badge.is-commercial) { color: #168a84; }
+.event-title-row > :deep(.ranking-badges) {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.event-title h3 {
+  margin-top: 0;
+}
+.event-resonance {
+  color: #18a058 !important;
+  font-style: normal;
+  font-weight: 700;
+}
+.category-pill {
+  --category-tone: var(--n-primary-color);
+  border: 0;
+  background: transparent;
+  color: var(--category-tone);
+}
+.category-pill.is-gossip { --category-tone: #d14b72; }
+.category-pill.is-celebrity { --category-tone: #7c5ce7; }
+.category-pill.is-film-tv { --category-tone: #4f7fd8; }
+.category-pill.is-variety { --category-tone: #d97706; }
+.category-pill.is-music { --category-tone: #6268c7; }
+.category-pill.is-creator { --category-tone: #168a84; }
+.category-pill.is-other { --category-tone: #6b7280; }
+.trend-pill {
+  --trend-tone: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--trend-tone);
+  font-weight: 700;
+}
+.trend-pill b { font-size: 12px; font-weight: 750; }
+.trend-pill.is-breakthrough { --trend-tone: #e5484d; }
+.trend-pill.is-rising { --trend-tone: #d97706; }
+.trend-pill.is-reentry { --trend-tone: #7c5ce7; }
+.trend-pill.is-new { --trend-tone: #18a058; }
+.trend-pill.is-falling { --trend-tone: #5f7892; }
+
+.event-item.is-serious {
+  margin-inline: -6px;
+  filter: grayscale(1);
+  padding-inline: 8px;
+  border-top-color: color-mix(in srgb, #6b7280 22%, var(--n-border-color));
+  border-radius: 8px;
+  background: linear-gradient(90deg, color-mix(in srgb, #6b7280 22%, transparent) 0%, color-mix(in srgb, #6b7280 10%, transparent) 48%, transparent 100%);
+}
+.event-item.is-serious .event-cover :deep(img) { filter: grayscale(.9) saturate(.15) contrast(.96); }
+.event-item.is-serious .event-rank,
+.event-item.is-serious .event-rank.is-one,
+.event-item.is-serious .event-rank.is-two,
+.event-item.is-serious .event-rank.is-three,
+.event-item.is-serious .event-rank.is-top10 {
+  background: transparent;
+  color: #6b7280;
+}
+.event-item.is-serious .category-pill,
+.event-item.is-serious .trend-pill {
+  --category-tone: #6b7280;
+  --trend-tone: #6b7280;
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+}
+
+@media (max-width: 1360px) {
+  .topic-layout {
+    grid-template-columns: minmax(180px, 220px) minmax(0, 720px) minmax(180px, 220px);
+    gap: 16px;
+  }
+}
+@media (max-width: 1120px) and (min-width: 821px) {
+  .topic-layout {
+    grid-template-columns: minmax(170px, 190px) minmax(0, 720px);
+    gap: 14px;
+  }
+  .topic-category-rail { grid-column: 1; grid-row: 1; }
+  .topic-main { grid-column: 2; grid-row: 1; }
+  .topic-controls {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .topic-controls-card {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    gap: 0;
+    padding-bottom: 0;
+  }
+  .topic-controls-title { grid-column: 1 / -1; }
+  .topic-control-pagination {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--n-border-color);
+  }
+  .topic-pagination-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .topic-controls-card > .resonance-toggle,
+  .topic-controls-card > .reset-filter,
+  .topic-controls-card > :deep(.n-button) { width: auto; margin: 8px; }
+}
+@media (max-width: 820px) {
+  .topic-section { padding: 12px; }
+  .topic-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .topic-category-rail,
+  .topic-controls,
+  .topic-main { width: 100%; }
+  .topic-category-rail {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    order: 1;
+    margin: 0 -12px;
+    width: calc(100% + 24px);
+    border-bottom: 1px solid var(--n-border-color);
+    background: var(--n-color);
+  }
+  .topic-main { order: 3; }
+  .topic-controls { position: static; order: 2; }
+  .topic-category-card { border: 0; border-radius: 0; }
+  .topic-category-title { display: none; }
+  .topic-category-card nav {
+    display: flex;
+    gap: 4px;
+    padding: 7px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .topic-category-card nav::-webkit-scrollbar { display: none; }
+  .topic-category-item {
+    grid-template-columns: max-content auto;
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 30px;
+    padding: 4px 8px;
+    box-shadow: none !important;
+  }
+  .topic-category-item.active {
+    border: 1px solid color-mix(in srgb, var(--n-primary-color) 25%, transparent);
+  }
+  .topic-controls-card {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .topic-controls-card::-webkit-scrollbar { display: none; }
+  .topic-controls-title { display: none; }
+  .topic-control-section {
+    display: block;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+  }
+  .topic-control-section > span { display: none; }
+  .topic-control-section :deep(.compact-filter) { width: auto; max-width: 160px; }
+  .topic-control-pagination { display: none; }
+  .event-pagination--mobile { display: flex; }
+  .topic-controls-card > .resonance-toggle,
+  .topic-controls-card > .reset-filter,
+  .topic-controls-card > :deep(.n-button) {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+  }
+  .toolbar-primary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .toolbar-title { display: flex; }
+  .topic-search {
+    justify-self: stretch;
+    width: 100%;
+    max-width: none;
+  }
+  .chigua-topic :deep(.topic-lane-grid) {
+    display: flex;
+    margin-right: -12px;
+    padding-right: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .chigua-topic :deep(.topic-lane-grid::-webkit-scrollbar) { display: none; }
+  .chigua-topic :deep(.topic-lane) {
+    flex: 0 0 min(38vw, 286px);
+    scroll-snap-align: start;
+  }
+  .event-title-row {
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .event-title-row :deep(.ranking-badges) { margin-top: 0; }
+  .trend-pill b { display: none; }
+}
+
+@media (max-width: 720px) {
+  .chigua-topic :deep(.topic-lane) {
+    flex-basis: min(82vw, 286px);
+  }
+}
+
+</style>

@@ -1,0 +1,89 @@
+import { createApp, watch } from "vue";
+import { createPinia } from "pinia";
+import piniaPluginPersistedstate from "pinia-plugin-persistedstate";
+
+import App from "./App.vue";
+import router from "@/router";
+import { mainStore } from "@/store";
+import i18n from "@/i18n";
+import { ensureCacheVersion } from "@/utils/cache";
+import { resolveInitialLocale, savePreferredLocale, setDocumentLanguage } from "@/utils/locale";
+import { applyDynamicTranslation } from "@/utils/translateEngine";
+import { subscribeTrendsSourceCatalog } from "@/utils/sourceSubtypes";
+import { preloadTrendsSourceCatalog, startTrendsSourceCatalogRevalidation } from "@/api/trendsCatalog";
+
+// 全局样式
+import "@/style/global.scss";
+
+const registerAppServiceWorker = () => {
+  if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
+  const baseUrl = import.meta.env.BASE_URL || "/";
+  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  navigator.serviceWorker
+    .register(`${normalizedBaseUrl}sw.js`, { scope: normalizedBaseUrl })
+    .then((registration) => {
+      if (typeof window !== "undefined") {
+        window.setInterval(() => registration.update(), 30 * 60 * 1000);
+      }
+    })
+    .catch((error) => {
+      console.warn("Service worker registration failed", error);
+    });
+};
+
+(async () => {
+  await ensureCacheVersion();
+  await preloadTrendsSourceCatalog();
+
+  const app = createApp(App);
+  const initialLocale = resolveInitialLocale(
+    typeof window !== "undefined" ? window.location.pathname : "/"
+  );
+
+  const pinia = createPinia();
+  pinia.use(piniaPluginPersistedstate);
+  app.use(pinia);
+  i18n.global.locale.value = initialLocale;
+  setDocumentLanguage(initialLocale);
+  savePreferredLocale(initialLocale);
+  app.use(i18n);
+
+  // 预渲染/SSR 时需要默认榜单数据，避免首屏为空
+  const store = mainStore();
+  store.ensureNewsList();
+  subscribeTrendsSourceCatalog(() => {
+    if (store.syncTrendsCatalogSources() > 0) store.checkNewsUpdate();
+  });
+
+  app.use(router);
+
+  app.mount("#app");
+  startTrendsSourceCatalogRevalidation();
+  if (typeof window !== "undefined") {
+    document.documentElement.dataset.dailyhotMounted = "1";
+    try {
+      sessionStorage.removeItem(`dailyhot:boot-retry:${window.location.pathname}`);
+    } catch {
+      // Boot recovery remains optional when session storage is unavailable.
+    }
+  }
+  registerAppServiceWorker();
+
+  if (typeof window !== "undefined") {
+    const runTranslation = () => {
+      window.setTimeout(() => {
+        applyDynamicTranslation(i18n.global.locale.value);
+      }, 400);
+    };
+    watch(
+      () => i18n.global.locale.value,
+      () => {
+        runTranslation();
+      },
+      { immediate: true }
+    );
+    router.afterEach(() => {
+      runTranslation();
+    });
+  }
+})();

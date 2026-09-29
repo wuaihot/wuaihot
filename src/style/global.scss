@@ -1,0 +1,127 @@
+// 全局样式
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  background: #ffffff;
+}
+
+:root {
+  --ranking-card-item-min-height: 30px;
+  --ranking-card-item-gap: 8px;
+  --ranking-card-item-margin: 6px;
+  --ranking-card-thumb-width: 50px;
+  --ranking-card-thumb-height: 40px;
+  --ranking-card-thumb-radius: 6px;
+  --ranking-card-rank-size: 24px;
+  --ranking-card-rank-gap: 8px;
+  --ranking-card-compact-item-min-height: 28px;
+  --ranking-card-compact-item-gap: 6px;
+  --ranking-card-compact-item-margin: 4px;
+  --ranking-card-compact-thumb-width: 46px;
+  --ranking-card-compact-thumb-height: 36px;
+  --ranking-card-compact-rank-size: 22px;
+  --ranking-card-compact-rank-gap: 4px;
+  --ranking-stream-rank-width: 42px;
+  --ranking-stream-row-min-height: 68px;
+  --ranking-stream-row-gap: 10px;
+  --ranking-stream-row-padding-block: 9px;
+  --ranking-stream-row-padding-inline-start: 10px;
+  --ranking-stream-row-padding-inline-end: 14px;
+  --ranking-stream-media-width: 112px;
+  --ranking-stream-media-height: 84px;
+  --ranking-stream-media-radius: 8px;
+  --ranking-stream-title-size: 15px;
+  --ranking-stream-meta-size: 10px;
+  --ranking-stream-mobile-rank-width: 34px;
+  --ranking-stream-mobile-row-min-height: 62px;
+  --ranking-stream-mobile-row-gap: 8px;
+  --ranking-stream-mobile-row-padding-block: 8px;
+  --ranking-stream-mobile-row-padding-inline-start: 6px;
+  --ranking-stream-mobile-row-padding-inline-end: 9px;
+  --ranking-stream-mobile-media-width: 76px;
+  --ranking-stream-mobile-media-height: 64px;
+}
+
+html[data-dailyhot-theme="dark"],
+html[data-dailyhot-theme="dark"] body,
+html[data-dailyhot-theme="dark"] #app {
+  background: #101014;
+}
+
+// 动画
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+// 统一单选菜单的选中态：整行轻高亮 + 左侧短强调条。
+// 文字保持正常前景色，避免大面积主色造成“警告态”观感。
+.n-dropdown-option-body.app-dropdown-selection.is-active {
+  color: var(--n-option-text-color) !important;
+  font-weight: 650;
+}
+
+.n-dropdown-option-body.app-dropdown-selection.is-active::before {
+  background: color-mix(
+    in srgb,
+    var(--n-option-text-color-active) 7%,
+    transparent
+  ) !important;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--n-option-text-color-active) 14%, transparent);
+}
+
+.n-dropdown-option-body.app-dropdown-selection.is-active::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 7px;
+  top: 50%;
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--n-option-text-color-active);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+// 单选 Select 同样使用整行轻高亮；多选仍保留勾选作为辅助语义。
+.n-base-select-option--selected {
+  color: var(--n-option-text-color) !important;
+  font-weight: 650;
+}
+
+.n-base-select-option--selected::before {
+  background: color-mix(
+    in srgb,
+    var(--n-option-text-color-active) 7%,
+    transparent
+  ) !important;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--n-option-text-color-active) 14%, transparent);
+}
+
+.n-base-select-option--selected::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 7px;
+  top: 50%;
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--n-option-text-color-active);
+  transform: translateY(-50%);
+  pointer-events: none;
+}

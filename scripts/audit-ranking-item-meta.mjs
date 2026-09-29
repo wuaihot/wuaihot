@@ -1,0 +1,167 @@
+import assert from "node:assert/strict";
+import {
+  formatRankingPublishedAt,
+  getRankingItemMeta,
+  getRankingItemTimestamp,
+} from "../src/utils/rankingItemMeta.js";
+
+const publishedAt = "2026-09-14T01:02:03.000Z";
+const publishedMs = Date.parse(publishedAt);
+const updateTime = "2026-09-14T02:00:00.000Z";
+
+assert.equal(
+  getRankingItemTimestamp({ timestamp: 123, publishedAt }, updateTime),
+  123,
+  "provider timestamp must keep priority",
+);
+assert.equal(
+  getRankingItemTimestamp({ publishedAt }, updateTime),
+  publishedMs,
+  "publishedAt must drive normalized item timestamp",
+);
+assert.equal(
+  getRankingItemTimestamp({ publishedAt: "invalid" }, updateTime),
+  Date.parse(updateTime),
+  "invalid publishedAt must fall back to ranking update time",
+);
+const sample = {
+  author: "示例作者",
+  publishedAt,
+  metrics: { views: 0, likes: 1200, comments: 34, collects: -1 },
+};
+const zhMeta = getRankingItemMeta(sample, "zh-CN");
+assert.equal(zhMeta.hasContent, true);
+assert.equal(zhMeta.hasMetrics, true);
+assert.deepEqual(
+  zhMeta.metrics.map(({ key, numeric }) => [key, numeric]),
+  [["views", 0], ["likes", 1200], ["comments", 34]],
+  "zero metrics must be preserved and invalid negative metrics dropped",
+);
+assert.equal(zhMeta.context[0]?.label, "作者");
+const authorVisibleMeta = getRankingItemMeta(sample, "zh-CN", { authorVisible: true });
+assert.equal(
+  authorVisibleMeta.context.some(({ key }) => key === "author"),
+  false,
+  "an author already rendered beside the ranking title must not repeat in metadata",
+);
+assert.equal(formatRankingPublishedAt("invalid", "zh-CN"), "");
+
+const completeSample = {
+  hot: 900,
+  metrics: { views: 4000, likes: 1200, comments: 34, collects: 88 },
+};
+
+for (const [variant, primaryKey] of [
+  ["read-30d", "views"],
+  ["like-14d", "likes"],
+  ["collect-7d", "collects"],
+]) {
+  const meta = getRankingItemMeta(completeSample, "zh-CN", { variant });
+  assert.equal(meta.primaryMetric?.key, primaryKey, `${variant} must select ${primaryKey}`);
+  assert.equal(meta.primaryMetric?.isPrimary, true, `${variant} primary metric must be semantic`);
+  assert.equal(meta.metrics[0]?.key, primaryKey, `${variant} primary metric must render first`);
+  assert.equal(
+    meta.metrics.filter(({ isPrimary }) => isPrimary).length,
+    1,
+    `${variant} must expose exactly one primary metric`,
+  );
+}
+
+const fallback = getRankingItemMeta(
+  { hot: 321, metrics: { views: null, comments: 4 } },
+  "zh-CN",
+  { variant: "read-3d" },
+);
+assert.equal(fallback.primaryMetric?.key, "views");
+assert.equal(fallback.primaryMetric?.numeric, 321);
+assert.deepEqual(
+  fallback.metrics.map(({ key }) => key),
+  ["views", "comments"],
+  "variant-labelled hot fallback must stay primary without duplication",
+);
+
+const zeroPrimary = getRankingItemMeta(
+  { hot: 12, metrics: { likes: 0, views: -1, comments: Number.NaN } },
+  "zh-CN",
+  { variant: "like-3d" },
+);
+assert.equal(zeroPrimary.primaryMetric?.numeric, 0, "a real zero primary value must be preserved");
+assert.deepEqual(
+  zeroPrimary.metrics.map(({ key }) => key),
+  ["likes"],
+  "invalid secondary metrics must remain excluded",
+);
+
+const neutralPreview = getRankingItemMeta(completeSample, "zh-CN", {
+  variant: "like-14d",
+  promotePrimary: false,
+});
+assert.equal(neutralPreview.primaryMetric, null, "neutral preview must not expose a promoted primary metric");
+assert.equal(neutralPreview.primaryMetricKey, null, "neutral preview must not expose a primary metric key");
+assert.deepEqual(
+  neutralPreview.metrics.map(({ key }) => key),
+  ["views", "likes", "comments", "collects"],
+  "neutral preview must preserve the legacy metric order without injecting heat",
+);
+assert.equal(
+  neutralPreview.metrics.some(({ isPrimary }) => isPrimary),
+  false,
+  "neutral preview must not mark any metric as primary",
+);
+
+const displayHeat = getRankingItemMeta(
+  { metric: { label: "热度", kind: "heat", value: 0 } },
+  "zh-CN",
+  { variant: "hot" },
+);
+assert.equal(displayHeat.primaryMetric?.key, "hot", "Display heat must map onto the canonical hot metric");
+assert.equal(displayHeat.primaryMetric?.numeric, 0, "Display heat must preserve a real zero value");
+
+const displayViews = getRankingItemMeta(
+  { metric: { label: "阅读", kind: "views", value: 1234 } },
+  "zh-CN",
+  { variant: "read-7d" },
+);
+assert.equal(displayViews.primaryMetric?.key, "views", "Display views must satisfy a read-* primary metric");
+assert.equal(displayViews.primaryMetric?.numeric, 1234, "Display views must preserve its numeric value");
+
+const neutralDisplayViews = getRankingItemMeta(
+  { metric: { label: "阅读", kind: "views", value: 1234 } },
+  "zh-CN",
+  { variant: "read-7d", promotePrimary: false },
+);
+assert.equal(neutralDisplayViews.primaryMetric, null, "neutral Display metadata must not promote its metric");
+assert.deepEqual(
+  neutralDisplayViews.metrics.map(({ key, numeric, isPrimary }) => [key, numeric, isPrimary]),
+  [["views", 1234, false]],
+  "neutral Display metadata must still expose canonical engagement metrics",
+);
+
+const genericDisplayMetric = getRankingItemMeta(
+  { metric: { label: "在线人数", kind: "online", value: 9876 } },
+  "zh-CN",
+  { variant: "hot" },
+);
+assert.equal(
+  genericDisplayMetric.primaryMetric?.key,
+  "display:online",
+  "unknown Display metric kinds must stay visible instead of being discarded",
+);
+assert.equal(genericDisplayMetric.primaryMetric?.label, "在线人数");
+assert.equal(genericDisplayMetric.primaryMetric?.numeric, 9876);
+
+for (const [locale, label] of [
+  ["zh-CN", "阅读"], ["zh-TW", "閱讀"], ["en", "Views"], ["ja", "閲覧"], ["ko", "조회"],
+]) {
+  const meta = getRankingItemMeta({ metrics: { views: 1 } }, locale);
+  assert.equal(meta.metrics[0]?.label, label, `${locale} metric label must stay localized`);
+}
+
+for (const [locale, label] of [
+  ["zh-CN", "热度"], ["zh-TW", "熱度"], ["en", "Heat"], ["ja", "注目度"], ["ko", "인기도"],
+]) {
+  const meta = getRankingItemMeta({ hot: 1 }, locale, { variant: "hot" });
+  assert.equal(meta.primaryMetric?.label, label, `${locale} heat label must stay localized`);
+}
+
+console.log("[ranking-item-meta] variant-aware primary metrics, timestamp priority, localization and validation verified");

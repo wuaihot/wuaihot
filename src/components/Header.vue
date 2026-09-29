@@ -1,0 +1,2190 @@
+<template>
+  <n-card
+    :bordered="false"
+    class="app-header"
+    :class="{ 'tablet-compact': isTabletScreen }"
+    content-style="padding: 0"
+    @mouseenter="emit('mouseenter', $event)"
+    @mouseleave="emit('mouseleave', $event)"
+    @click="emit('click', $event)"
+  >
+    <section>
+      <div class="logo" @click="router.push(buildHomePath(locale))">
+        <img :src="siteLogoUrl" alt="logo" />
+        <div class="name">
+          <n-text>{{ t("common.siteName") }}</n-text>
+          <n-text :depth="3">{{ t("common.siteTagline") }}</n-text>
+        </div>
+      </div>
+      <div v-if="!store.categoryEnabled" class="header-center">
+        <div class="current-time" v-if="store.timeData">
+          <n-text class="time">{{ store.timeData.time.text }}</n-text>
+          <n-text class="date" :depth="3">
+            {{ currentDateText }}
+          </n-text>
+        </div>
+        <div class="current-time" v-else>
+          <n-text class="time">{{ t("common.loadingTime") }}</n-text>
+        </div>
+      </div>
+      <div v-else class="category-select header-center">
+        <div v-if="isSettingPage" class="category-back">
+          <div class="category-hit-area" @click="goHome">
+            <n-button size="small" type="primary" strong @click.stop="goHome">
+              {{ t("common.backHome") }}
+            </n-button>
+          </div>
+        </div>
+        <div v-else-if="!isSmallScreen" class="category-nav">
+          <n-space align="center" justify="center">
+            <template v-for="cat in categoryNavOptions" :key="cat.value">
+              <n-dropdown
+                v-if="cat.children?.length"
+                trigger="manual"
+                :options="cat.children"
+                :show="activeHeaderDropdown === `category:${cat.value}`"
+                :menu-props="() => headerMenuProps(`category:${cat.value}`)"
+                @select="selectCategory"
+              >
+                <div
+                  class="category-hit-area"
+                  @mouseenter="openHeaderDropdown(`category:${cat.value}`)"
+                  @mouseleave="scheduleHeaderDropdownClose(`category:${cat.value}`)"
+                  @click="selectCategory(cat.value)"
+                >
+                  <n-button
+                    size="small"
+                    text
+                    strong
+                    :type="isCategoryNavActive(cat) ? 'primary' : 'default'"
+                    class="cat-btn"
+                    @click.stop="selectCategory(cat.value)"
+                  >
+                    {{ cat.label }}
+                    <span class="nav-caret" aria-hidden="true">⌄</span>
+                  </n-button>
+                </div>
+              </n-dropdown>
+              <div
+                v-else
+                class="category-hit-area"
+                @click="selectCategory(cat.value)"
+              >
+                <n-button
+                  size="small"
+                  text
+                  strong
+                  :type="isCategoryNavActive(cat) ? 'primary' : 'default'"
+                  class="cat-btn"
+                  @click.stop="selectCategory(cat.value)"
+                >
+                  {{ cat.label }}
+                </n-button>
+              </div>
+            </template>
+            <n-dropdown
+              trigger="manual"
+              :options="topicMenuOptions"
+              :show="activeHeaderDropdown === 'header:topic'"
+              :menu-props="() => headerMenuProps('header:topic')"
+              @select="selectTopic"
+            >
+              <div
+                class="category-hit-area topic-nav-trigger"
+                @mouseenter="openHeaderDropdown('header:topic')"
+                @mouseleave="scheduleHeaderDropdownClose('header:topic')"
+              >
+                <n-button
+                  size="small"
+                  text
+                  strong
+                  :type="activeTopic ? 'primary' : 'default'"
+                  class="cat-btn"
+                >
+                  {{ topicNavLabel }}
+                  <span class="nav-caret" aria-hidden="true">⌄</span>
+                </n-button>
+              </div>
+            </n-dropdown>
+            <n-dropdown
+              trigger="manual"
+              :options="eventMenuOptions"
+              :show="activeHeaderDropdown === 'header:event'"
+              :menu-props="() => headerMenuProps('header:event')"
+              @select="selectEvent"
+            >
+              <div
+                class="category-hit-area event-nav-trigger"
+                @mouseenter="openHeaderDropdown('header:event')"
+                @mouseleave="scheduleHeaderDropdownClose('header:event')"
+              >
+                <n-button
+                  size="small"
+                  text
+                  strong
+                  :type="activeEvent ? 'primary' : 'default'"
+                  class="cat-btn"
+                >
+                  {{ eventNavLabel }}
+                  <span class="nav-caret" aria-hidden="true">⌄</span>
+                </n-button>
+              </div>
+            </n-dropdown>
+          </n-space>
+        </div>
+        <n-select
+          v-else
+          v-model:value="activeCategoryLocal"
+          :show-checkmark="false"
+          :options="mobileCategoryOptions"
+          size="large"
+          :placeholder="t('common.selectCategory')"
+        />
+      </div>
+      <div class="controls">
+        <n-space justify="end">
+          <n-dropdown
+            trigger="manual"
+            :options="languageOptions"
+            :show="activeHeaderDropdown === 'header:locale'"
+            :menu-props="() => headerMenuProps('header:locale')"
+            @select="switchLocale"
+          >
+            <div
+              class="control-hit-area"
+              @mouseenter="openHeaderDropdown('header:locale')"
+              @mouseleave="scheduleHeaderDropdownClose('header:locale')"
+            >
+              <n-button
+                class="header-control-btn locale-control-btn"
+                secondary
+                strong
+                round
+                :aria-label="currentLocaleMeta.label"
+                :title="currentLocaleMeta.label"
+              >
+                <span class="header-control-content">
+                  <img
+                    class="locale-trigger-flag"
+                    :src="currentLocaleMeta.flag"
+                    :alt="currentLocaleMeta.label"
+                    :style="localeFlagStyle"
+                  />
+                  <span
+                    v-if="!store.compactMode && !isSmallScreen"
+                    class="locale-trigger-label"
+                  >
+                    {{ currentLocaleMeta.shortLabel }}
+                  </span>
+                </span>
+              </n-button>
+            </div>
+          </n-dropdown>
+          <n-popover
+            v-if="showRefresh"
+            trigger="hover"
+            placement="bottom"
+            :show-arrow="false"
+            content-class="header-refresh-popover"
+            :content-style="{ padding: '5px' }"
+            style="max-width: 360px; padding: 0"
+          >
+            <template #trigger>
+              <div class="control-hit-area" @click.stop>
+                <n-button
+                  class="header-control-btn refresh-control-btn"
+                  :class="{ 'has-countdown': showHeaderCountdown }"
+                  secondary
+                  strong
+                  round
+                  :aria-label="refreshButtonLabel"
+                  :title="refreshButtonLabel"
+                >
+                  <span class="header-control-content">
+                    <n-icon class="header-glyph" :component="Refresh" />
+                    <span v-if="showHeaderCountdown" class="countdown">
+                      {{ countdownText }}
+                    </span>
+                  </span>
+                </n-button>
+              </div>
+            </template>
+            <div class="refresh-panel" @click.stop>
+              <div class="refresh-panel__hero">
+                <span class="refresh-panel__icon" aria-hidden="true">
+                  <n-icon class="header-glyph" :component="Refresh" />
+                </span>
+                <div class="refresh-panel__heading">
+                  <strong>{{ t("header.refreshControl") }}</strong>
+                  <span>{{ t("header.nextRefresh") }}</span>
+                </div>
+                <span
+                  class="refresh-panel__countdown"
+                  :class="{ paused: store.autoRefreshPaused }"
+                >
+                  {{ countdownText || "—" }}
+                </span>
+              </div>
+
+              <n-button
+                block
+                class="refresh-panel__now"
+                type="primary"
+                secondary
+                strong
+                :disabled="!canManualRefresh"
+                @click="manualRefresh"
+              >
+                <template #icon>
+                  <n-icon class="header-glyph" :component="Refresh" />
+                </template>
+                {{ t("header.refreshNow") }}
+              </n-button>
+
+              <div class="refresh-panel__section">
+                <div class="refresh-panel__auto-head">
+                  <div>
+                    <strong>{{ t("header.autoRefresh") }}</strong>
+                    <n-text depth="3" class="refresh-panel__auto-tip">
+                      {{ t("header.refreshTip") }}
+                    </n-text>
+                  </div>
+                  <div class="refresh-panel__auto-actions">
+                    <n-button
+                      size="tiny"
+                      quaternary
+                      :disabled="!store.autoRefreshEnabled"
+                      @click="togglePause"
+                    >
+                      {{
+                        store.autoRefreshPaused
+                          ? t("header.resume")
+                          : t("header.pause")
+                      }}
+                    </n-button>
+                    <n-switch
+                      size="small"
+                      v-model:value="autoEnabled"
+                      @update:value="toggleAutoRefresh"
+                    />
+                  </div>
+                </div>
+
+                <div class="time-inputs">
+                  <div class="time-item">
+                    <span class="unit">{{ t("header.hour") }}</span>
+                    <div class="time-number-control">
+                      <n-input-number
+                        size="small"
+                        v-model:value="timeForm.hour"
+                        :min="0"
+                        :max="23"
+                        :show-button="false"
+                        :keyboard="{ ArrowUp: true, ArrowDown: true }"
+                        :input-props="{ 'aria-label': t('header.hour') }"
+                        @wheel.prevent="handleIntervalWheel('hour', $event)"
+                        @update:value="applyAutoInterval"
+                      />
+                      <div class="time-stepper" role="group">
+                        <button
+                          type="button"
+                          :aria-label="t('header.decreaseTimeUnit', { unit: t('header.hour') })"
+                          :disabled="timeForm.hour <= 0"
+                          @click="adjustTimeUnit('hour', -1)"
+                        >
+                          <span aria-hidden="true">−</span>
+                        </button>
+                        <button
+                          type="button"
+                          :aria-label="t('header.increaseTimeUnit', { unit: t('header.hour') })"
+                          :disabled="timeForm.hour >= 23"
+                          @click="adjustTimeUnit('hour', 1)"
+                        >
+                          <span aria-hidden="true">+</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="time-item">
+                    <span class="unit">{{ t("header.minute") }}</span>
+                    <div class="time-number-control">
+                      <n-input-number
+                        size="small"
+                        v-model:value="timeForm.minute"
+                        :min="0"
+                        :max="59"
+                        :show-button="false"
+                        :keyboard="{ ArrowUp: true, ArrowDown: true }"
+                        :input-props="{ 'aria-label': t('header.minute') }"
+                        @wheel.prevent="handleIntervalWheel('minute', $event)"
+                        @update:value="applyAutoInterval"
+                      />
+                      <div class="time-stepper" role="group">
+                        <button
+                          type="button"
+                          :aria-label="t('header.decreaseTimeUnit', { unit: t('header.minute') })"
+                          :disabled="timeForm.minute <= 0"
+                          @click="adjustTimeUnit('minute', -1)"
+                        >
+                          <span aria-hidden="true">−</span>
+                        </button>
+                        <button
+                          type="button"
+                          :aria-label="t('header.increaseTimeUnit', { unit: t('header.minute') })"
+                          :disabled="timeForm.minute >= 59"
+                          @click="adjustTimeUnit('minute', 1)"
+                        >
+                          <span aria-hidden="true">+</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="time-item">
+                    <span class="unit">{{ t("header.second") }}</span>
+                    <div class="time-number-control">
+                      <n-input-number
+                        size="small"
+                        v-model:value="timeForm.second"
+                        :min="0"
+                        :max="59"
+                        :show-button="false"
+                        :keyboard="{ ArrowUp: true, ArrowDown: true }"
+                        :input-props="{ 'aria-label': t('header.second') }"
+                        @wheel.prevent="handleIntervalWheel('second', $event)"
+                        @update:value="applyAutoInterval"
+                      />
+                      <div class="time-stepper" role="group">
+                        <button
+                          type="button"
+                          :aria-label="t('header.decreaseTimeUnit', { unit: t('header.second') })"
+                          :disabled="timeForm.second <= 0"
+                          @click="adjustTimeUnit('second', -1)"
+                        >
+                          <span aria-hidden="true">−</span>
+                        </button>
+                        <button
+                          type="button"
+                          :aria-label="t('header.increaseTimeUnit', { unit: t('header.second') })"
+                          :disabled="timeForm.second >= 59"
+                          @click="adjustTimeUnit('second', 1)"
+                        >
+                          <span aria-hidden="true">+</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </n-popover>
+          <n-popover
+            trigger="hover"
+            placement="bottom-end"
+            :delay="80"
+            :show-arrow="false"
+            content-class="header-theme-popover"
+            :content-style="{ padding: '3px' }"
+            style="padding: 0"
+          >
+            <template #trigger>
+              <div class="control-hit-area" @click.stop>
+                <n-button
+                  class="header-control-btn"
+                  secondary
+                  strong
+                  round
+                  :aria-label="themeToggleLabel"
+                  :title="themeToggleLabel"
+                >
+                  <template #icon>
+                    <UiGlyph
+                      class="header-glyph"
+                      :name="appearanceGlyphName(appearanceMode)"
+                    />
+                  </template>
+                </n-button>
+              </div>
+            </template>
+            <div
+              class="theme-mode-menu"
+              :aria-label="t('settings.theme')"
+              @click.stop
+            >
+              <button
+                v-for="mode in appearanceModeOptions"
+                :key="mode.value"
+                type="button"
+                :class="{ active: appearanceMode === mode.value }"
+                :aria-pressed="appearanceMode === mode.value"
+                @click.stop="selectAppearanceMode(mode.value)"
+              >
+                <span class="theme-mode-menu__option">
+                  <UiGlyph
+                    class="theme-mode-menu__icon"
+                    :name="appearanceGlyphName(mode.value)"
+                  />
+                  <span>{{ mode.label }}</span>
+                </span>
+              </button>
+            </div>
+          </n-popover>
+          <n-popover>
+            <template #trigger>
+              <div class="control-hit-area" @click.stop="goSetting">
+                <n-button
+                  class="header-control-btn"
+                  secondary
+                  strong
+                  round
+                  :aria-label="hotboardManagerLabel"
+                  :title="hotboardManagerLabel"
+                  @click.stop="goSetting"
+                >
+                  <template #icon>
+                    <n-icon class="header-glyph" :component="SettingTwo" />
+                  </template>
+                </n-button>
+              </div>
+            </template>
+            {{ hotboardManagerLabel }}
+          </n-popover>
+        </n-space>
+      </div>
+      <div class="mobile">
+        <n-dropdown
+          :options="menuOptions"
+          size="large"
+          trigger="manual"
+          :show="mobileMenuOpen"
+          placement="bottom-end"
+          @clickoutside="closeMobileMenu"
+          @select="menuOptionsSelect"
+        >
+          <div
+            class="mobile-trigger"
+            @click.stop="toggleMobileMenu"
+            @touchstart.stop.prevent="toggleMobileMenu"
+          >
+            <n-button secondary strong round>
+              <template #icon>
+                <n-icon :component="HamburgerButton" />
+              </template>
+            </n-button>
+          </div>
+        </n-dropdown>
+      </div>
+    </section>
+  </n-card>
+</template>
+
+<script setup>
+import { HamburgerButton, Refresh, SettingTwo } from "@icon-park/vue-next";
+import UiGlyph from "@/components/ui/UiGlyph.vue";
+import { getCurrentTime } from "@/utils/getTime.js";
+import { getPublicAssetUrl } from "@/utils/publicAssets";
+import { requestDataRefresh } from "@/utils/dataRefresh";
+import { HOVER_MENU_OPEN_EVENT, announceHoverMenuOpen } from "@/utils/hoverMenu";
+import { dropdownSelectionProps } from "@/utils/dropdownSelection";
+import { mainStore } from "@/store";
+import { getCategoryByRef, getSourceCategoryIds } from "@/utils/categoryTree";
+import {
+  TOPIC_REGISTRY,
+  buildTopicPath,
+  getTopicByRouteName,
+  getTopicLabel,
+  getTopicNavLabel,
+} from "@/config/topics";
+import {
+  EVENT_REGISTRY,
+  buildEventPath,
+  getEventByRoute,
+  getEventLabel,
+  getEventNavLabel,
+} from "@/config/events";
+import { NText, NIcon, useOsTheme } from "naive-ui";
+import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
+import { h } from "vue";
+import {
+  buildCategoryPath,
+  buildHomePath,
+  buildLocalePathFromRoute,
+  getCategoryLabel,
+  getCategoryNameBySlug,
+  getCategorySlugByName,
+  getLocaleFromRoute,
+  getSupportedLocales,
+  savePreferredLocale,
+} from "@/utils/locale";
+
+const emit = defineEmits([
+  "mouseenter",
+  "mouseleave",
+  "click",
+  "open-settings",
+]);
+
+const router = useRouter();
+const route = useRoute();
+const store = mainStore();
+const osThemeRef = useOsTheme();
+const activeHeaderDropdown = ref("");
+let headerDropdownCloseTimer;
+const { t, locale } = useI18n({ useScope: "global" });
+const timeInterval = ref(null);
+const siteLogoUrl = getPublicAssetUrl("/ico/wuaihot.svg");
+const showRefresh = ref(false);
+const countdownText = ref("");
+const countdownTimer = ref(null);
+const autoEnabled = ref(store.autoRefreshEnabled);
+const mobileMenuOpen = ref(false);
+const timeForm = reactive({
+  hour: 0,
+  minute: 30,
+  second: 0,
+});
+const isSmallScreen = ref(false);
+const isTabletScreen = ref(false);
+const isSettingPage = computed(() =>
+  ["setting", "setting-locale"].includes(router.currentRoute.value?.name),
+);
+const isRefreshEnabledRoute = (routeName) =>
+  [
+    "home",
+    "home-locale",
+    "category",
+    "category-locale",
+    "list",
+    "list-locale",
+    "list-legacy",
+    "wool-topic",
+    "wool-topic-locale",
+    "game-deals-topic",
+    "game-deals-topic-locale",
+    "chigua-topic",
+    "chigua-topic-locale",
+    "ai-topic",
+    "ai-topic-locale",
+    "event",
+    "event-locale",
+    "setting",
+    "setting-locale",
+  ].includes(routeName);
+const currentLocaleMeta = computed(
+  () =>
+    getSupportedLocales().find((item) => item.code === locale.value) ||
+    getSupportedLocales()[0],
+);
+const refreshButtonLabel = computed(() =>
+  countdownText.value
+    ? `${t("header.refreshPage")} ${countdownText.value}`
+    : t("header.refreshPage"),
+);
+const showHeaderCountdown = computed(
+  () => store.autoRefreshEnabled && Boolean(countdownText.value),
+);
+const canManualRefresh = computed(
+  () => showRefresh.value && !isSettingPage.value,
+);
+const appearanceMode = computed(() =>
+  store.siteThemeAuto ? "auto" : store.siteTheme,
+);
+const appearanceModeOptions = computed(() => [
+  { value: "auto", label: t("settings.themeAutoOption") },
+  { value: "light", label: t("settings.themeLight") },
+  { value: "dark", label: t("settings.themeDark") },
+]);
+const appearanceGlyphName = (mode) =>
+  mode === "auto" ? "monitor" : mode === "dark" ? "moon" : "sun";
+const renderAppearanceIcon = (mode) =>
+  h(UiGlyph, { name: appearanceGlyphName(mode) });
+const themeToggleLabel = computed(
+  () =>
+    appearanceModeOptions.value.find(
+      (item) => item.value === appearanceMode.value,
+    )?.label || t("settings.theme"),
+);
+const selectAppearanceMode = (mode) => {
+  store.setAppearanceMode(mode, osThemeRef.value);
+};
+const buildCalendarDate = (timeData) => {
+  if (!timeData?.time) return null;
+  return new Date(
+    Number(timeData.time.year),
+    Number(timeData.time.month) - 1,
+    Number(timeData.time.day),
+    Number(timeData.time.hour),
+    Number(timeData.time.minute),
+    Number(timeData.time.second),
+  );
+};
+const formatHeaderDate = (timeData) => {
+  if (!timeData) return t("header.dateLoadFailed");
+  if (locale.value === "zh-CN") {
+    return `${timeData.lunar.GanZhiYear}年 ${timeData.lunar.text} ${timeData.time.weekday}`;
+  }
+  const currentDate = buildCalendarDate(timeData);
+  if (!currentDate || Number.isNaN(currentDate.getTime())) {
+    return t("header.dateLoadFailed");
+  }
+  const targetLocale = currentLocaleMeta.value.htmlLang || locale.value;
+  return new Intl.DateTimeFormat(targetLocale, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(currentDate);
+};
+const currentDateText = computed(() => formatHeaderDate(store.timeData));
+const activeCategoryLocal = computed({
+  get() {
+    return store.activeCategory;
+  },
+  set(val) {
+    store.setActiveCategory(val);
+    const targetPath =
+      val === "全部"
+        ? buildHomePath(locale.value)
+        : buildCategoryPath(
+            locale.value,
+            getCategorySlugByName(val, store.categories),
+          );
+    if (router.currentRoute.value.fullPath !== targetPath) {
+      router.push(targetPath);
+    }
+  },
+});
+const selectCategory = (value) => {
+  activeHeaderDropdown.value = "";
+  activeCategoryLocal.value = value;
+};
+const cancelHeaderDropdownClose = () => {
+  clearTimeout(headerDropdownCloseTimer);
+  headerDropdownCloseTimer = undefined;
+};
+const closeHeaderDropdown = () => {
+  cancelHeaderDropdownClose();
+  activeHeaderDropdown.value = "";
+};
+const openHeaderDropdown = (id) => {
+  cancelHeaderDropdownClose();
+  if (activeHeaderDropdown.value === id) return;
+  activeHeaderDropdown.value = id;
+  announceHoverMenuOpen(id);
+};
+const scheduleHeaderDropdownClose = (id) => {
+  cancelHeaderDropdownClose();
+  headerDropdownCloseTimer = setTimeout(() => {
+    if (activeHeaderDropdown.value === id) activeHeaderDropdown.value = "";
+  }, 160);
+};
+const headerMenuProps = (id) => ({
+  ...(id === "header:locale" ? { class: "header-locale-menu" } : {}),
+  onMouseenter: cancelHeaderDropdownClose,
+  onMouseleave: () => scheduleHeaderDropdownClose(id),
+});
+const handleForeignHoverMenuOpen = (event) => {
+  if (event?.detail?.id !== activeHeaderDropdown.value) closeHeaderDropdown();
+};
+const goHome = () => {
+  router.push(buildHomePath(locale.value));
+};
+const availableCategorySet = computed(() => {
+  const available = new Set();
+  store.newsArr
+    .filter((item) => item.show)
+    .forEach((item) => {
+      getSourceCategoryIds(item, store.categories).forEach((id) => {
+        let category = getCategoryByRef(store.categories, id);
+        const seen = new Set();
+        while (category && !seen.has(category.id)) {
+          seen.add(category.id);
+          available.add(category.name);
+          category = category.parentId
+            ? getCategoryByRef(store.categories, category.parentId)
+            : null;
+        }
+      });
+    });
+  return available;
+});
+const categoryOptions = computed(() => {
+  const base = store.categories
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(a.navOrder ?? a.order) - Number(b.navOrder ?? b.order),
+    )
+    .filter(
+      (cat) =>
+        !cat.parentId &&
+        cat.navigation !== false &&
+        availableCategorySet.value.has(cat.name),
+    )
+    .map((c) => ({
+      label: getCategoryLabel(c.name, locale.value),
+      value: c.name,
+    }));
+  return [{ label: t("categories.all"), value: "全部" }, ...base];
+});
+const buildMobileCategoryOptions = (parentId = null, parentLabels = []) =>
+  store.categories
+    .filter(
+      (item) =>
+        (item.parentId || null) === parentId &&
+        item.navigation !== false &&
+        availableCategorySet.value.has(item.name),
+    )
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .flatMap((item) => {
+      const labels = [
+        ...parentLabels,
+        getCategoryLabel(item.name, locale.value),
+      ];
+      return [
+        { label: labels.join(" · "), value: item.name },
+        ...buildMobileCategoryOptions(item.id, labels),
+      ];
+    });
+const mobileCategoryOptions = computed(() => [
+  { label: t("categories.all"), value: "全部" },
+  ...buildMobileCategoryOptions(),
+]);
+const buildCategoryMenuChildren = (parentId) => {
+  const children = store.categories
+    .filter(
+      (item) => item.parentId === parentId && availableCategorySet.value.has(item.name),
+    )
+    .slice()
+    .sort((a, b) => a.order - b.order);
+  return children.map((item) => {
+    const nested = buildCategoryMenuChildren(item.id);
+    const active = item.name === activeCategoryLocal.value;
+    return {
+      label: getCategoryLabel(item.name, locale.value),
+      key: item.name,
+      props: dropdownSelectionProps(active, { current: true }),
+      ...(nested.length ? { children: nested } : {}),
+    };
+  });
+};
+const categoryNavOptions = computed(() =>
+  categoryOptions.value.map((option) => {
+    if (option.value === "全部") return option;
+    const category = getCategoryByRef(store.categories, option.value);
+    const children = category ? buildCategoryMenuChildren(category.id) : [];
+    return { ...option, children };
+  }),
+);
+const isCategoryNavActive = (option) => {
+  if (activeTopic.value || activeEvent.value) return false;
+  if (option.value === activeCategoryLocal.value) return true;
+  let current = getCategoryByRef(store.categories, activeCategoryLocal.value);
+  while (current?.parentId) {
+    current = getCategoryByRef(store.categories, current.parentId);
+  }
+  return current?.name === option.value;
+};
+const activeTopic = computed(() => getTopicByRouteName(route.name)?.id || "");
+const activeEvent = computed(() => getEventByRoute(route)?.id || "");
+const topicNavLabel = computed(() => getTopicNavLabel(locale.value));
+const eventNavLabel = computed(() => getEventNavLabel(locale.value));
+const topicMenuOptions = computed(() =>
+  TOPIC_REGISTRY.map((topic) => {
+    const active = topic.id === activeTopic.value;
+    return {
+      label: getTopicLabel(topic, locale.value),
+      key: `topic:${topic.id}`,
+      props: dropdownSelectionProps(active, { current: true }),
+    };
+  }),
+);
+const selectTopic = (key) => {
+  activeHeaderDropdown.value = "";
+  const id = String(key || "").replace(/^topic:/, "");
+  const topic = TOPIC_REGISTRY.find((item) => item.id === id);
+  if (!topic) return;
+  const target = buildTopicPath(topic, locale.value);
+  if (router.currentRoute.value.fullPath !== target) router.push(target);
+};
+const eventMenuOptions = computed(() =>
+  EVENT_REGISTRY.map((event) => {
+    const active = event.id === activeEvent.value;
+    return {
+      label: getEventLabel(event, locale.value),
+      key: `event:${event.id}`,
+      props: dropdownSelectionProps(active, { current: true }),
+    };
+  }),
+);
+const selectEvent = (key) => {
+  activeHeaderDropdown.value = "";
+  const id = String(key || "").replace(/^event:/, "");
+  const event = EVENT_REGISTRY.find((item) => item.id === id);
+  if (!event) return;
+  const target = buildEventPath(event, locale.value);
+  if (router.currentRoute.value.fullPath !== target) router.push(target);
+};
+const languageOptions = computed(() =>
+  getSupportedLocales().map((item) => {
+    const active = item.code === locale.value;
+    return {
+      key: item.code,
+      label: () =>
+        h(
+          "div",
+          {
+            class: ["locale-option", { "is-active": active }],
+            style: localeOptionStyle,
+            "aria-current": active ? "true" : undefined,
+          },
+          [
+            h("img", {
+              class: "locale-option-flag",
+              src: item.flag,
+              alt: item.label,
+              style: localeFlagStyle,
+            }),
+            h(
+              "span",
+              {
+                class: "locale-option-label",
+                style: localeOptionLabelStyle,
+              },
+              item.label,
+            ),
+          ],
+        ),
+      props: dropdownSelectionProps(active),
+    };
+  }),
+);
+const localeOptionStyle = {
+  display: "grid",
+  gridTemplateColumns: "20px minmax(0, 1fr)",
+  alignItems: "center",
+  gap: "10px",
+  width: "136px",
+  minWidth: "0",
+  maxWidth: "100%",
+  whiteSpace: "nowrap",
+};
+const localeOptionLabelStyle = {
+  display: "inline-block",
+  lineHeight: "1.2",
+};
+const localeFlagStyle = {
+  width: "20px",
+  height: "20px",
+  borderRadius: "4px",
+  objectFit: "cover",
+  boxSizing: "border-box",
+  border: "1px solid rgba(127, 127, 127, 0.18)",
+  flexShrink: "0",
+  display: "block",
+};
+
+const switchLocale = (nextLocale) => {
+  closeHeaderDropdown();
+  locale.value = nextLocale;
+  savePreferredLocale(nextLocale);
+  const target = buildLocalePathFromRoute(route, nextLocale);
+  if (router.currentRoute.value.fullPath !== target) {
+    router.push(target);
+  }
+};
+
+watchEffect(() => {
+  if (!store.categoryEnabled) return;
+  const values = mobileCategoryOptions.value.map((opt) => opt.value);
+  if (!values.length) return;
+  if (!values.includes(store.activeCategory)) {
+    const next = values[0] || "全部";
+    if (store.activeCategory !== next) {
+      store.setActiveCategory(next);
+    }
+  }
+});
+
+// 移动端时间模块
+const timeRender = () => {
+  return h(
+    "div",
+    {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "6px 18px",
+      },
+    },
+    [
+      h(NText, null, {
+        default: () =>
+          store.timeData
+            ? store.timeData.time.text
+            : t("header.timeLoadFailed"),
+      }),
+      h(
+        NText,
+        { depth: 3, style: "font-size: 12px" },
+        {
+          default: () => formatHeaderDate(store.timeData),
+        },
+      ),
+    ],
+  );
+};
+
+const hotboardManagerLabel = computed(() => t("common.settings"));
+
+// 移动端菜单
+const menuOptions = computed(() => [
+  {
+    key: "header",
+    type: "render",
+    render: timeRender,
+  },
+  {
+    key: "header-divider",
+    type: "divider",
+  },
+  {
+    label: countdownText.value
+      ? `${t("header.refreshPage")} ${countdownText.value}`
+      : t("header.refreshPage"),
+    key: "refresh",
+    disabled: !canManualRefresh.value,
+    icon: () => h(NIcon, null, { default: () => h(Refresh) }),
+  },
+  {
+    key: "topic-divider",
+    type: "divider",
+  },
+  {
+    label: topicNavLabel.value,
+    key: "topics",
+    children: topicMenuOptions.value,
+  },
+  {
+    label: eventNavLabel.value,
+    key: "events",
+    children: eventMenuOptions.value,
+  },
+  {
+    key: "locale-divider",
+    type: "divider",
+  },
+  ...getSupportedLocales().map((item) => ({
+    label: item.label,
+    key: `locale:${item.code}`,
+    props: dropdownSelectionProps(item.code === locale.value),
+  })),
+  {
+    label: t("settings.theme"),
+    key: "appearance",
+    icon: () =>
+      h(NIcon, null, {
+        default: () => renderAppearanceIcon(appearanceMode.value),
+      }),
+    children: appearanceModeOptions.value.map((item) => ({
+      label: item.label,
+      key: `appearance:${item.value}`,
+      props: dropdownSelectionProps(item.value === appearanceMode.value),
+      icon: () =>
+        h(NIcon, null, {
+          default: () => renderAppearanceIcon(item.value),
+        }),
+    })),
+  },
+  {
+    label: hotboardManagerLabel.value,
+    key: "setting",
+    icon: () => h(NIcon, null, { default: () => h(SettingTwo) }),
+  },
+]);
+
+// 移动端下拉菜单点击事件
+const menuOptionsSelect = (val) => {
+  if (val === "refresh") {
+    manualRefresh();
+  } else if (String(val).startsWith("topic:")) {
+    selectTopic(val);
+  } else if (String(val).startsWith("event:")) {
+    selectEvent(val);
+  } else if (String(val).startsWith("locale:")) {
+    switchLocale(String(val).replace("locale:", ""));
+  } else if (String(val).startsWith("appearance:")) {
+    selectAppearanceMode(String(val).replace("appearance:", ""));
+  } else if (val === "setting") {
+    goSetting();
+  }
+  mobileMenuOpen.value = false;
+};
+
+const goSetting = () => {
+  emit("open-settings");
+  mobileMenuOpen.value = false;
+};
+
+const toggleMobileMenu = () => {
+  mobileMenuOpen.value = !mobileMenuOpen.value;
+};
+
+const closeMobileMenu = () => {
+  mobileMenuOpen.value = false;
+};
+
+const manualRefresh = () => {
+  if (!canManualRefresh.value) return;
+  requestDataRefresh({ reason: "manual", force: true });
+};
+
+const toggleAutoRefresh = (val) => {
+  store.autoRefreshEnabled = val;
+  if (!val) {
+    store.autoRefreshPaused = false;
+  }
+};
+
+const togglePause = () => {
+  if (!store.autoRefreshEnabled) return;
+  store.autoRefreshPaused = !store.autoRefreshPaused;
+};
+
+const secondsToTime = (seconds) => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.max(seconds % 60, 0);
+  return { h, m, s };
+};
+
+const timeToSeconds = (time) => {
+  const h = Number(time.hour) || 0;
+  const m = Number(time.minute) || 0;
+  const s = Number(time.second) || 0;
+  return h * 3600 + m * 60 + s;
+};
+
+const syncTimeForm = () => {
+  const { h, m, s } = secondsToTime(Number(store.autoRefreshInterval));
+  timeForm.hour = h;
+  timeForm.minute = m;
+  timeForm.second = s;
+};
+
+const TIME_UNIT_LIMITS = {
+  hour: [0, 23],
+  minute: [0, 59],
+  second: [0, 59],
+};
+
+const adjustTimeUnit = (unit, delta) => {
+  const [min, max] = TIME_UNIT_LIMITS[unit] || [0, 0];
+  const current = Number(timeForm[unit]) || 0;
+  timeForm[unit] = Math.min(max, Math.max(min, current + delta));
+  applyAutoInterval();
+};
+
+const handleIntervalWheel = (unit, event) => {
+  adjustTimeUnit(unit, event.deltaY < 0 ? 1 : -1);
+};
+
+const applyAutoInterval = () => {
+  const seconds = timeToSeconds(timeForm);
+  if (seconds < 60) {
+    $message.warning(t("header.refreshMinWarning"));
+    return;
+  }
+  store.autoRefreshInterval = seconds;
+  if (
+    typeof window !== "undefined" &&
+    store.autoRefreshEnabled &&
+    !store.autoRefreshPaused
+  ) {
+    if (store.autoRefreshRoutePaused || window.$autoRefreshPausedByRoute) {
+      store.autoRefreshRemainingMs = seconds * 1000;
+      window.$autoRefreshRemainingMs = seconds * 1000;
+      window.$nextAutoRefreshAt = null;
+      return;
+    }
+    window.$nextAutoRefreshAt = Date.now() + seconds * 1000;
+  }
+};
+
+const formatCountdown = (remainMs) => {
+  const totalSeconds = Math.max(Math.floor(remainMs / 1000), 0);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const separator = locale.value === "en" ? " " : "";
+  return [
+    `${h}${t("header.hour")}`,
+    `${m}${t("header.minute")}`,
+    `${s}${t("header.second")}`,
+  ].join(separator);
+};
+
+const normalizeRemainingMs = (value) => {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+};
+
+const getSyncedAutoRefreshRemainingMs = () =>
+  normalizeRemainingMs(store.autoRefreshRemainingMs) ??
+  normalizeRemainingMs(window.$autoRefreshRemainingMs);
+
+const updateCountdown = () => {
+  if (typeof window === "undefined" || !store.autoRefreshEnabled) {
+    countdownText.value = "";
+    return;
+  }
+  if (store.autoRefreshRoutePaused || window.$autoRefreshPausedByRoute) {
+    const remainingMs = getSyncedAutoRefreshRemainingMs();
+    countdownText.value =
+      Number.isFinite(remainingMs) && remainingMs >= 0
+        ? formatCountdown(remainingMs)
+        : "";
+    return;
+  }
+  if (store.autoRefreshPaused) {
+    countdownText.value = "";
+    return;
+  }
+  const syncedRemainingMs = getSyncedAutoRefreshRemainingMs();
+  if (syncedRemainingMs !== null) {
+    countdownText.value = formatCountdown(syncedRemainingMs);
+    return;
+  }
+  const target = window.$nextAutoRefreshAt;
+  const intervalSeconds = Number(store.autoRefreshInterval);
+  if (!target && intervalSeconds > 0) {
+    window.$nextAutoRefreshAt = Date.now() + intervalSeconds * 1000;
+  }
+  const nextTime = window.$nextAutoRefreshAt;
+  if (!nextTime) {
+    countdownText.value = "";
+    return;
+  }
+  const remain = nextTime - Date.now();
+  if (remain <= 0) {
+    countdownText.value = t("header.refreshInProgress");
+    return;
+  }
+  countdownText.value = formatCountdown(remain);
+};
+
+const setupCountdown = () => {
+  clearInterval(countdownTimer.value);
+  if (typeof window === "undefined") return;
+  countdownTimer.value = setInterval(updateCountdown, 1000);
+  updateCountdown();
+};
+
+const updateScreen = () => {
+  if (typeof window === "undefined") return;
+  const width = window.innerWidth;
+  const hasCoarsePointer =
+    window.matchMedia?.("(pointer: coarse)")?.matches === true;
+  const hasTouch = Number(window.navigator?.maxTouchPoints || 0) > 0;
+  const tabletCompact =
+    width > 768 && width <= 1180 && (hasCoarsePointer || hasTouch);
+
+  isTabletScreen.value = tabletCompact;
+  isSmallScreen.value = width <= 1000 || tabletCompact;
+};
+
+watch(
+  () => [
+    store.autoRefreshEnabled,
+    store.autoRefreshPaused,
+    store.autoRefreshRoutePaused,
+    store.autoRefreshRemainingMs,
+    store.autoRefreshInterval,
+    router.currentRoute.value?.name,
+    locale.value,
+  ],
+  () => {
+    autoEnabled.value = store.autoRefreshEnabled;
+    syncTimeForm();
+    setupCountdown();
+  },
+  { immediate: true },
+);
+
+// 监听路由参数变化
+watch(
+  () => router.currentRoute.value,
+  (val) => {
+    const categoryName = getCategoryNameBySlug(
+      val.params?.categorySlug,
+      store.categories,
+    );
+    store.setActiveCategory(categoryName || "全部");
+    locale.value = getLocaleFromRoute(val);
+    showRefresh.value = isRefreshEnabledRoute(val?.name);
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  window.$timeInterval = timeInterval.value = setInterval(() => {
+    store.timeData = getCurrentTime();
+  }, 1000);
+  const categoryName = getCategoryNameBySlug(
+    router.currentRoute.value?.params?.categorySlug,
+    store.categories,
+  );
+  store.setActiveCategory(categoryName || "全部");
+  locale.value = getLocaleFromRoute(router.currentRoute.value);
+  showRefresh.value = isRefreshEnabledRoute(router.currentRoute.value?.name);
+  syncTimeForm();
+  setupCountdown();
+  updateScreen();
+  window.addEventListener("resize", updateScreen);
+  window.addEventListener(HOVER_MENU_OPEN_EVENT, handleForeignHoverMenuOpen);
+});
+
+onBeforeUnmount(() => {
+  cancelHeaderDropdownClose();
+  clearInterval(timeInterval.value);
+  clearInterval(countdownTimer.value);
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", updateScreen);
+    window.removeEventListener(HOVER_MENU_OPEN_EVENT, handleForeignHoverMenuOpen);
+  }
+});
+</script>
+
+<style lang="scss" scoped>
+.app-header {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 16px var(--site-gutter, 5vw);
+  min-height: 72px;
+  z-index: 1200;
+  isolation: isolate;
+  top: 0;
+  background-color: var(--n-color);
+  border-bottom: 1px solid var(--n-border-color);
+  transition: all 0.25s ease;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
+
+  &.collapsed {
+    padding: 0 var(--site-gutter, 5vw);
+    min-height: 39px;
+    cursor: default;
+    box-shadow: none;
+    section {
+      column-gap: 8px;
+    }
+  }
+
+  section {
+    width: 100%;
+    max-width: var(--site-container-width, 1400px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .logo {
+    justify-self: start;
+  }
+
+  .header-center {
+    min-width: 0;
+    justify-self: center;
+  }
+
+  .controls {
+    justify-self: end;
+  }
+
+  .logo {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    cursor: pointer;
+    img {
+      width: 45px;
+      height: 45px;
+      margin-right: 11px;
+      transition: all 0.3s;
+    }
+    .name {
+      display: flex;
+      flex-direction: column;
+      span {
+        &:nth-of-type(1) {
+          font-size: 20px;
+          font-weight: bold;
+          transition: all 0.3s;
+        }
+        &:nth-of-type(2) {
+          font-size: 12px;
+        }
+      }
+    }
+  }
+
+  .current-time {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    .time {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .date {
+      font-size: 12px;
+    }
+  }
+
+  .controls {
+    display: flex;
+    flex: 0 0 auto;
+    min-width: max-content;
+    justify-content: flex-end;
+    align-self: stretch;
+    white-space: nowrap;
+    :deep(.n-space) {
+      min-height: 56px;
+      flex-wrap: nowrap !important;
+      align-items: stretch !important;
+      gap: 8px !important;
+    }
+    :deep(.n-space > div),
+    :deep(.n-space-item) {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: stretch;
+    }
+    .control-hit-area {
+      display: flex;
+      align-items: stretch;
+      cursor: pointer;
+    }
+    :deep(.header-control-btn) {
+      height: 100%;
+    }
+
+    :deep(.header-control-btn .n-button__content) {
+      width: 100%;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .header-control-content {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: 0;
+      line-height: 1;
+    }
+
+    .header-glyph {
+      width: 19px;
+      height: 19px;
+      font-size: 19px;
+      stroke-width: 1.8;
+    }
+
+    .countdown {
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .refresh-panel {
+      display: grid;
+      gap: 12px;
+      min-width: 324px;
+      padding: 2px;
+
+      .refresh-panel__hero {
+        display: grid;
+        grid-template-columns: 38px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .refresh-panel__icon {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        background: color-mix(
+          in srgb,
+          var(--n-primary-color) 12%,
+          var(--n-action-color)
+        );
+        color: var(--n-primary-color);
+        font-size: 18px;
+      }
+
+      .refresh-panel__heading {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+
+        strong {
+          color: var(--n-text-color);
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        span {
+          color: var(--n-text-color-3);
+          font-size: 11px;
+        }
+      }
+
+      .refresh-panel__countdown {
+        min-width: 58px;
+        padding: 6px 9px;
+        border-radius: 8px;
+        background: var(--n-action-color);
+        color: var(--n-text-color);
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+        font-weight: 700;
+        text-align: center;
+
+        &.paused {
+          color: var(--n-text-color-3);
+        }
+      }
+
+      .refresh-panel__now {
+        min-height: 36px;
+        border-radius: 9px;
+      }
+
+      .refresh-panel__section {
+        display: grid;
+        gap: 10px;
+        padding-top: 12px;
+        border-top: 1px solid
+          color-mix(in srgb, var(--n-text-color-3) 22%, transparent);
+      }
+
+      .refresh-panel__auto-head,
+      .refresh-panel__auto-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .refresh-panel__auto-head > div:first-child {
+        display: grid;
+        gap: 2px;
+      }
+
+      .refresh-panel__auto-head strong {
+        color: var(--n-text-color);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .refresh-panel__auto-tip {
+        max-width: 210px;
+        font-size: 10px;
+        line-height: 1.45;
+      }
+
+      .time-inputs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+
+        .time-item {
+          display: grid;
+          gap: 4px;
+
+          .unit {
+            color: var(--n-text-color-3);
+            font-size: 10px;
+            line-height: 1;
+          }
+
+          :deep(.n-input-number) {
+            width: 100%;
+          }
+
+          :deep(.n-input__input-el) {
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+          }
+        }
+      }
+    }
+  }
+
+  .category-select {
+    display: flex;
+    align-self: stretch;
+    justify-content: center;
+    padding: 0;
+    :deep(.n-select) {
+      min-width: 240px;
+    }
+    .category-back {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      width: 100%;
+    }
+    .category-nav {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      width: 100%;
+      :deep(.n-space) {
+        min-height: 56px;
+        align-items: stretch !important;
+        flex-wrap: nowrap !important;
+        gap: 12px !important;
+      }
+      :deep(.n-space > div) {
+        display: flex;
+        align-items: stretch;
+      }
+      .category-hit-area {
+        min-height: 56px;
+      }
+      .topic-nav-trigger {
+        margin-left: 4px;
+        padding-left: 8px;
+        border-left: 1px solid var(--n-border-color);
+      }
+      .cat-btn {
+        height: 100%;
+        padding: 0 2px;
+        font-weight: 700;
+        font-size: 18px;
+      }
+      .nav-caret {
+        margin-left: 2px;
+        color: var(--n-text-color-3);
+        font-size: 10px;
+        font-weight: 500;
+        transform: translateY(-1px);
+      }
+    }
+    .category-hit-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      align-self: stretch;
+      cursor: pointer;
+    }
+  }
+
+  &.expanded {
+    .controls {
+      .control-hit-area {
+        margin-block: -16px;
+        padding-block: 16px;
+      }
+    }
+    .category-select {
+      .category-hit-area {
+        margin-block: -16px;
+        padding-block: 16px;
+      }
+    }
+  }
+
+  .mobile {
+    display: none;
+    .mobile-trigger {
+      display: inline-flex;
+    }
+  }
+
+  &.collapsed {
+    .logo {
+      img {
+        width: 32px;
+        height: 32px;
+        margin-right: 8px;
+      }
+      .name {
+        span {
+          &:nth-of-type(1) {
+            font-size: 16px;
+          }
+          &:nth-of-type(2) {
+            display: none;
+          }
+        }
+      }
+    }
+    .current-time {
+      .time {
+        font-size: 14px;
+      }
+      .date {
+        display: none;
+      }
+    }
+    :deep(.controls .n-button),
+    :deep(.mobile .n-button) {
+      transform: none;
+    }
+    .controls {
+      align-self: center;
+
+      :deep(.n-space) {
+        min-height: 39px;
+        align-items: center !important;
+      }
+
+      :deep(.n-space > div),
+      :deep(.n-space-item) {
+        align-items: center;
+      }
+
+      .control-hit-area {
+        min-height: 39px;
+        margin: 0;
+        padding: 0;
+        align-items: center;
+        justify-content: center;
+      }
+
+      :deep(.header-control-btn) {
+        width: 34px;
+        min-width: 34px;
+        height: 34px;
+        padding: 0;
+      }
+
+      .locale-trigger-label {
+        display: none;
+      }
+
+      :deep(.header-control-btn.refresh-control-btn.has-countdown) {
+        width: auto;
+        min-width: 34px;
+        padding: 0 9px;
+      }
+
+      :deep(.header-control-btn .n-button__content),
+      :deep(.header-control-btn .n-button__icon) {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+    .category-select {
+      .category-nav .category-hit-area {
+        min-height: 39px;
+      }
+      .category-nav .cat-btn {
+        font-size: 16px;
+      }
+      .category-nav :deep(.n-space) {
+        min-height: 39px;
+      }
+    }
+  }
+
+  &.tablet-compact {
+    padding: 12px 4vw;
+
+    &.collapsed {
+      padding: 0 4vw;
+      min-height: 48px;
+
+      .controls {
+        :deep(.n-space) {
+          min-height: 48px;
+          gap: 7px !important;
+          align-items: center !important;
+        }
+
+        .control-hit-area {
+          min-height: 48px;
+          align-items: center;
+          justify-content: center;
+        }
+
+        :deep(.header-control-btn) {
+          width: 38px;
+          min-width: 38px;
+          height: 38px;
+          padding: 0;
+        }
+      }
+    }
+
+    section {
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      column-gap: 10px;
+    }
+
+    .category-select {
+      min-width: 0;
+
+      :deep(.n-select) {
+        width: 100%;
+        min-width: 0;
+        max-width: 260px;
+      }
+    }
+
+    .controls {
+      align-self: center;
+
+      :deep(.n-space) {
+        min-height: 48px;
+        flex-wrap: nowrap !important;
+        gap: 7px !important;
+        align-items: center !important;
+      }
+
+      .control-hit-area {
+        min-height: 48px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      :deep(.header-control-btn) {
+        width: 38px;
+        min-width: 38px;
+        height: 38px;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .locale-trigger-label {
+        display: none;
+      }
+
+      :deep(.header-control-btn.refresh-control-btn.has-countdown) {
+        width: auto;
+        min-width: 38px;
+        padding: 0 9px;
+        overflow: visible;
+      }
+
+      :deep(.header-control-btn .n-button__content),
+      :deep(.header-control-btn .n-button__icon) {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+      }
+    }
+
+    &.expanded {
+      .controls .control-hit-area,
+      .category-select .category-hit-area {
+        margin-block: -12px;
+        padding-block: 12px;
+      }
+    }
+  }
+
+  @media (max-width: 768px) {
+    section {
+      display: flex;
+      min-width: 0;
+      gap: 10px;
+    }
+    .logo {
+      flex: 0 0 auto;
+      min-width: 0;
+
+      img {
+        width: 40px;
+        height: 40px;
+        margin-right: 8px;
+      }
+
+      .name {
+        flex: 0 0 auto;
+        white-space: nowrap;
+
+        span {
+          &:nth-of-type(1) {
+            font-size: 18px;
+          }
+
+          &:nth-of-type(2) {
+            display: none;
+          }
+        }
+      }
+    }
+    .category-select {
+      flex: 1 1 auto;
+      min-width: 0;
+
+      :deep(.n-select) {
+        width: 100%;
+        min-width: 0;
+      }
+    }
+    .current-time,
+    .controls {
+      display: none;
+    }
+    .mobile {
+      display: block;
+      flex: 0 0 auto;
+    }
+  }
+}
+
+
+.refresh-panel {
+  display: grid;
+  gap: 12px;
+  width: 332px;
+}
+
+.refresh-panel__hero {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.refresh-panel__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(
+    in srgb,
+    var(--n-primary-color) 12%,
+    var(--n-action-color)
+  );
+  color: var(--n-primary-color);
+  font-size: 18px;
+}
+
+.refresh-panel__heading {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.refresh-panel__heading strong {
+  color: var(--n-text-color);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.refresh-panel__heading span {
+  color: var(--n-text-color-3);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.refresh-panel__countdown {
+  min-width: 64px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--n-border-color) 85%, transparent);
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--n-action-color) 92%,
+    var(--n-primary-color) 3%
+  );
+  color: var(--n-text-color);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.refresh-panel__countdown.paused {
+  color: var(--n-text-color-3);
+}
+
+.refresh-panel__now {
+  min-height: 38px;
+  border-radius: 9px;
+}
+
+.refresh-panel__section {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--n-border-color) 82%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--n-action-color) 72%, transparent);
+}
+
+.refresh-panel__auto-head,
+.refresh-panel__auto-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.refresh-panel__auto-head > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.refresh-panel__auto-head strong {
+  color: var(--n-text-color);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.refresh-panel__auto-tip {
+  max-width: 205px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.refresh-panel .time-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.refresh-panel .time-item {
+  display: grid;
+  gap: 5px;
+}
+
+.refresh-panel .time-item .unit {
+  color: var(--n-text-color-3);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.refresh-panel .time-item :deep(.n-input-number) {
+  width: 100%;
+}
+
+.refresh-panel .time-item :deep(.n-input) {
+  border-radius: 8px;
+}
+
+.refresh-panel .time-item :deep(.n-input__input-el) {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh-panel .time-number-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.refresh-panel .time-number-control :deep(.n-input) {
+  min-height: 34px;
+  border-radius: 8px 0 0 8px;
+}
+
+.refresh-panel .time-stepper {
+  display: grid;
+  grid-template-columns: repeat(2, 32px);
+  margin-left: -1px;
+  overflow: hidden;
+  border: 1px solid var(--n-border-color);
+  border-radius: 0 8px 8px 0;
+  background: var(--n-color);
+}
+
+.refresh-panel .time-stepper button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--n-border-color);
+  background: transparent;
+  color: var(--n-text-color-2);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.refresh-panel .time-stepper button:first-child {
+  border-left: 0;
+}
+
+.refresh-panel .time-stepper button:hover:not(:disabled) {
+  background: var(--n-action-color);
+  color: var(--n-primary-color);
+}
+
+.refresh-panel .time-stepper button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--n-primary-color);
+  outline-offset: -2px;
+}
+
+.refresh-panel .time-stepper button:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.theme-mode-menu {
+  display: grid;
+  gap: 2px;
+  width: 188px;
+  padding: 0;
+}
+
+.theme-mode-menu button {
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--n-text-color-2);
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.theme-mode-menu button:hover {
+  color: var(--n-text-color, inherit);
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.theme-mode-menu button.active {
+  position: relative;
+  color: var(--n-text-color, inherit);
+  background: color-mix(in srgb, var(--n-primary-color, #ea444d) 7%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--n-primary-color, #ea444d) 14%, transparent);
+  font-weight: 650;
+}
+
+.theme-mode-menu button.active::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--n-primary-color, #ea444d);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.theme-mode-menu__option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.theme-mode-menu__option > span:last-child {
+  display: block;
+  min-width: 0;
+  line-height: 20px;
+}
+
+.theme-mode-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--n-text-color-2);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.theme-mode-menu button.active .theme-mode-menu__icon {
+  color: var(--n-primary-color, #ea444d);
+}
+
+.locale-option {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 136px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.locale-option-label {
+  display: inline-block;
+  line-height: 1.2;
+}
+
+.locale-option-flag,
+.locale-trigger-flag {
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 4px;
+  box-sizing: border-box;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+
+:global(.header-locale-menu.n-dropdown-menu) {
+  --n-padding: 6px 0 !important;
+  --n-option-height: 36px !important;
+  --n-font-size: 14px !important;
+  --n-border-radius: 8px !important;
+}
+
+:global(.header-locale-menu .n-dropdown-option-body) {
+  height: 36px;
+  min-height: 36px;
+}
+
+:global(.header-locale-menu .n-dropdown-option-body__label) {
+  display: flex;
+  align-items: center;
+}
+</style>

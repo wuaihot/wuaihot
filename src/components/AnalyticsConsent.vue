@@ -1,0 +1,538 @@
+<template>
+  <Teleport to="body">
+    <Transition name="consent-fade">
+      <div v-if="visible" class="analytics-consent-shell">
+        <div
+          class="analytics-consent"
+          :class="{ 'details-visible': detailsOpen }"
+          :style="consentThemeVars"
+        >
+          <div class="copy">
+            <span class="eyebrow">
+              {{ t("consent.eyebrow") }}
+            </span>
+            <p class="title">
+              {{ t("consent.title") }}
+            </p>
+            <p class="desc">
+              {{ t("consent.description") }}
+            </p>
+          </div>
+
+          <div class="actions">
+            <n-button tertiary @click="declineAndExit">
+              {{ t("consent.rejectAndLeave") }}
+            </n-button>
+            <n-button tertiary @click="openDetails">
+              {{ detailsOpen ? t("consent.collapseDetails") : t("consent.viewDetails") }}
+            </n-button>
+            <n-button type="primary" @click="acceptRequiredOnly">
+              {{ t("consent.acceptRequired") }}
+            </n-button>
+          </div>
+
+          <Transition name="details-expand">
+            <div
+              v-if="detailsOpen"
+              class="details"
+              role="region"
+              :aria-label="t('consent.detailsAria')"
+            >
+              <div class="groups">
+                <div class="group locked">
+                  <div>
+                    <div class="group-title">{{ t("consent.necessaryTitle") }}</div>
+                    <p class="group-desc">
+                      {{ t("consent.necessaryDesc") }}
+                    </p>
+                  </div>
+                  <n-switch :value="true" disabled />
+                </div>
+                <div class="group locked">
+                  <div>
+                    <div class="group-title">{{ t("consent.analyticsTitle") }}</div>
+                    <p class="group-desc">
+                      {{ t("consent.analyticsDesc") }}
+                    </p>
+                  </div>
+                  <div class="group-side">
+                    <n-tag size="small" type="info" round>{{ t("consent.alwaysOn") }}</n-tag>
+                    <n-switch :value="true" disabled />
+                  </div>
+                </div>
+                <div class="group">
+                  <div>
+                    <div class="group-title">{{ t("consent.adStorageTitle") }}</div>
+                    <p class="group-desc">
+                      {{ t("consent.adStorageDesc") }}
+                    </p>
+                  </div>
+                  <n-switch v-model:value="draftConsent.ad_storage" />
+                </div>
+                <div class="group">
+                  <div>
+                    <div class="group-title">{{ t("consent.adPersonalTitle") }}</div>
+                    <p class="group-desc">
+                      {{ t("consent.adPersonalDesc") }}
+                    </p>
+                  </div>
+                  <n-switch v-model:value="draftConsent.ad_personalization" />
+                </div>
+              </div>
+
+              <div class="details-footer">
+                <p class="footer-text">
+                  {{ t("consent.footerText") }}
+                </p>
+                <n-space wrap justify="end">
+                  <n-button tertiary @click="declineAndExit">
+                    {{ t("consent.rejectAndLeave") }}
+                  </n-button>
+                  <n-button tertiary @click="acceptRequiredOnly">
+                    {{ t("consent.acceptRequired") }}
+                  </n-button>
+                  <n-button tertiary @click="acceptSelected">
+                    {{ t("consent.saveSelection") }}
+                  </n-button>
+                  <n-button text tag="a" :href="buildFixedLocalePath(locale, '/privacy')">
+                    {{ t("consent.privacyLink") }}
+                  </n-button>
+                </n-space>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+</template>
+
+<script setup>
+import { mainStore } from "@/store";
+import { useI18n } from "vue-i18n";
+import {
+  CONSENT_CATEGORIES,
+  DEFAULT_CONSENT,
+  getAnalyticsConsent,
+  OPEN_CONSENT_EVENT,
+  setAnalyticsConsent,
+} from "@/utils/analytics";
+import { trackEvent } from "@/utils/track";
+import {
+  grantAnalyticsConsentToVendors,
+  initAnalyticsVendors,
+} from "@/utils/vendorAnalytics";
+import { buildFixedLocalePath } from "@/utils/locale";
+
+const store = mainStore();
+const { t, locale } = useI18n({ useScope: "global" });
+const isDarkTheme = computed(() => store.siteTheme === "dark");
+const consentThemeVars = computed(() => ({
+  "--consent-bg": isDarkTheme.value
+    ? "rgba(17, 24, 39, 0.9)"
+    : "rgba(255, 255, 255, 0.96)",
+  "--consent-border": isDarkTheme.value
+    ? "rgba(255, 255, 255, 0.08)"
+    : "rgba(15, 23, 42, 0.1)",
+  "--consent-shadow": isDarkTheme.value
+    ? "0 16px 42px rgba(0, 0, 0, 0.28)"
+    : "0 18px 40px rgba(15, 23, 42, 0.12)",
+  "--consent-copy": isDarkTheme.value ? "#f8fafc" : "#0f172a",
+  "--consent-eyebrow": isDarkTheme.value
+    ? "rgba(226, 232, 240, 0.7)"
+    : "#64748b",
+  "--consent-title": isDarkTheme.value ? "#f8fafc" : "#0f172a",
+  "--consent-desc": isDarkTheme.value
+    ? "rgba(226, 232, 240, 0.78)"
+    : "#475569",
+  "--consent-group-bg": isDarkTheme.value
+    ? "rgba(255, 255, 255, 0.04)"
+    : "rgba(15, 23, 42, 0.04)",
+  "--consent-group-locked": isDarkTheme.value
+    ? "rgba(34, 197, 94, 0.14)"
+    : "rgba(34, 197, 94, 0.08)",
+}));
+
+const visible = computed(
+  () => !store.analyticsPromptDismissed
+);
+
+const detailsOpen = ref(false);
+
+const createDraft = (source = {}) => ({
+  ...DEFAULT_CONSENT,
+  ...source,
+  [CONSENT_CATEGORIES.analytics]: true,
+});
+
+const draftConsent = reactive(
+  createDraft({
+    [CONSENT_CATEGORIES.adStorage]: false,
+    [CONSENT_CATEGORIES.adUserData]: false,
+    [CONSENT_CATEGORIES.adPersonalization]: false,
+  })
+);
+
+const applyConsent = (consent) => {
+  const normalized = createDraft(consent);
+  normalized[CONSENT_CATEGORIES.analytics] = true;
+  normalized[CONSENT_CATEGORIES.adUserData] =
+    normalized[CONSENT_CATEGORIES.adStorage] ||
+    normalized[CONSENT_CATEGORIES.adUserData];
+  store.setAnalyticsConsent(normalized);
+  store.setAnalyticsPromptDismissed(true);
+  setAnalyticsConsent(normalized);
+  initAnalyticsVendors();
+  grantAnalyticsConsentToVendors(normalized);
+  trackEvent({
+    event: "consent_update",
+    category: "privacy",
+    consent:
+      normalized[CONSENT_CATEGORIES.adStorage] ||
+      normalized[CONSENT_CATEGORIES.adPersonalization]
+        ? "ad_consent_enabled"
+        : "ad_consent_denied",
+    meta: normalized,
+  });
+};
+
+const acceptAll = () => {
+  applyConsent({
+    [CONSENT_CATEGORIES.adStorage]: true,
+    [CONSENT_CATEGORIES.adUserData]: true,
+    [CONSENT_CATEGORIES.adPersonalization]: true,
+  });
+};
+
+const acceptRequiredOnly = () => {
+  applyConsent({
+    [CONSENT_CATEGORIES.adStorage]: false,
+    [CONSENT_CATEGORIES.adUserData]: false,
+    [CONSENT_CATEGORIES.adPersonalization]: false,
+  });
+};
+
+const acceptSelected = () => {
+  applyConsent(draftConsent);
+};
+
+const declineAndExit = () => {
+  if (typeof window === "undefined") return;
+  window.location.replace("about:blank");
+};
+
+const openDetails = () => {
+  detailsOpen.value = !detailsOpen.value;
+  if (!store.analyticsPromptDismissed) return;
+  Object.assign(draftConsent, createDraft(store.analyticsConsent || {}));
+  store.setAnalyticsPromptDismissed(false);
+};
+
+watch(
+  () => draftConsent.ad_storage,
+  (enabled) => {
+    if (!enabled) {
+      draftConsent.ad_user_data = false;
+      draftConsent.ad_personalization = false;
+    }
+  }
+);
+
+watch(
+  () => draftConsent.ad_personalization,
+  (enabled) => {
+    draftConsent.ad_user_data = enabled;
+    if (enabled) {
+      draftConsent.ad_storage = true;
+    }
+  }
+);
+
+onMounted(() => {
+  initAnalyticsVendors();
+  const stored = getAnalyticsConsent();
+  if (stored) {
+    store.setAnalyticsConsent(stored);
+    store.setAnalyticsPromptDismissed(true);
+    grantAnalyticsConsentToVendors(stored);
+    Object.assign(draftConsent, createDraft(stored));
+  } else {
+    grantAnalyticsConsentToVendors(DEFAULT_CONSENT);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener(OPEN_CONSENT_EVENT, openDetails);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (typeof window !== "undefined") {
+    window.removeEventListener(OPEN_CONSENT_EVENT, openDetails);
+  }
+});
+</script>
+
+<style lang="scss" scoped>
+.analytics-consent-shell {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.analytics-consent {
+  width: min(760px, calc(100vw - 28px));
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: var(--consent-bg);
+  border: 1px solid var(--consent-border);
+  box-shadow: var(--consent-shadow);
+  backdrop-filter: blur(18px);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: stretch;
+  pointer-events: auto;
+}
+
+.copy {
+  display: grid;
+  gap: 6px;
+  color: var(--consent-copy);
+  max-width: 100%;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--consent-eyebrow) !important;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--consent-title) !important;
+  max-width: 56ch;
+}
+
+.desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--consent-desc) !important;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.analytics-consent.details-visible .desc {
+  display: block;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 2px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.actions :deep(.n-button) {
+  min-width: 122px;
+}
+
+.actions :deep(.n-button .n-button__content) {
+  white-space: nowrap;
+}
+
+.details {
+  grid-column: 1 / -1;
+  border-top: 1px solid rgb(15 23 42 / 0.08);
+  padding-top: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.groups {
+  display: grid;
+  gap: 10px;
+}
+
+.group {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--consent-group-bg);
+}
+
+.group.locked {
+  background: var(--consent-group-locked);
+}
+
+.group-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-title {
+  font-weight: 600;
+  color: var(--consent-title) !important;
+}
+
+.group-desc {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.5;
+  color: var(--consent-desc) !important;
+}
+
+.details-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.footer-text {
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--consent-desc) !important;
+}
+
+.consent-fade-enter-active,
+.consent-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.consent-fade-enter-from,
+.consent-fade-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.details-expand-enter-active,
+.details-expand-leave-active {
+  transition: opacity 0.18s ease, max-height 0.18s ease;
+  overflow: hidden;
+}
+
+.details-expand-enter-from,
+.details-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.details-expand-enter-to,
+.details-expand-leave-from {
+  opacity: 1;
+  max-height: 600px;
+}
+
+@media (max-width: 768px) {
+  .analytics-consent-shell {
+    padding: 8px;
+  }
+
+  .analytics-consent {
+    box-sizing: border-box;
+    width: calc(100vw - 16px);
+    max-height: min(calc(100vh - 16px), calc(100dvh - 16px));
+    border-radius: 14px;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .analytics-consent.details-visible {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  .copy {
+    gap: 4px;
+  }
+
+  .title {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .desc {
+    font-size: 12px;
+    line-height: 1.45;
+    -webkit-line-clamp: 2;
+  }
+
+  .analytics-consent.details-visible .desc {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    justify-content: stretch;
+    padding-top: 6px;
+  }
+
+  .actions :deep(.n-button) {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    --n-height: 30px !important;
+    --n-font-size: 12px !important;
+    --n-padding: 0 7px !important;
+  }
+
+  .actions :deep(.n-button .n-button__content) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .details {
+    padding-top: 10px;
+    gap: 10px;
+  }
+
+  .groups {
+    gap: 8px;
+  }
+
+  .group {
+    padding: 10px 12px;
+  }
+
+  .details-footer,
+  .group {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .group-side {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .footer-text {
+    max-width: none;
+  }
+}
+</style>

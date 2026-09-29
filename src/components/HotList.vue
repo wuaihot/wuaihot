@@ -1,0 +1,2733 @@
+<template>
+  <n-card
+    :header-style="{ padding: store.compactMode ? '10px 12px' : '16px' }"
+    :content-style="{ padding: store.compactMode ? '0 12px' : '0 16px' }"
+    :footer-style="{ padding: store.compactMode ? '10px 12px' : '16px' }"
+    :id="cardDomId"
+    class="hot-list"
+    :class="{ 'is-compact': store.compactMode }"
+    hoverable
+    @click="toList"
+  >
+    <template #header>
+      <div class="header-block">
+        <div class="title">
+          <div class="name">
+            <n-avatar
+              class="ico"
+              :src="logoSrc(hotData.name)"
+              :fallback-src="errorLogoUrl"
+            />
+            <n-text class="name-text">{{ sourceLabel }}</n-text>
+          </div>
+          <GlobalIndexControls
+            v-if="isIndexOverviewSource && hotListData?.data?.length"
+            class="header-index-controls"
+            :items="hotListData.data"
+            :compact="true"
+            :show-state-label="isDesktop"
+            @click.stop
+          />
+          <div
+            v-else-if="
+              subtypeGroups.length ||
+              showNativeOrderControl ||
+              showMarketSortControl ||
+              hasCategorySplitControl
+            "
+            class="header-market-actions"
+          >
+            <SubtypeBar
+              v-if="subtypeGroups.length"
+              class="header-subtype"
+              :groups="subtypeGroups"
+              :active-value="activeSubType"
+              :fallback-label="t('hotList.rankingOptions')"
+              @change="changeSubType"
+              @click.stop
+            />
+            <RankingCardOperations
+              v-if="
+                showNativeOrderControl ||
+                showMarketSortControl ||
+                hasCategorySplitControl
+              "
+              class="header-ranking-operations"
+              :source-name="hotData.name"
+              :show-native-order-control="showNativeOrderControl"
+              :show-market-sort-control="showMarketSortControl"
+              :market-rank-direction="marketRankDirection"
+              :show-split-control="hasCategorySplitControl"
+              :category-ref="hotData.categorySplitRef"
+              :variants="categoryAllProjectionVariants"
+              :split-variants="categorySplitVariants"
+              :projection-variant="
+                hotData.categorySplitProjection ? projectionVariant : ''
+              "
+              :show-merge-all="Boolean(hotData.categorySplitPrimary)"
+              @change-direction="changeMarketRankDirection"
+            />
+          </div>
+          <n-text v-else-if="cardSubtitle" class="subtitle" :depth="2">
+            {{ cardSubtitle }}
+          </n-text>
+          <n-skeleton v-else-if="!hotListData" width="60px" text round />
+        </div>
+      </div>
+    </template>
+    <n-scrollbar class="news-list no-card-drag" ref="scrollbarRef" @scroll="hidePreview">
+      <Transition name="fade" mode="out-in">
+        <div v-if="loadingError" class="error">
+          <n-result
+            size="small"
+            status="500"
+            :title="t('hotList.loadErrorTitle')"
+            :description="t('hotList.loadErrorDescription')"
+            style="margin-top: 40px"
+          />
+          <n-button
+            size="small"
+            secondary
+            strong
+            round
+            @click.stop="getHotListsData(hotData.name)"
+          >
+            <template #icon>
+              <n-icon :component="Refresh" />
+            </template>
+            {{ t("hotList.retry") }}
+          </n-button>
+        </div>
+        <div v-else-if="!hotListData || listLoading" class="loading">
+          <n-skeleton text round :repeat="10" height="20px" />
+        </div>
+        <div v-else class="lists" :id="listDomId">
+          <div v-if="isIndexOverviewSource && !visibleItems.length" class="index-empty">
+            {{ t("hotList.indexRegionEmpty") }}
+          </div>
+          <div
+            class="item"
+            :class="{
+              'is-market-quote': item.marketQuote,
+              'is-fund-metric': item.fundMetric,
+              'is-index-overview': isIndexOverviewSource,
+            }"
+            v-for="(item, index) in visibleItems"
+            :key="item.id || item.url || item.mobileUrl || `${props.hotData.name}-${index}-${item.originalTitle}`"
+            :aria-describedby="previewItem === item ? previewTooltipId : undefined"
+            @pointerenter="showPreview(item, $event)"
+            @pointerleave="schedulePreviewClose"
+            @focusin="showPreview(item, $event)"
+            @focusout="schedulePreviewClose"
+            @keydown.esc="hidePreview"
+          >
+            <div
+              class="line"
+              :class="{
+                'has-inline-cover':
+                  showCardImages &&
+                  item.cover &&
+                  !coverErrorMap[item.cover] &&
+                  !item.marketQuote &&
+                  !item.fundMetric &&
+                  !isIndexOverviewSource,
+              }"
+              :data-cover-presentation="cardCoverPresentationMode"
+            >
+              <n-text
+                v-if="!isIndexOverviewSource"
+                class="num"
+                :class="{
+                  one: item.displayRank === 1,
+                  two: item.displayRank === 2,
+                  three: item.displayRank === 3,
+                  'is-pinned': item.isPinned,
+                }"
+                :depth="2"
+                :title="item.isPinned ? '置顶' : undefined"
+                :aria-label="item.isPinned ? '置顶' : `第 ${item.displayRank} 名`"
+              >
+                <UiGlyph
+                  v-if="item.isPinned"
+                  class="ranking-pin-icon"
+                  name="pin"
+                  aria-hidden="true"
+                />
+                <template v-else>{{ item.displayRank }}</template>
+              </n-text>
+              <button
+                v-if="
+                  showCardImages &&
+                  item.cover &&
+                  !coverErrorMap[item.cover] &&
+                  !item.marketQuote &&
+                  !item.fundMetric &&
+                  !isIndexOverviewSource
+                "
+                type="button"
+                class="item-thumb"
+                :title="previewImageLabel(item)"
+                :aria-label="previewImageLabel(item)"
+                @click.stop="openFullImagePreview(item.cover)"
+              >
+                <img
+                  :src="getCoverCompactSrc(item.cover)"
+                  :referrerpolicy="COVER_REFERRER_POLICY"
+                  :alt="item.displayTitle || item.originalTitle || ''"
+                  loading="lazy"
+                  @load="rememberCardCoverPresentationSample($event, item.cover)"
+                  @error="coverErrorMap[item.cover] = true"
+                />
+              </button>
+              <n-a
+                v-if="item.marketQuote"
+                :style="{ fontSize: store.effectiveListFontSize + 'px' }"
+                class="text market-quote-link"
+                :href="getItemLink(item)"
+                :target="linkTarget"
+                rel="noopener noreferrer nofollow"
+                :title="getMarketQuoteHoverTitle(item)"
+                @click.stop
+              >
+                <div class="market-quote-copy">
+                  <div class="market-quote-title-row">
+                    <span
+                      class="title-text"
+                      :class="{
+                        'no-auto-translate': item.hasReadableTranslation,
+                        notranslate: item.hasReadableTranslation,
+                      }"
+                      :translate="item.hasReadableTranslation ? 'no' : undefined"
+                    >
+                      {{ item.displayTitle }}
+                    </span>
+                    <span class="market-quote-code">{{ item.marketQuote.code }}</span>
+                  </div>
+                  <div class="market-quote-meta">
+                    <span>{{ item.marketQuote.closeLabel }} {{ item.marketQuote.price }}</span>
+                    <span>·</span>
+                    <span>{{ item.marketQuote.metricLabel }} {{ item.marketQuote.metric }}</span>
+                  </div>
+                </div>
+                <span
+                  class="market-quote-change"
+                  :class="[
+                    `is-${item.marketQuote.tone}`,
+                    `is-${item.marketQuote.colorConvention}`,
+                  ]"
+                >
+                  {{ item.marketQuote.change }}
+                </span>
+              </n-a>
+              <n-a
+                v-else-if="item.fundMetric"
+                :style="{ fontSize: store.effectiveListFontSize + 'px' }"
+                class="text fund-metric-link"
+                :href="getItemLink(item)"
+                :target="linkTarget"
+                rel="noopener noreferrer nofollow"
+                :title="item.originalTitle || undefined"
+                @click.stop
+              >
+                <div class="fund-metric-copy">
+                  <span
+                    class="title-text"
+                    :class="{
+                      'no-auto-translate': item.hasReadableTranslation,
+                      notranslate: item.hasReadableTranslation,
+                    }"
+                    :translate="item.hasReadableTranslation ? 'no' : undefined"
+                  >
+                    {{ item.displayTitle }}
+                  </span>
+                  <span class="fund-metric-label">{{ item.fundMetric.label }}</span>
+                </div>
+                <span
+                  class="fund-metric-value"
+                  :class="`is-${item.fundMetric.tone}`"
+                >
+                  {{ item.fundMetric.value }}
+                </span>
+              </n-a>
+              <n-a
+                v-else
+                :style="{ fontSize: store.effectiveListFontSize + 'px' }"
+                class="text"
+                :class="{
+                  'has-item-author': item.displayAuthor,
+                  'has-inline-metric': item.inlineMetric,
+                  'has-card-secondary-meta': shouldShowCardSecondaryMeta(item),
+                }"
+                :href="getItemLink(item)"
+                :target="linkTarget"
+                rel="noopener noreferrer nofollow"
+                :title="item.originalTitle || undefined"
+                @click.stop
+              >
+                <RankingBadgeGroup
+                  v-if="item.inlinePrefixBadges.length"
+                  class="is-prefix"
+                  :badges="item.inlinePrefixBadges"
+                />
+                <span class="item-copy">
+                  <span
+                    class="title-text"
+                    :class="{
+                      'no-auto-translate': item.hasReadableTranslation,
+                      notranslate: item.hasReadableTranslation,
+                    }"
+                    :translate="item.hasReadableTranslation ? 'no' : undefined"
+                  >
+                    {{ item.displayTitle }}
+                  </span>
+                  <span
+                    v-if="shouldShowCardSecondaryMeta(item)"
+                    class="item-secondary-meta"
+                    :title="item.cardSecondaryMeta"
+                  >
+                    {{ item.cardSecondaryMeta }}
+                  </span>
+                </span>
+                <span
+                  v-if="item.displayAuthor"
+                  class="item-author notranslate"
+                  translate="no"
+                  :title="item.displayAuthor"
+                >
+                  <span class="item-author__mark" aria-hidden="true">♪</span>
+                  <span class="item-author__name">{{ item.displayAuthor }}</span>
+                </span>
+                <RankingBadgeGroup
+                  v-if="item.suffixBadges.length"
+                  :badges="item.suffixBadges"
+                />
+                <span
+                  v-if="item.inlineMetric"
+                  class="item-inline-metric"
+                  :title="`${item.inlineMetric.label} ${item.inlineMetric.value}`"
+                >
+                  <span class="item-inline-metric__label">{{ item.inlineMetric.label }}</span>
+                  <strong>{{ item.inlineMetric.value }}</strong>
+                </span>
+              </n-a>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </n-scrollbar>
+    <template #footer>
+      <Transition name="fade" mode="out-in">
+        <template v-if="!hotListData">
+          <div class="message is-loading-footer">
+            <div class="loading">
+              <n-skeleton text round />
+            </div>
+            <n-popover v-if="!isProjectionInstance">
+              <template #trigger>
+                <span
+                  class="card-drag-handle"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="t('hotList.dragSort')"
+                  @click.stop.prevent
+                  @keydown.stop.prevent
+                >
+                  <n-icon :component="Drag" />
+                </span>
+              </template>
+              {{ t("hotList.dragSort") }}
+            </n-popover>
+          </div>
+        </template>
+        <template v-else>
+          <div class="message">
+            <n-text class="time" :depth="3" v-if="updateTime">
+              {{ updateTime }}
+            </n-text>
+            <n-text class="time" :depth="3" v-else>
+              {{ t("hotList.updateFailed") }}
+            </n-text>
+            <n-space class="controls">
+              <n-popover v-if="hotListData.data.length">
+                <template #trigger>
+                  <n-button
+                    size="tiny"
+                    secondary
+                    strong
+                    round
+                    @click.stop="toList"
+                  >
+                    <template #icon>
+                      <n-icon :component="More" />
+                    </template>
+                  </n-button>
+                </template>
+                {{ t("hotList.viewMore") }}
+              </n-popover>
+              <n-popover v-if="!isProjectionInstance">
+                <template #trigger>
+                  <span
+                    class="card-drag-handle"
+                    role="button"
+                    tabindex="0"
+                    :aria-label="t('hotList.dragSort')"
+                    @click.stop.prevent
+                    @keydown.stop.prevent
+                  >
+                    <n-icon :component="Drag" />
+                  </span>
+                </template>
+                {{ t("hotList.dragSort") }}
+              </n-popover>
+              <n-popover>
+                <template #trigger>
+                  <n-button
+                    size="tiny"
+                    secondary
+                    strong
+                    round
+                    @click.stop="getNewData"
+                  >
+                    <template #icon>
+                      <n-icon :component="Refresh" />
+                    </template>
+                  </n-button>
+                </template>
+                {{ t("hotList.refreshLatest") }}
+              </n-popover>
+            </n-space>
+          </div>
+        </template>
+      </Transition>
+    </template>
+  </n-card>
+  <Teleport to="body">
+    <Transition name="item-preview">
+      <div
+        v-if="previewItem"
+        :id="previewTooltipId"
+        class="hot-item-preview"
+        :class="{
+          'has-cover': previewHasCover,
+          'is-media-only': previewIsMediaOnly,
+          'is-compact-detail': previewIsCompactDetail,
+        }"
+        :style="previewStyle"
+        role="group"
+        :aria-label="previewItem.displayTitle || previewItem.originalTitle || sourceLabel"
+        @pointerenter="cancelPreviewClose"
+        @pointerleave="schedulePreviewClose"
+        @focusin="cancelPreviewClose"
+        @focusout="schedulePreviewClose"
+      >
+        <div
+          v-if="previewItem.displayDesc || previewItem.rankingMeta?.hasContent"
+          class="preview-copy"
+        >
+          <div v-if="previewItem.displayDesc" class="preview-desc">
+            {{ previewItem.displayDesc }}
+          </div>
+          <div v-if="previewItem.rankingMeta?.context?.length" class="preview-context">
+            <span v-for="meta in previewItem.rankingMeta.context" :key="meta.key">
+              {{ meta.label }} {{ meta.value }}
+            </span>
+          </div>
+          <div v-if="previewItem.rankingMeta?.metrics?.length" class="preview-metrics">
+            <span
+              v-for="metric in previewItem.rankingMeta.metrics"
+              :key="metric.key"
+              class="preview-metric"
+            >
+              <span>{{ metric.label }}</span>
+              <strong>{{ metric.value }}</strong>
+            </span>
+          </div>
+          <div
+            v-else-if="
+              previewItem.previewHeat !== null &&
+              previewItem.previewHeat !== undefined &&
+              previewItem.previewHeat !== ''
+            "
+            class="preview-meta"
+          >
+            <n-icon class="preview-hot-icon" :component="Fire" />
+            <span>{{ formatPreviewHot(previewItem.previewHeat) }}</span>
+          </div>
+        </div>
+        <button
+          v-if="previewHasCover"
+          type="button"
+          class="preview-cover-wrap"
+          :title="previewImageLabel(previewItem)"
+          :aria-label="previewImageLabel(previewItem)"
+          @click.stop="openFullImagePreview(previewItem.cover)"
+        >
+          <img
+            class="cover"
+            :src="getCoverDisplaySrc(previewItem.cover)"
+            :referrerpolicy="COVER_REFERRER_POLICY"
+            :alt="previewItem.displayTitle || previewItem.originalTitle || ''"
+            loading="lazy"
+            @error="handlePreviewCoverError(previewItem.cover)"
+          />
+        </button>
+        <div
+          v-if="
+            previewIsMediaOnly &&
+            previewItem.previewHeat !== null &&
+            previewItem.previewHeat !== undefined &&
+            previewItem.previewHeat !== ''
+          "
+          class="preview-meta preview-media-meta"
+        >
+          <n-icon class="preview-hot-icon" :component="Fire" />
+          <span>{{ formatPreviewHot(previewItem.previewHeat) }}</span>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+  <n-image
+    v-if="imagePreviewSrc"
+    ref="imagePreviewRef"
+    class="hot-list__image-preview-trigger"
+    :src="imagePreviewSrc"
+    :preview-src="imagePreviewSrc"
+    :show-toolbar="true"
+    :img-props="{ referrerpolicy: COVER_REFERRER_POLICY }"
+  />
+</template>
+
+<script setup>
+import { Drag, Fire, More, Refresh } from "@icon-park/vue-next";
+import { getSharedRanking } from "@/utils/rankingCollection";
+import { formatTime } from "@/utils/getTime";
+import {
+  COVER_REFERRER_POLICY,
+  getCoverCompactSrc,
+  getCoverDisplaySrc,
+  getCoverFullSrc,
+} from "@/utils/imageProxy";
+import { resolveCoverPreviewLayout } from "@/utils/coverPreviewGeometry";
+import {
+  COVER_PRESENTATION_MODES,
+  inferCoverPresentationMode,
+  resolveCoverPresentationMode,
+} from "@/utils/coverPresentation";
+import {
+  FLOATING_COVER_PREVIEW_CLOSE_DELAY,
+  FLOATING_COVER_PREVIEW_OPEN_DELAY,
+  resolveFloatingCoverPreviewPosition,
+} from "@/utils/floatingCoverPreview";
+import { normalizeRankingBadges } from "@/utils/rankingBadges";
+import UiGlyph from "@/components/ui/UiGlyph.vue";
+import RankingBadgeGroup from "@/components/RankingBadgeGroup.vue";
+import RankingCardOperations from "@/components/RankingCardOperations.vue";
+import { mainStore } from "@/store";
+import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
+import SubtypeBar from "@/components/SubtypeBar.vue";
+import GlobalIndexControls from "@/components/GlobalIndexControls.vue";
+import {
+  buildSourceSubtypeParams,
+  getDefaultSourceSubtype,
+  getSourceSubtypeControlGroups,
+  getSourceVariantOption,
+  getSourceVariantOptions,
+  persistSourceSubtype,
+  readSourceSubtype,
+  resolveSourceSubtype,
+} from "@/utils/sourceSubtypes";
+import { getSourceLogo } from "@/utils/sourceLogos";
+import { isMusicArtistSource } from "@/utils/musicSources";
+import { useTrendsCatalogRevision } from "@/composables/useTrendsCatalogRevision";
+import { getPublicAssetUrl } from "@/utils/publicAssets";
+import {
+  getFundMetricView,
+  getMarketEntityDisplayTitle,
+  getMarketQuoteView,
+  isMarketQuoteSource,
+} from "@/utils/marketQuote";
+import { trackEvent } from "@/utils/track";
+import { DATA_REFRESH_EVENT } from "@/utils/dataRefresh";
+import { formatCompactMetric } from "@/utils/compactMetric";
+import { getRankingItemMeta } from "@/utils/rankingItemMeta";
+import {
+  resolveRankingPreviewGovernance,
+  resolveRankingPreviewMode,
+} from "@/utils/rankingPreviewGovernance.mjs";
+import {
+  getSourceDisplayLabel,
+  getSourceSubtitleLabel,
+  getSubtypeLabel,
+  isGenericSourceSubtitleLabel,
+  localizeSubtypeGroups,
+} from "@/utils/sourceLabels";
+import { buildRankPath } from "@/utils/locale";
+import { applyGlobalIndexPreferences } from "@/utils/globalIndexOrder";
+import {
+  applyMarketListSort,
+  applyMarketRankDirection,
+  isMarketListSortable,
+  isNativeMarketRanking,
+  readMarketRankDirection,
+  saveMarketRankDirection,
+} from "@/utils/marketListSort";
+import {
+  enhanceReadableResultTitles,
+  shouldProtectEntityTitleTranslation,
+  shouldUseReadableTitleTranslation,
+  translateReadableTitles,
+} from "@/utils/readableTitles";
+
+const router = useRouter();
+const store = mainStore();
+const { locale, t } = useI18n({ useScope: "global" });
+const isClient = typeof window !== "undefined";
+const isPrerender =
+  isClient && window.__PRERENDER_INJECTED && window.__PRERENDER_INJECTED.prerender;
+const coverErrorMap = reactive({});
+const logoSrc = (name) => getSourceLogo(name);
+const errorLogoUrl = getPublicAssetUrl("/ico/icon_error.png");
+const props = defineProps({
+  // 热榜数据
+  hotData: {
+    type: Object,
+    default: {},
+  },
+  eagerLoad: {
+    type: Boolean,
+    default: false,
+  },
+});
+const isProjectionInstance = computed(() =>
+  Boolean(props.hotData?.projectionInstanceId),
+);
+const projectionVariant = computed(() =>
+  String(props.hotData?.projectionVariant || "").trim(),
+);
+const instanceKey = computed(() =>
+  String(props.hotData?.projectionInstanceId || props.hotData?.name || "ranking"),
+);
+const cardDomId = computed(() => `hot-list-${instanceKey.value}`);
+const listDomId = computed(() => `${instanceKey.value}Lists`);
+const refreshStorageKey = computed(() => `${instanceKey.value}Btn`);
+
+// 更新时间
+const updateTime = ref(null);
+
+// 刷新按钮数据
+const lastClickTime = ref(
+  typeof localStorage !== "undefined"
+    ? localStorage.getItem(refreshStorageKey.value) || 0
+    : 0
+);
+
+// 热榜数据
+const hotListData = ref(null);
+const scrollbarRef = ref(null);
+const componentActive = ref(true);
+const isNearViewport = ref(Boolean(props.eagerLoad));
+const isInViewport = ref(Boolean(props.eagerLoad));
+let listVisibilityObserver = null;
+let translationVisibilityObserver = null;
+let pendingDataRefresh = null;
+let pendingReadableTranslation = null;
+let appliedRefreshGeneration = 0;
+const listLoading = ref(false);
+const loadingError = ref(false);
+const previewItem = ref(null);
+const previewStyle = ref({});
+const previewMediaCache = new Map();
+const imagePreviewRef = ref(null);
+const imagePreviewSrc = ref("");
+let previewRequestId = 0;
+let previewOpenTimer = null;
+let previewCloseTimer = null;
+let previewTarget = null;
+let previewPlacement = null;
+let previewViewportListenersBound = false;
+const isDesktop = ref(isClient ? window.innerWidth > 680 : true);
+const linkTarget = computed(() =>
+  store.linkOpenType === "open" ? "_blank" : "_self"
+);
+const previewTextOnlyWidth = 340;
+const previewTooltipId = computed(() => `hot-item-preview-${instanceKey.value}`);
+const showCardImages = computed(() =>
+  store.showImages !== false && store.showCardImages !== false,
+);
+const showPreviewImages = computed(() =>
+  store.showImages !== false && store.showPreviewImages !== false,
+);
+const previewHasCover = computed(
+  () =>
+    showPreviewImages.value &&
+    previewItem.value?.cover &&
+    !coverErrorMap[previewItem.value.cover]
+);
+const previewMode = computed(() =>
+  resolveRankingPreviewMode({
+    hasCover: previewHasCover.value,
+    description: previewItem.value?.displayDesc,
+    rankingMeta: previewItem.value?.rankingMeta,
+  })
+);
+const previewIsMediaOnly = computed(() => previewMode.value === "media-only");
+const previewIsCompactDetail = computed(
+  () => previewMode.value === "compact-detail"
+);
+const HOT_LIST_VISIBLE_LIMIT = 15;
+const MARKET_LIST_VISIBLE_LIMIT = 20;
+const API_LOCALIZED_SOURCE_NAMES = new Set([
+  "designarena",
+  "clawhub",
+  "clawhub-skills",
+  "clawhub-plugins",
+  "global-indexes",
+]);
+const shouldReloadForLocaleChange = (name = "") =>
+  API_LOCALIZED_SOURCE_NAMES.has(name);
+const READABLE_TRANSLATION_FALLBACK_MS = 3000;
+const subtypeCatalogRevision = useTrendsCatalogRevision();
+const sourceLabel = computed(() => {
+  const base = getSourceDisplayLabel(
+    props.hotData.name,
+    locale.value,
+    props.hotData.label,
+  );
+  const projectionLabel = String(props.hotData?.projectionLabel || "").trim();
+  return isProjectionInstance.value && projectionLabel
+    ? `${base} · ${projectionLabel}`
+    : base;
+});
+const isIndexOverviewSource = computed(() => props.hotData.name === "global-indexes");
+const isSortableMarketSource = computed(() => isMarketListSortable(props.hotData.name));
+const cardSubtitle = computed(() => {
+  if (
+    isProjectionInstance.value &&
+    String(props.hotData?.projectionLabel || "").trim()
+  ) {
+    return "";
+  }
+  subtypeCatalogRevision.value;
+  const rawSubtitle =
+    Object.prototype.hasOwnProperty.call(props.hotData || {}, "subtype")
+      ? props.hotData.subtype ?? ""
+      : hotListData.value?.type || "";
+  const variantOption = getSourceVariantOption(props.hotData.name, rawSubtitle);
+  const subtitle = variantOption
+    ? getSubtypeLabel(variantOption, locale.value)
+    : getSourceSubtitleLabel(rawSubtitle, locale.value);
+  if (
+    isGenericSourceSubtitleLabel(subtitle, locale.value) &&
+    !hotListData.value?.centralized
+  ) {
+    return "";
+  }
+  return subtitle;
+});
+let hotListRequestId = 0;
+const normalizeComparableText = (value = "") =>
+  String(value || "")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .toLowerCase()
+    .trim();
+const stripPreviewText = (value = "") =>
+  String(value || "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/^智搜[:：]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+const isDuplicateDesc = (desc = "", ...titles) => {
+  const normalizedDesc = normalizeComparableText(desc);
+  if (!normalizedDesc) return true;
+  return titles.some((title) => {
+    const normalizedTitle = normalizeComparableText(title);
+    return normalizedTitle && normalizedDesc === normalizedTitle;
+  });
+};
+const formatPreviewHot = (value) => formatCompactMetric(value, locale.value);
+const normalizeCardMetaCandidate = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stripPreviewText(item))
+      .filter(Boolean)
+      .join("、");
+  }
+  return stripPreviewText(value);
+};
+const resolveCardSecondaryMeta = (item, displayDesc = "", authorVisible = false) => {
+  const parts = [];
+  const seen = new Set();
+  const append = (value) => {
+    const text = normalizeCardMetaCandidate(value);
+    const key = normalizeComparableText(text);
+    if (!text || !key || seen.has(key)) return;
+    seen.add(key);
+    parts.push(text);
+  };
+
+  if (!authorVisible) append(item?.author);
+  append(item?.actors);
+  append(item?.cast);
+  append(item?.starring);
+  append(item?.extra?.actors);
+  append(item?.extra?.cast);
+  append(item?.extra?.starring);
+  append(displayDesc);
+
+  return parts.slice(0, 2).join(" · ");
+};
+
+const visibleItems = computed(() => {
+  const items = hotListData.value?.data || [];
+  const sortedItems = showNativeOrderControl.value
+    ? applyMarketRankDirection(items, props.hotData.name, activeSubType.value)
+    : showMarketSortControl.value
+      ? applyMarketListSort(items, props.hotData.name)
+      : items;
+  const pinnedFilteredItems = store.showPinnedRankings
+    ? sortedItems
+    : sortedItems.filter((item) =>
+        !normalizeRankingBadges(item?.badges).some((badge) => badge.kind === "pinned")
+      );
+  const visibleSourceItems = isIndexOverviewSource.value
+    ? pinnedFilteredItems
+    : pinnedFilteredItems.slice(
+        0,
+        isSortableMarketSource.value ? MARKET_LIST_VISIBLE_LIMIT : HOT_LIST_VISIBLE_LIMIT
+      );
+  let nextDisplayRank = 1;
+  const decoratedItems = visibleSourceItems.map((item) => {
+    const originalTitle = String(item?.originalTitle || "");
+    const originalDesc = String(item?.originalDesc || "");
+    const displayTitle = isMarketQuoteSource(props.hotData.name)
+      ? getMarketEntityDisplayTitle(item, props.hotData.name, locale.value)
+      : item?.title || originalTitle;
+    const rawDisplayDesc = item?.desc || originalDesc;
+    const marketQuote = isMarketQuoteSource(props.hotData.name)
+      ? getMarketQuoteView(item, locale.value)
+      : null;
+    const defaultDisplayDesc = isDuplicateDesc(
+      rawDisplayDesc,
+      originalTitle,
+      item?.title,
+      displayTitle
+    )
+      ? ""
+      : stripPreviewText(rawDisplayDesc);
+    const initialDisplayDesc =
+      isIndexOverviewSource.value && marketQuote
+        ? [
+            marketQuote.region,
+            marketQuote.code,
+            `${marketQuote.closeLabel} ${marketQuote.price}`,
+            `${marketQuote.metricLabel} ${marketQuote.metric}`,
+            marketQuote.change,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : defaultDisplayDesc;
+    const displayAuthor = isMusicArtistSource(props.hotData.name)
+      ? String(item?.author || "").trim()
+      : "";
+    const cardSecondaryMeta = resolveCardSecondaryMeta(
+      item,
+      defaultDisplayDesc,
+      Boolean(displayAuthor),
+    );
+    const rawRankingMeta = getRankingItemMeta(item, locale.value, {
+      variant: hotListData.value?.variant || activeSubType.value,
+      promotePrimary: false,
+    });
+    const previewGovernance = resolveRankingPreviewGovernance({
+      item: { ...item, displayTitle },
+      rankingMeta: rawRankingMeta,
+      sourceName: props.hotData.name,
+      locale: locale.value,
+      description: initialDisplayDesc,
+      authorVisible: Boolean(displayAuthor),
+    });
+    const rankingBadges = normalizeRankingBadges(item?.badges);
+    const prefixBadges = rankingBadges.filter((badge) => badge.placement === "prefix");
+    const suffixBadges = rankingBadges.filter((badge) => badge.placement !== "prefix");
+    const isPinned = prefixBadges.some((badge) => badge.kind === "pinned");
+    const inlinePrefixBadges = prefixBadges.filter((badge) => badge.kind !== "pinned");
+    const displayRank = isIndexOverviewSource.value || isPinned ? null : nextDisplayRank++;
+    return {
+      ...item,
+      originalTitle,
+      originalDesc,
+      displayTitle,
+      displayDesc: previewGovernance.description,
+      displayAuthor,
+      cardSecondaryMeta,
+      previewHeat: previewGovernance.heat,
+      inlineMetric: previewGovernance.inlineMetric,
+      rankingBadges,
+      prefixBadges,
+      inlinePrefixBadges,
+      suffixBadges,
+      isPinned,
+      displayRank,
+      marketQuote,
+      fundMetric: getFundMetricView(item, locale.value),
+      rankingMeta: previewGovernance.rankingMeta,
+      hasReadableTranslation:
+        shouldProtectEntityTitles.value ||
+        Boolean(item?.noAutoTranslate) ||
+        (Boolean(originalTitle) &&
+          Boolean(displayTitle) &&
+          displayTitle.trim() !== originalTitle.trim()),
+    };
+  });
+  return isIndexOverviewSource.value
+    ? applyGlobalIndexPreferences(decoratedItems)
+    : decoratedItems;
+});
+
+const getMarketQuoteHoverTitle = (item) => {
+  const quote = item?.marketQuote;
+  if (!quote) return item?.originalTitle || item?.displayTitle || undefined;
+  return [
+    quote.region,
+    item?.displayTitle || item?.originalTitle,
+    quote.code,
+    `${quote.closeLabel} ${quote.price}`,
+    `${quote.metricLabel} ${quote.metric}`,
+    quote.change,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+};
+
+const syncReadableTitleDom = (items = []) => {
+  nextTick(() => {
+    const root =
+      document.getElementById(listDomId.value)?.closest(".hot-list") ||
+      document.getElementById(cardDomId.value);
+    if (!root) return;
+    const links = root.querySelectorAll(".lists .item .text");
+    const titles = root.querySelectorAll(".lists .item .title-text");
+    items.forEach((item, index) => {
+      const linkNode = links[index];
+      const titleNode = titles[index];
+      if (!linkNode || !titleNode) return;
+      titleNode.textContent = item.displayTitle || item.originalTitle || "";
+      if (item.originalTitle && !isIndexOverviewSource.value) {
+        linkNode.setAttribute("title", item.originalTitle);
+      } else {
+        linkNode.removeAttribute("title");
+      }
+    });
+  });
+};
+const categoryProjectionVariants = computed(() =>
+  [...new Set(
+    (Array.isArray(props.hotData?.categoryProjectionVariants)
+      ? props.hotData.categoryProjectionVariants
+      : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  )],
+);
+const categoryAllProjectionVariants = computed(() =>
+  [...new Set(
+    (Array.isArray(props.hotData?.categoryAllProjectionVariants)
+      ? props.hotData.categoryAllProjectionVariants
+      : categoryProjectionVariants.value)
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  )],
+);
+const categorySplitVariants = computed(() =>
+  [...new Set(
+    (Array.isArray(props.hotData?.categorySplitVariants)
+      ? props.hotData.categorySplitVariants
+      : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  )],
+);
+const hasCategorySplitControl = computed(
+  () =>
+    Boolean(props.hotData?.categorySplitRef) &&
+    categoryAllProjectionVariants.value.length > 1,
+);
+const subtypeOptions = computed(() => {
+  subtypeCatalogRevision.value;
+  const options = getSourceVariantOptions(props.hotData.name);
+  if (!categoryProjectionVariants.value.length) return options;
+  const allowed = new Set(categoryProjectionVariants.value);
+  return options.filter((item) => allowed.has(String(item?.value || "")));
+});
+const resolveActiveSubtype = (preferred = readSourceSubtype(props.hotData.name)) => {
+  if (isProjectionInstance.value && projectionVariant.value) {
+    return projectionVariant.value;
+  }
+  return subtypeOptions.value.length
+    ? resolveSourceSubtype(subtypeOptions.value, preferred)
+    : getDefaultSourceSubtype(props.hotData.name);
+};
+const activeSubType = ref(resolveActiveSubtype());
+const defaultCoverPresentationSource = computed(() =>
+  store.defaultNewsArr.find((source) => source.name === props.hotData.name) || null,
+);
+const configuredCardCoverPresentationMode = computed(() =>
+  resolveCoverPresentationMode(
+    props.hotData,
+    defaultCoverPresentationSource.value,
+  ),
+);
+const cardCoverPresentationSamples = reactive({});
+const cardCoverPresentationSampleKey = computed(() => {
+  const sourceName = String(props.hotData?.name || "").trim();
+  if (!sourceName) return "";
+  const variant = String(
+    hotListData.value?.variant || activeSubType.value || "default",
+  ).trim() || "default";
+  return `${sourceName}::${variant}`;
+});
+const cardCoverPresentationMode = computed(() => {
+  const configured = configuredCardCoverPresentationMode.value;
+  if (configured !== COVER_PRESENTATION_MODES.AUTO) return configured;
+  const key = cardCoverPresentationSampleKey.value;
+  if (!key) return COVER_PRESENTATION_MODES.AUTO;
+  return inferCoverPresentationMode(
+    Object.values(cardCoverPresentationSamples[key] || {}),
+  );
+});
+const shouldShowCardSecondaryMeta = (item) =>
+  cardCoverPresentationMode.value === COVER_PRESENTATION_MODES.PORTRAIT &&
+  Boolean(String(item?.cardSecondaryMeta || "").trim());
+const CARD_COVER_PRESENTATION_SAMPLE_LIMIT = 16;
+const rememberCardCoverPresentationSample = (event, cover = "") => {
+  if (
+    configuredCardCoverPresentationMode.value !== COVER_PRESENTATION_MODES.AUTO
+  ) {
+    return;
+  }
+  const image = event?.currentTarget;
+  const width = Number(image?.naturalWidth || 0);
+  const height = Number(image?.naturalHeight || 0);
+  const sampleId = String(cover || image?.currentSrc || image?.src || "").trim();
+  const key = cardCoverPresentationSampleKey.value;
+  if (!key || !sampleId || !width || !height) return;
+  if (!cardCoverPresentationSamples[key]) {
+    cardCoverPresentationSamples[key] = {};
+  }
+  const bucket = cardCoverPresentationSamples[key];
+  if (
+    !bucket[sampleId] &&
+    Object.keys(bucket).length >= CARD_COVER_PRESENTATION_SAMPLE_LIMIT
+  ) {
+    return;
+  }
+  bucket[sampleId] = { width, height };
+};
+const subtypeGroups = computed(() => {
+  subtypeCatalogRevision.value;
+  if (isProjectionInstance.value) return [];
+  const allowed = categoryProjectionVariants.value.length
+    ? new Set(categoryProjectionVariants.value)
+    : null;
+  const groups = localizeSubtypeGroups(
+    getSourceSubtypeControlGroups(props.hotData.name, activeSubType.value),
+    locale.value,
+  )
+    .map((group) => ({
+      ...group,
+      items: (group.items || []).filter(
+        (item) => !allowed || allowed.has(String(item?.value || "")),
+      ),
+    }))
+    .filter((group) => (group.items || []).length);
+  const itemCount = groups.reduce(
+    (total, group) => total + (group.items || []).length,
+    0,
+  );
+  return itemCount > 1 ? groups : [];
+});
+const variantRuntime = reactive({});
+const runtimeKey = (variant = activeSubType.value) => variant || "__default__";
+const variantRuntimeEntry = (variant = activeSubType.value) =>
+  variantRuntime[runtimeKey(variant)] || null;
+const showNativeOrderControl = computed(() =>
+  isNativeMarketRanking(props.hotData.name, activeSubType.value)
+);
+const marketRankDirection = computed(() =>
+  readMarketRankDirection(props.hotData.name, activeSubType.value)
+);
+const showMarketSortControl = computed(
+  () => isSortableMarketSource.value && !showNativeOrderControl.value
+);
+const shouldProtectEntityTitles = computed(() =>
+  shouldProtectEntityTitleTranslation(props.hotData.name, activeSubType.value)
+);
+
+watch(
+  () => subtypeOptions.value,
+  () => {
+    activeSubType.value = resolveActiveSubtype();
+  },
+  { immediate: true, deep: true }
+);
+
+watch(
+  () => visibleItems.value,
+  (items) => {
+    syncReadableTitleDom(items);
+  },
+  { immediate: true, deep: true }
+);
+
+const updateIsDesktop = () => {
+  if (!isClient) return;
+  isDesktop.value = window.innerWidth > 680;
+  if (previewItem.value) hidePreview();
+};
+
+const buildHotListRequestParams = (item, shouldTranslate, targetVariant = activeSubType.value) => {
+  const params = buildSourceSubtypeParams(item.name, targetVariant);
+  if (API_LOCALIZED_SOURCE_NAMES.has(item.name)) {
+    params.locale = locale.value;
+  }
+  if (!shouldTranslate) return params;
+  return {
+    ...params,
+    locale: locale.value,
+    translate_limit: HOT_LIST_VISIBLE_LIMIT,
+    translate_offset: 0,
+    translate_nonce: Date.now(),
+  };
+};
+
+const requestHotListResult = (item, isNew, shouldTranslate, useApi2, targetVariant) =>
+  getSharedRanking(
+    item.name,
+    isNew,
+    buildHotListRequestParams(item, shouldTranslate, targetVariant),
+    {
+      useApi2,
+      forceNoCache: Boolean(isNew),
+    }
+  );
+
+const getReadableTranslationPriority = () => {
+  if (!isClient || typeof document === "undefined") return 0;
+  const listDom = document.getElementById(cardDomId.value);
+  const scrollRoot = listDom?.closest(".n-scrollbar-container");
+  if (!listDom || !scrollRoot) return 0;
+  const cardRect = listDom.getBoundingClientRect();
+  const rootRect = scrollRoot.getBoundingClientRect();
+  if (cardRect.bottom >= rootRect.top && cardRect.top <= rootRect.bottom) return 1000;
+  const distance =
+    cardRect.top > rootRect.bottom
+      ? cardRect.top - rootRect.bottom
+      : rootRect.top - cardRect.bottom;
+  return Math.max(0, 700 - Math.max(0, distance));
+};
+
+const enhanceHotListResult = (result, targetLocale = locale.value, variant) =>
+  shouldUseReadableTitleTranslation(props.hotData.name, targetLocale, variant || activeSubType.value)
+    ? enhanceReadableResultTitles(result, targetLocale, {
+        includeDescriptions: false,
+        limit: HOT_LIST_VISIBLE_LIMIT,
+        offset: 0,
+        sourceName: props.hotData.name,
+        priority: getReadableTranslationPriority(),
+      })
+    : Promise.resolve(result);
+
+const applyHotListResult = (result, variant) => {
+  variant = variant || activeSubType.value;
+  const key = runtimeKey(variant);
+  variantRuntime[key] = {
+    status: "loaded",
+    result,
+    updateTime: result?.updateTime || null,
+  };
+  if (variant !== activeSubType.value) return;
+  listLoading.value = false;
+  loadingError.value = false;
+  hotListData.value = result;
+  updateTime.value = formatTime(result?.updateTime, locale.value);
+  if (scrollbarRef.value) {
+    scrollbarRef.value.scrollTo({ position: "top", behavior: "smooth" });
+  }
+};
+
+const enhanceAndApplyHotListResult = async (
+  result,
+  requestId,
+  shouldTranslate,
+  targetLocale = locale.value
+) => {
+  if (!shouldTranslate) {
+    applyHotListResult(result);
+    return;
+  }
+  let fallbackApplied = false;
+  const fallbackTimer = window.setTimeout(() => {
+    if (requestId !== hotListRequestId || locale.value !== targetLocale) return;
+    fallbackApplied = true;
+    applyHotListResult(result);
+  }, READABLE_TRANSLATION_FALLBACK_MS);
+  try {
+    const nextResult = await enhanceHotListResult(result, targetLocale);
+    if (requestId !== hotListRequestId || locale.value !== targetLocale) return;
+    applyHotListResult(nextResult);
+  } catch {
+    if (requestId !== hotListRequestId || locale.value !== targetLocale) return;
+    if (!fallbackApplied) {
+      applyHotListResult(result);
+    }
+  } finally {
+    window.clearTimeout(fallbackTimer);
+  }
+};
+
+const applyHotListResultWithReadableTranslation = async (
+  result,
+  requestId,
+  shouldTranslate,
+  targetLocale = locale.value
+) => {
+  if (!shouldTranslate) {
+    pendingReadableTranslation = null;
+    applyHotListResult(result);
+    return;
+  }
+  if (!isInViewport.value) {
+    applyHotListResult(result);
+    pendingReadableTranslation = { result, requestId, targetLocale };
+    return;
+  }
+  pendingReadableTranslation = null;
+  await enhanceAndApplyHotListResult(result, requestId, true, targetLocale);
+};
+
+const consumePendingReadableTranslation = () => {
+  if (!componentActive.value || !isInViewport.value || !pendingReadableTranslation) return;
+  const pending = pendingReadableTranslation;
+  pendingReadableTranslation = null;
+  if (pending.requestId !== hotListRequestId || pending.targetLocale !== locale.value) return;
+  void enhanceAndApplyHotListResult(
+    pending.result,
+    pending.requestId,
+    true,
+    pending.targetLocale
+  );
+};
+
+// 获取热榜数据
+const getHotListsData = async (name, isNew = false, variant = activeSubType.value) => {
+  if (isPrerender) return;
+  variant = variant || getDefaultSourceSubtype(name);
+  const item =
+    store.newsArr.find((item) => item.name == name) ||
+    store.defaultNewsArr.find((item) => item.name == name);
+  if (!item) return;
+  const requestId = ++hotListRequestId;
+  const key = runtimeKey(variant);
+  const useApi2 = item?.useApi2 || item?.api === 2 || item?.api === "api2";
+  const shouldTranslate = shouldUseReadableTitleTranslation(item.name, locale.value, variant);
+  variantRuntime[key] = {
+    ...(variantRuntime[key] || {}),
+    status: "loading",
+  };
+  try {
+    loadingError.value = false;
+    let response = await requestHotListResult(item, isNew, shouldTranslate, useApi2, variant);
+    if (response?.result?.code !== 200 && requestId === hotListRequestId) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      response = await requestHotListResult(item, true, shouldTranslate, useApi2, variant);
+    }
+    const { result, usedFallback, fallbackSuccess } = response;
+    if (usedFallback && fallbackSuccess && !useApi2) {
+      store.setSourceApi2(item.name, true);
+    }
+    if (requestId !== hotListRequestId) return;
+    if (result.code === 200) {
+      variantRuntime[key] = {
+        status: "loaded",
+        result,
+        updateTime: result?.updateTime || null,
+      };
+      await applyHotListResultWithReadableTranslation(
+        result,
+        requestId,
+        shouldTranslate
+      );
+      store.markAvailable(item.name);
+    } else {
+      variantRuntime[key] = {
+        ...(variantRuntime[key] || {}),
+        status: "failed",
+      };
+      store.markUnavailable(item.name);
+      if (variant === activeSubType.value) loadingError.value = true;
+      $message.error(result.title + result.message);
+    }
+  } catch (error) {
+    if (item && requestId === hotListRequestId) {
+      try {
+        const retryResponse = await requestHotListResult(item, true, shouldTranslate, useApi2, variant);
+        if (requestId !== hotListRequestId) return;
+        if (retryResponse?.result?.code === 200) {
+          variantRuntime[key] = {
+            status: "loaded",
+            result: retryResponse.result,
+            updateTime: retryResponse.result?.updateTime || null,
+          };
+          await applyHotListResultWithReadableTranslation(
+            retryResponse.result,
+            requestId,
+            shouldTranslate
+          );
+          store.markAvailable(item.name);
+          return;
+        }
+      } catch {}
+    }
+    if (requestId !== hotListRequestId) return;
+    variantRuntime[key] = {
+      ...(variantRuntime[key] || {}),
+      status: "failed",
+    };
+    store.markUnavailable(name);
+    if (variant === activeSubType.value) loadingError.value = true;
+    $message.error(t("hotList.loadFailedMessage"));
+  }
+};
+
+// 获取最新数据
+const getNewData = () => {
+  if (isPrerender) return;
+  const now = Date.now();
+  if (now - lastClickTime.value > 60000) {
+    // 点击事件
+    listLoading.value = true;
+    getHotListsData(props.hotData.name, true);
+    // 更新最后一次点击时间
+    lastClickTime.value = now;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(refreshStorageKey.value, now);
+    }
+  } else {
+    // 不执行点击事件
+    $message.info(t("hotList.refreshTooSoon"));
+  }
+};
+
+const getItemLink = (data) => {
+  if (!data?.url && !data?.mobileUrl) return "";
+  if (!data?.url) return data.mobileUrl;
+  if (!data?.mobileUrl) return data.url;
+  return isDesktop.value ? data.url : data.mobileUrl;
+};
+
+const getPreviewMediaLayout = (cover) => {
+  if (previewMediaCache.has(cover)) return previewMediaCache.get(cover);
+  const mediaPromise = new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const naturalWidth = Number(image.naturalWidth || 0);
+      const naturalHeight = Number(image.naturalHeight || 0);
+      if (!naturalWidth || !naturalHeight) {
+        reject(new Error("Invalid preview image dimensions"));
+        return;
+      }
+      const layout = resolveCoverPreviewLayout(naturalWidth, naturalHeight);
+      if (!layout) {
+        reject(new Error("Invalid preview image layout"));
+        return;
+      }
+      resolve(layout);
+    };
+    image.onerror = reject;
+    image.referrerPolicy = COVER_REFERRER_POLICY;
+    image.src = getCoverDisplaySrc(cover);
+  });
+  previewMediaCache.set(cover, mediaPromise);
+  return mediaPromise;
+};
+
+const previewImageLabel = (item) =>
+  `${item?.displayTitle || item?.originalTitle || sourceLabel.value || ""}`.trim();
+const cancelPreviewClose = () => {
+  if (!previewCloseTimer) return;
+  window.clearTimeout(previewCloseTimer);
+  previewCloseTimer = null;
+};
+const schedulePreviewClose = () => {
+  cancelPreviewClose();
+  if (!isClient) return;
+  previewCloseTimer = window.setTimeout(() => {
+    previewCloseTimer = null;
+    hidePreview();
+  }, FLOATING_COVER_PREVIEW_CLOSE_DELAY);
+};
+const openFullImagePreview = (cover) => {
+  if (!cover || !isClient) return;
+  cancelPreviewClose();
+  imagePreviewSrc.value = getCoverFullSrc(cover);
+  nextTick(() => imagePreviewRef.value?.click?.());
+};
+
+const hasPreviewContent = (item) => {
+  const hasCover =
+    showPreviewImages.value &&
+    item?.cover &&
+    !coverErrorMap[item.cover];
+  return (
+    resolveRankingPreviewMode({
+      hasCover: Boolean(hasCover),
+      description: item?.displayDesc,
+      rankingMeta: item?.rankingMeta,
+    }) !== "hidden"
+  );
+};
+
+const getPreviewDimensions = (item, mediaLayout) => {
+  const mode = resolveRankingPreviewMode({
+    hasCover: Boolean(mediaLayout),
+    description: item?.displayDesc,
+    rankingMeta: item?.rankingMeta,
+  });
+  if (mode === "media-only" && mediaLayout) {
+    return {
+      width: mediaLayout.mediaOnly.width,
+      height: mediaLayout.mediaOnly.height,
+    };
+  }
+
+  const descLength = String(item?.displayDesc || "").length;
+  const descLines = descLength ? Math.min(3, Math.max(1, Math.ceil(descLength / 24))) : 0;
+  let textHeight = descLines ? descLines * 20 : 0;
+  const metaRows =
+    (item?.rankingMeta?.context?.length ? 1 : 0) +
+    (item?.rankingMeta?.metrics?.length ? 1 : 0);
+  if (metaRows) textHeight += (textHeight ? 8 : 0) + metaRows * 22;
+  else if (item?.previewHeat !== null && item?.previewHeat !== undefined) {
+    textHeight += (textHeight ? 8 : 0) + 18;
+  }
+  const detailMedia = mediaLayout?.detail;
+  const compactWidth =
+    mode === "compact-detail" && detailMedia
+      ? Math.max(220, Math.ceil(detailMedia.width + 150))
+      : mode === "compact-text"
+        ? 240
+        : null;
+  return {
+    width: compactWidth || detailMedia?.previewWidth || previewTextOnlyWidth,
+    height: Math.max(58, Math.max(textHeight, detailMedia?.height || 0) + 24),
+  };
+};
+
+const positionPreview = (item, target, mediaLayout, preferredPlacement = null) => {
+  if (!target?.isConnected) return false;
+
+  const rect = target.getBoundingClientRect();
+  const card = target.closest(".hot-list");
+  const cardRect = card?.getBoundingClientRect();
+  const textRects = Array.from(card?.querySelectorAll(".text") || []).map(
+    (node) => node.getBoundingClientRect()
+  );
+  const { width: previewWidth, height: previewHeight } = getPreviewDimensions(
+    item,
+    mediaLayout
+  );
+  const previewPosition = resolveFloatingCoverPreviewPosition({
+    targetRect: rect,
+    containerRect: cardRect,
+    textRects,
+    previewWidth,
+    previewHeight,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    preferredPlacement,
+  });
+  if (!previewPosition) return false;
+  const { left, top, placement } = previewPosition;
+
+  const mode = resolveRankingPreviewMode({
+    hasCover: Boolean(mediaLayout),
+    description: item?.displayDesc,
+    rankingMeta: item?.rankingMeta,
+  });
+  const isMediaOnly = mode === "media-only";
+  const activeMedia = mediaLayout
+    ? isMediaOnly
+      ? mediaLayout.mediaOnly
+      : mediaLayout.detail
+    : null;
+
+  previewTarget = target;
+  previewPlacement = placement;
+  previewItem.value = item;
+  bindPreviewViewportListeners();
+  previewStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${previewWidth}px`,
+    height: isMediaOnly ? `${previewHeight}px` : undefined,
+    "--preview-cover-width": activeMedia ? `${activeMedia.width}px` : "0px",
+    "--preview-cover-height": activeMedia ? `${activeMedia.height}px` : "0px",
+    ...getPreviewThemeVars(),
+  };
+  return true;
+};
+
+const previewDescriptionTranslationCache = new Map();
+const translatePreviewDescription = async (item) => {
+  if (
+    !item?.displayDesc ||
+    !shouldUseReadableTitleTranslation(
+      props.hotData.name,
+      locale.value,
+      hotListData.value?.variant || activeSubType.value,
+    )
+  ) {
+    return item;
+  }
+
+  const sourceDesc = String(
+    item?.originalDesc || item?.desc || item?.displayDesc || "",
+  ).trim();
+  if (!sourceDesc) return item;
+
+  const cacheKey = [
+    locale.value,
+    props.hotData.name,
+    hotListData.value?.variant || activeSubType.value || "default",
+    sourceDesc,
+  ].join("::");
+  if (previewDescriptionTranslationCache.has(cacheKey)) {
+    const cached = previewDescriptionTranslationCache.get(cacheKey);
+    return cached && cached !== item.displayDesc
+      ? { ...item, displayDesc: cached }
+      : item;
+  }
+
+  try {
+    const translatedMap = await translateReadableTitles(
+      [sourceDesc],
+      locale.value,
+      { priority: getReadableTranslationPriority() + 1200 },
+    );
+    const translatedDesc = stripPreviewText(
+      translatedMap?.[sourceDesc] || "",
+    );
+    const displayDesc =
+      translatedDesc &&
+      !isDuplicateDesc(
+        translatedDesc,
+        item?.originalTitle,
+        item?.title,
+        item?.displayTitle,
+      )
+        ? translatedDesc
+        : item.displayDesc;
+    previewDescriptionTranslationCache.set(cacheKey, displayDesc);
+    return displayDesc !== item.displayDesc
+      ? { ...item, displayDesc }
+      : item;
+  } catch {
+    previewDescriptionTranslationCache.set(cacheKey, item.displayDesc);
+    return item;
+  }
+};
+
+const openPreview = async (item, target, requestId) => {
+  const translatedItemPromise = translatePreviewDescription(item);
+  const canShowCover = showPreviewImages.value && item?.cover && !coverErrorMap[item.cover];
+  let mediaLayout = null;
+  if (canShowCover) {
+    try {
+      mediaLayout = await getPreviewMediaLayout(item.cover);
+    } catch {
+      coverErrorMap[item.cover] = true;
+      if (
+        resolveRankingPreviewMode({
+          hasCover: false,
+          description: item?.displayDesc,
+          rankingMeta: item?.rankingMeta,
+        }) === "hidden"
+      ) {
+        hidePreview();
+        return;
+      }
+    }
+  }
+  const previewItemForDisplay = await translatedItemPromise;
+  if (requestId !== previewRequestId || !target.isConnected) return;
+  if (!positionPreview(previewItemForDisplay, target, mediaLayout)) hidePreview();
+};
+
+const showPreview = (item, event) => {
+  if ((item?.marketQuote && !isIndexOverviewSource.value) || item?.fundMetric) return;
+  if (!isClient || !isDesktop.value || !event?.currentTarget) return;
+  if (!hasPreviewContent(item)) return;
+  cancelPreviewClose();
+  if (previewOpenTimer) window.clearTimeout(previewOpenTimer);
+  const target = event.currentTarget;
+  const requestId = ++previewRequestId;
+  previewOpenTimer = window.setTimeout(() => {
+    previewOpenTimer = null;
+    openPreview(item, target, requestId);
+  }, FLOATING_COVER_PREVIEW_OPEN_DELAY);
+};
+
+const bindPreviewViewportListeners = () => {
+  if (!isClient || previewViewportListenersBound) return;
+  window.addEventListener("scroll", hidePreview, true);
+  window.addEventListener("blur", hidePreview);
+  previewViewportListenersBound = true;
+};
+
+const unbindPreviewViewportListeners = () => {
+  if (!isClient || !previewViewportListenersBound) return;
+  window.removeEventListener("scroll", hidePreview, true);
+  window.removeEventListener("blur", hidePreview);
+  previewViewportListenersBound = false;
+};
+
+const hidePreview = () => {
+  if (previewOpenTimer) {
+    window.clearTimeout(previewOpenTimer);
+    previewOpenTimer = null;
+  }
+  if (previewCloseTimer) {
+    window.clearTimeout(previewCloseTimer);
+    previewCloseTimer = null;
+  }
+  previewRequestId += 1;
+  previewTarget = null;
+  previewPlacement = null;
+  previewItem.value = null;
+  unbindPreviewViewportListeners();
+};
+
+const handleGlobalPreviewClose = () => {
+  hidePreview();
+};
+
+const handlePreviewCoverError = (cover) => {
+  if (!cover) return;
+  coverErrorMap[cover] = true;
+  if (previewItem.value?.cover !== cover) return;
+
+  const item = previewItem.value;
+  const target = previewTarget;
+  if (
+    !target?.isConnected ||
+    resolveRankingPreviewMode({
+      hasCover: false,
+      description: item?.displayDesc,
+      rankingMeta: item?.rankingMeta,
+    }) === "hidden"
+  ) {
+    hidePreview();
+    return;
+  }
+
+  if (!positionPreview(item, target, null, previewPlacement)) hidePreview();
+};
+
+const getPreviewThemeVars = () => {
+  const isDarkTheme = store.siteTheme === "dark";
+  return {
+    "--preview-bg": isDarkTheme ? "#18181c" : "#fff",
+    "--preview-border": isDarkTheme
+      ? "rgba(255, 255, 255, 0.12)"
+      : "rgba(127, 127, 127, 0.2)",
+    "--preview-title-color": isDarkTheme
+      ? "rgba(255, 255, 255, 0.92)"
+      : "rgba(31, 34, 37, 0.92)",
+    "--preview-text-color": isDarkTheme
+      ? "rgba(255, 255, 255, 0.74)"
+      : "rgba(31, 34, 37, 0.72)",
+    "--preview-muted-color": isDarkTheme
+      ? "rgba(255, 255, 255, 0.48)"
+      : "rgba(31, 34, 37, 0.56)",
+  };
+};
+
+const changeMarketRankDirection = (direction) => {
+  saveMarketRankDirection(props.hotData.name, activeSubType.value, direction);
+};
+
+const changeSubType = (subtype) => {
+  const nextSubtype = resolveSourceSubtype(subtypeOptions.value, subtype);
+  if (!nextSubtype || nextSubtype === activeSubType.value) return;
+  const previousKey = runtimeKey(activeSubType.value);
+  if (variantRuntime[previousKey]?.status === "loading") {
+    variantRuntime[previousKey] = {
+      ...(variantRuntime[previousKey] || {}),
+      status: "idle",
+    };
+  }
+  hotListRequestId += 1;
+  pendingReadableTranslation = null;
+  trackEvent({
+    event: "home_subtype_change",
+    source: props.hotData.name,
+    subtype: nextSubtype,
+    category: props.hotData.category,
+  });
+  activeSubType.value = nextSubtype;
+  persistSourceSubtype(props.hotData.name, nextSubtype);
+  hidePreview();
+  const cached = variantRuntimeEntry(nextSubtype);
+  if (cached?.status === "loaded" && cached.result) {
+    applyHotListResult(cached.result, nextSubtype);
+    return;
+  }
+  hotListData.value = null;
+  updateTime.value = null;
+  loadingError.value = cached?.status === "failed";
+  listLoading.value = cached?.status !== "failed";
+  if (cached?.status !== "failed") {
+    void getHotListsData(props.hotData.name, false, nextSubtype);
+  }
+};
+
+// 前往全部列表
+const toList = () => {
+  if (props.hotData.name) {
+    trackEvent({
+      event: "rank_click",
+      source: props.hotData.name,
+      subtype: activeSubType.value,
+      category: props.hotData.category,
+    });
+    router.push(
+      buildRankPath(locale.value, props.hotData.name, activeSubType.value)
+    );
+  } else {
+    $message.error(t("hotList.loadFailedMessage"));
+  }
+};
+
+const consumePendingDataRefresh = () => {
+  if (!componentActive.value || !isNearViewport.value || !pendingDataRefresh) return;
+  const request = pendingDataRefresh;
+  pendingDataRefresh = null;
+  appliedRefreshGeneration = Math.max(appliedRefreshGeneration, request.generation);
+  void getHotListsData(props.hotData.name, request.force);
+};
+
+const handleDataRefresh = (event) => {
+  if (isPrerender) return;
+  const generation = Number(event?.detail?.generation) || Date.now();
+  if (generation <= appliedRefreshGeneration) return;
+  pendingDataRefresh = {
+    generation,
+    force: Boolean(event?.detail?.force) || Boolean(pendingDataRefresh?.force),
+  };
+  consumePendingDataRefresh();
+};
+
+// 首次加载与后续刷新共用同一可见性观察器。700px 提前量兼顾滚动体验与 API 负载。
+const checkListShow = () => {
+  if (
+    !componentActive.value ||
+    isPrerender ||
+    !isClient ||
+    typeof document === "undefined"
+  )
+    return;
+  if (props.eagerLoad) {
+    isNearViewport.value = true;
+    if (!hotListData.value) void getHotListsData(props.hotData.name);
+    consumePendingDataRefresh();
+    return;
+  }
+  const listDom = document.getElementById(cardDomId.value);
+  if (!listDom || typeof IntersectionObserver === "undefined") {
+    isNearViewport.value = true;
+    if (!hotListData.value) void getHotListsData(props.hotData.name);
+    consumePendingDataRefresh();
+    return;
+  }
+  listVisibilityObserver?.disconnect();
+  const scrollRoot =
+    listDom.closest(".n-scrollbar-container") ||
+    document.querySelector(".n-scrollbar-container");
+  listVisibilityObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        isNearViewport.value = entry.isIntersecting;
+        if (!entry.isIntersecting) return;
+        if (pendingDataRefresh) {
+          consumePendingDataRefresh();
+        } else if (!hotListData.value) {
+          void getHotListsData(props.hotData.name);
+        }
+      });
+    },
+    { root: scrollRoot || null, rootMargin: "700px 0px" },
+  );
+  listVisibilityObserver.observe(listDom);
+};
+
+const checkTranslationVisibility = () => {
+  if (
+    !componentActive.value ||
+    isPrerender ||
+    !isClient ||
+    typeof document === "undefined"
+  )
+    return;
+  if (props.eagerLoad) {
+    isInViewport.value = true;
+    consumePendingReadableTranslation();
+    return;
+  }
+  const listDom = document.getElementById(cardDomId.value);
+  if (!listDom || typeof IntersectionObserver === "undefined") {
+    isInViewport.value = true;
+    consumePendingReadableTranslation();
+    return;
+  }
+  translationVisibilityObserver?.disconnect();
+  const scrollRoot =
+    listDom.closest(".n-scrollbar-container") ||
+    document.querySelector(".n-scrollbar-container");
+  translationVisibilityObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        isInViewport.value = entry.isIntersecting;
+        if (entry.isIntersecting) consumePendingReadableTranslation();
+      });
+    },
+    { root: scrollRoot || null, rootMargin: "0px" }
+  );
+  translationVisibilityObserver.observe(listDom);
+};
+
+// 实时改变更新时间
+watch(
+  () => store.timeData,
+  () => {
+    if (hotListData.value) {
+      updateTime.value = formatTime(hotListData.value.updateTime, locale.value);
+    }
+  }
+);
+
+watch(
+  () => locale.value,
+  async (targetLocale) => {
+    if (hotListData.value) {
+      updateTime.value = formatTime(hotListData.value.updateTime, targetLocale);
+    }
+    if (!hotListData.value) {
+      listLoading.value = false;
+      return;
+    }
+    if (shouldReloadForLocaleChange(props.hotData.name)) {
+      listLoading.value = true;
+      getHotListsData(props.hotData.name);
+      return;
+    }
+    if (!shouldUseReadableTitleTranslation(props.hotData.name, targetLocale)) {
+      listLoading.value = false;
+      return;
+    }
+    const requestId = hotListRequestId;
+    const sourceResult = hotListData.value;
+    if (!isInViewport.value) {
+      pendingReadableTranslation = { result: sourceResult, requestId, targetLocale };
+      listLoading.value = false;
+      return;
+    }
+    listLoading.value = true;
+    try {
+      const enhancedResult = await enhanceHotListResult(sourceResult, targetLocale);
+      if (requestId === hotListRequestId && locale.value === targetLocale) {
+        hotListData.value = enhancedResult;
+      }
+    } finally {
+      if (requestId === hotListRequestId && locale.value === targetLocale) {
+        listLoading.value = false;
+      }
+    }
+  }
+);
+
+onMounted(() => {
+  updateIsDesktop();
+  if (isClient) {
+    window.addEventListener("resize", updateIsDesktop);
+    window.addEventListener("dailyhot:hide-item-preview", handleGlobalPreviewClose);
+    window.addEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
+  }
+  checkListShow();
+  checkTranslationVisibility();
+});
+
+onActivated(() => {
+  componentActive.value = true;
+  nextTick(() => {
+    checkListShow();
+    checkTranslationVisibility();
+    consumePendingDataRefresh();
+  });
+});
+
+onDeactivated(() => {
+  componentActive.value = false;
+  isNearViewport.value = false;
+  isInViewport.value = false;
+  listVisibilityObserver?.disconnect();
+  listVisibilityObserver = null;
+  translationVisibilityObserver?.disconnect();
+  translationVisibilityObserver = null;
+});
+
+onBeforeUnmount(() => {
+  if (isClient) {
+    window.removeEventListener("resize", updateIsDesktop);
+    window.removeEventListener("dailyhot:hide-item-preview", handleGlobalPreviewClose);
+    window.removeEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
+  }
+  listVisibilityObserver?.disconnect();
+  listVisibilityObserver = null;
+  translationVisibilityObserver?.disconnect();
+  translationVisibilityObserver = null;
+  hidePreview();
+});
+</script>
+
+<style lang="scss" scoped>
+.hot-list {
+  border-radius: 12px;
+  transition: all 0.3s;
+  cursor: pointer;
+  .header-block {
+    display: block;
+  }
+  .title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 16px;
+    height: 32px;
+    min-width: 0;
+    .name {
+      display: flex;
+      align-items: center;
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: none;
+      .n-avatar {
+        background-color: transparent;
+        width: 25px;
+        height: 25px;
+        margin-right: 8px;
+        flex: 0 0 auto;
+
+        :deep(img) {
+          object-fit: contain;
+        }
+      }
+
+      .name-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .header-index-controls {
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+
+    .header-market-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 0 1 46%;
+      min-width: 0;
+      max-width: 46%;
+      margin-left: auto;
+    }
+
+    .header-subtype {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+      margin-left: auto;
+    }
+
+    .header-subtype:deep(.subtype-scroll) {
+      justify-content: flex-start;
+      padding: 0;
+    }
+
+    .header-subtype:deep(.subtype-chip) {
+      font-size: 12px;
+      padding: 4px 9px;
+    }
+
+    .subtitle {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 46%;
+      margin-left: 12px;
+      font-size: 12px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  &.is-compact {
+    .title {
+      height: 28px;
+      gap: 8px;
+      font-size: 15px;
+      .name .n-avatar { width: 22px; height: 22px; margin-right: 6px; }
+      .header-subtype:deep(.subtype-chip) { padding: 3px 7px; font-size: 11px; }
+      .subtitle { margin-left: 8px; font-size: 11px; }
+    }
+    .message { height: 20px; }
+    :deep(.news-list) { height: 286px; }
+    .lists { padding-right: 4px; }
+    .lists .item { min-height: var(--ranking-card-compact-item-min-height); margin-bottom: var(--ranking-card-compact-item-margin); }
+    .lists .item .line { gap: var(--ranking-card-compact-item-gap); }
+    .lists .item .line.has-inline-cover { grid-template-columns: auto var(--ranking-card-compact-thumb-width) minmax(0, 1fr); }
+    .lists .item .line.has-inline-cover[data-cover-presentation="square-uniform"] { grid-template-columns: auto 36px minmax(0, 1fr); }
+    .lists .item .line.has-inline-cover[data-cover-presentation="portrait-uniform"] { grid-template-columns: auto 36px minmax(0, 1fr); min-height: 50px; }
+    .lists .item .item-thumb { width: var(--ranking-card-compact-thumb-width); height: var(--ranking-card-compact-thumb-height); }
+    .lists .item .line[data-cover-presentation="square-uniform"] .item-thumb { width: 36px; height: 36px; }
+    .lists .item .line[data-cover-presentation="portrait-uniform"] .item-thumb { width: 36px; height: 50px; }
+    .lists .item .num { width: var(--ranking-card-compact-rank-size); height: var(--ranking-card-compact-rank-size); min-width: var(--ranking-card-compact-rank-size); margin-right: var(--ranking-card-compact-rank-gap); border-radius: 6px; }
+  }
+
+  .message {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    font-size: 12px;
+    height: 24px;
+
+    .time {
+      padding: 0 6px;
+    }
+
+    .loading {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .card-drag-handle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 22px;
+      border-radius: 999px;
+      color: var(--n-text-color-2);
+      background: rgba(127, 127, 127, 0.14);
+      cursor: grab;
+      touch-action: none;
+      transition: color 0.2s ease, background-color 0.2s ease;
+
+      &:hover {
+        color: var(--n-text-color);
+        background: rgba(127, 127, 127, 0.2);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--n-close-color-pressed);
+        outline-offset: 2px;
+      }
+
+      &:active {
+        cursor: grabbing;
+      }
+    }
+  }
+
+  :deep(.news-list) {
+    height: 300px;
+
+    .n-scrollbar-rail {
+      right: 0;
+    }
+
+    .error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      .n-button {
+        margin-top: 12px;
+      }
+    }
+
+    .loading {
+      display: flex;
+      flex-direction: column;
+      height: 300px;
+      justify-content: space-between;
+    }
+  }
+
+  .lists {
+    padding-right: 6px;
+
+    .index-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+      padding: 16px;
+      color: var(--n-text-color-3);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .item {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: var(--ranking-card-item-margin);
+      padding-bottom: 2px;
+      min-height: var(--ranking-card-item-min-height);
+      border-radius: 8px;
+      transition: all 0.3s;
+      cursor: pointer;
+
+      &:nth-last-of-type(1) {
+        margin-bottom: 0;
+      }
+
+      .line {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: var(--ranking-card-item-gap);
+
+        &.has-inline-cover {
+          grid-template-columns: auto var(--ranking-card-thumb-width) minmax(0, 1fr);
+        }
+
+        &.has-inline-cover[data-cover-presentation="square-uniform"] {
+          grid-template-columns: auto 40px minmax(0, 1fr);
+        }
+
+        &.has-inline-cover[data-cover-presentation="portrait-uniform"] {
+          grid-template-columns: auto 42px minmax(0, 1fr);
+          min-height: 58px;
+        }
+      }
+
+      .item-thumb {
+        display: block;
+        box-sizing: border-box;
+        width: var(--ranking-card-thumb-width);
+        height: var(--ranking-card-thumb-height);
+        padding: 0;
+        overflow: hidden;
+        border: 0;
+        border-radius: var(--ranking-card-thumb-radius);
+        background: var(--n-action-color);
+        cursor: zoom-in;
+        box-shadow: inset 0 0 0 1px
+          color-mix(in srgb, var(--n-border-color) 70%, transparent);
+
+        img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center;
+          transition: transform 0.18s ease;
+        }
+
+        &:hover img {
+          transform: scale(1.04);
+        }
+      }
+
+      .line[data-cover-presentation="square-uniform"] .item-thumb {
+        width: 40px;
+        height: 40px;
+        background: transparent;
+
+        img {
+          object-fit: contain;
+        }
+      }
+
+      .line[data-cover-presentation="portrait-uniform"] .item-thumb {
+        width: 42px;
+        height: 58px;
+        background: transparent;
+
+        img {
+          object-fit: contain;
+        }
+      }
+
+      .line[data-cover-presentation="landscape-uniform"] .item-thumb {
+        background: transparent;
+
+        img {
+          object-fit: contain;
+        }
+      }
+
+      &.is-market-quote,
+      &.is-fund-metric {
+        min-height: 42px;
+        margin-bottom: 8px;
+
+        .line {
+          align-items: stretch;
+        }
+      }
+
+      &.is-index-overview .line {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .num {
+        width: var(--ranking-card-rank-size);
+        height: var(--ranking-card-rank-size);
+        min-width: var(--ranking-card-rank-size);
+        margin-right: var(--ranking-card-rank-gap);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--n-border-color);
+        border-radius: 8px;
+        transition: all 0.3s;
+
+        &:hover {
+          background-color: var(--n-close-color-hover);
+        }
+
+        &.one,
+        &.two,
+        &.three {
+          background-color: var(--n-border-color);
+          font-size: 14px;
+          font-weight: 820;
+        }
+
+        &.one {
+          color: #ea444d;
+        }
+
+        &.two {
+          color: #ed702d;
+        }
+
+        &.three {
+          color: #eead3f;
+        }
+
+        &.is-pinned {
+          background: transparent;
+          line-height: 1;
+          transform: translateY(-1px);
+        }
+
+        &.is-pinned:hover {
+          background: color-mix(in srgb, var(--n-primary-color) 8%, transparent);
+        }
+
+        .ranking-pin-icon {
+          display: block;
+          width: 20px;
+          height: 20px;
+          color: var(--n-primary-color);
+          stroke-width: 1.9;
+        }
+      }
+
+      .text {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        width: 100%;
+        gap: 6px;
+        transition: all 0.3s;
+        text-decoration: none;
+        color: inherit;
+
+        .item-copy {
+          display: flex;
+          flex: 1 1 auto;
+          flex-direction: column;
+          justify-content: center;
+          min-width: 0;
+          gap: 2px;
+        }
+
+        .title-text {
+          display: -webkit-box;
+          min-width: 0;
+          overflow: hidden;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+        }
+
+        .item-secondary-meta {
+          display: block;
+          min-width: 0;
+          overflow: hidden;
+          color: var(--n-text-color-3);
+          font-size: 0.82em;
+          font-weight: 450;
+          line-height: 1.25;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        &.has-card-secondary-meta {
+          align-items: center;
+        }
+
+        &.has-item-author,
+        &.has-inline-metric {
+          .item-copy {
+            flex: 1 1 auto;
+          }
+
+          .title-text {
+            flex: 0 1 auto;
+          }
+        }
+
+        &.has-item-author {
+          .item-author {
+            display: inline-flex;
+            flex: 0 1 38%;
+            align-items: baseline;
+            gap: 4px;
+            min-width: 0;
+            max-width: 38%;
+            overflow: hidden;
+            color: var(--n-text-color-3);
+            font-size: 0.92em;
+            font-weight: 560;
+            line-height: 1.35;
+            white-space: nowrap;
+          }
+
+          .item-author__mark {
+            flex: 0 0 auto;
+            color: var(--n-primary-color);
+            font-size: 0.9em;
+            font-weight: 750;
+          }
+
+          .item-author__name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+        }
+
+        .item-inline-metric {
+          display: inline-flex;
+          flex: 0 0 auto;
+          align-items: baseline;
+          gap: 4px;
+          margin-left: auto;
+          color: var(--n-text-color-3);
+          font-size: 0.84em;
+          line-height: 1.35;
+          white-space: nowrap;
+
+          strong {
+            color: var(--n-text-color-2);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+          }
+        }
+
+        &.market-quote-link {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+
+          .market-quote-copy {
+            min-width: 0;
+          }
+
+          .market-quote-title-row {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            min-width: 0;
+          }
+
+          .title-text {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .market-quote-region {
+            flex: 0 0 auto;
+            padding: 1px 5px;
+            border-radius: 999px;
+            background: color-mix(in srgb, currentColor 8%, transparent);
+            font-size: 10px;
+            line-height: 1.35;
+            color: var(--n-text-color-3);
+          }
+
+          .market-quote-code {
+            flex: 0 0 auto;
+            font-size: 11px;
+            line-height: 1.2;
+            color: var(--n-text-color-3);
+            font-variant-numeric: tabular-nums;
+          }
+
+          .market-quote-meta {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 2px;
+            overflow: hidden;
+            font-size: 11px;
+            line-height: 1.3;
+            color: var(--n-text-color-3);
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            font-variant-numeric: tabular-nums;
+          }
+
+          .market-quote-change {
+            flex: 0 0 auto;
+            min-width: 54px;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+
+            &.is-up {
+              color: #ea444d;
+            }
+
+            &.is-down {
+              color: #18a058;
+            }
+
+            &.is-flat {
+              color: var(--n-text-color-3);
+            }
+
+            &.is-western.is-up {
+              color: #18a058;
+            }
+
+            &.is-western.is-down {
+              color: #ea444d;
+            }
+          }
+        }
+
+        &.fund-metric-link {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+
+          .fund-metric-copy {
+            min-width: 0;
+          }
+
+          .title-text {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .fund-metric-label {
+            display: block;
+            margin-top: 2px;
+            overflow: hidden;
+            font-size: 11px;
+            line-height: 1.3;
+            color: var(--n-text-color-3);
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          }
+
+          .fund-metric-value {
+            min-width: 58px;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+
+            &.is-up {
+              color: #ea444d;
+            }
+
+            &.is-down {
+              color: #18a058;
+            }
+
+            &.is-flat {
+              color: var(--n-text-color-3);
+            }
+          }
+        }
+
+        @media (min-width: 768px) {
+          &:hover {
+            transform: translateX(4px);
+
+            &::after {
+              width: 90%;
+            }
+          }
+        }
+
+        @media (max-width: 768px) {
+          &:active {
+            color: #ea444d;
+          }
+        }
+
+        &::after {
+          content: "";
+          width: 0;
+          height: 2px;
+          max-height: 2px;
+          background-color: var(--n-close-color-pressed);
+          position: absolute;
+          left: 0;
+          bottom: -2px;
+          border-radius: 8px;
+          transition: all 0.3s;
+        }
+      }
+
+    }
+  }
+
+  :deep(.n-card-header) {
+    .loading {
+      height: 26px;
+    }
+  }
+
+  :deep(.n-card__footer) {
+    .loading {
+      height: 24px;
+    }
+  }
+}
+
+
+.hot-item-preview {
+  position: fixed;
+  z-index: 3000;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  padding: 12px;
+  pointer-events: auto;
+  user-select: text;
+  color: var(--preview-title-color, var(--n-text-color, rgba(31, 34, 37, 0.92)));
+  background: var(--preview-bg, var(--n-color, #fff));
+  border: 1px solid var(--preview-border, var(--n-border-color, rgba(127, 127, 127, 0.2)));
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+  line-height: 1.45;
+
+  &.has-cover {
+    grid-template-columns: minmax(0, 1fr) var(--preview-cover-width);
+    align-items: start;
+
+    .preview-copy {
+      align-self: center;
+    }
+  }
+
+  &.is-compact-detail {
+    gap: 10px;
+
+    .preview-copy {
+      align-self: center;
+    }
+  }
+
+  &.is-media-only {
+    position: fixed;
+    display: block;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    background: transparent;
+
+    .preview-cover-wrap {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+    }
+  }
+
+  .preview-copy {
+    min-width: 0;
+  }
+
+  .preview-desc {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--preview-text-color, var(--n-text-color-2, rgba(31, 34, 37, 0.72)));
+    font-size: 13px;
+    line-height: 1.55;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .preview-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 8px;
+    color: var(--preview-muted-color, var(--n-text-color-3, rgba(31, 34, 37, 0.56)));
+    font-size: 12px;
+  }
+
+  .preview-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .preview-metric {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 3px 7px;
+    border: 1px solid var(--preview-border, var(--n-border-color, rgba(127, 127, 127, 0.2)));
+    border-radius: 999px;
+    color: var(--preview-muted-color, var(--n-text-color-3, rgba(31, 34, 37, 0.56)));
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .preview-metric strong {
+    color: var(--preview-title-color, var(--n-text-color, rgba(31, 34, 37, 0.92)));
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .preview-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    color: var(--preview-muted-color, var(--n-text-color-3, rgba(31, 34, 37, 0.56)));
+    font-size: 12px;
+  }
+
+  .preview-media-meta {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 1;
+    justify-content: center;
+    margin-top: 0;
+    padding: 4px 8px;
+    color: rgba(255, 255, 255, 0.96);
+    background: rgba(20, 22, 26, 0.76);
+    border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+
+  .preview-cover-wrap {
+    display: grid;
+    place-items: center;
+    overflow: visible;
+    width: var(--preview-cover-width);
+    height: var(--preview-cover-height);
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    cursor: zoom-in;
+  }
+
+  .cover {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    object-fit: contain;
+    object-position: center;
+  }
+}
+
+.hot-list__image-preview-trigger {
+  position: fixed !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  pointer-events: none;
+  opacity: 0;
+}
+
+
+.item-preview-enter-active,
+.item-preview-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.item-preview-enter-from,
+.item-preview-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item-preview-enter-active,
+  .item-preview-leave-active {
+    transition: opacity 0.01ms linear;
+  }
+
+  .item-preview-enter-from,
+  .item-preview-leave-to {
+    transform: none;
+  }
+}
+
+</style>
