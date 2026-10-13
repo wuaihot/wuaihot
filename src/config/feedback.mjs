@@ -1,17 +1,4 @@
-export const FEEDBACK_PROVIDERS = Object.freeze([
-  "off",
-  "quackback",
-  "github",
-  "url",
-]);
-
-const DEFAULT_PRODUCT_NAME = "吾爱热榜";
-const DEFAULT_PRODUCT_KEY = "wuaihot";
-
-const normalizeText = (value, fallback) => {
-  const normalized = String(value || "").trim();
-  return normalized || fallback;
-};
+export const FEEDBACK_PROVIDERS = Object.freeze(["off", "github", "url"]);
 
 const normalizeHttpUrl = (value) => {
   const input = String(value || "").trim();
@@ -19,7 +6,7 @@ const normalizeHttpUrl = (value) => {
 
   try {
     const parsed = new URL(input);
-    if (!['http:', 'https:'].includes(parsed.protocol)) return "";
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
 
     if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
       return parsed.origin;
@@ -40,23 +27,12 @@ export const resolveFeedbackConfig = (env = {}) => {
     : "off";
   const url = normalizeHttpUrl(env?.VITE_FEEDBACK_URL);
   const enabled = provider !== "off" && Boolean(url);
-  const resolvedProvider = enabled ? provider : "off";
 
   return Object.freeze({
-    provider: resolvedProvider,
+    provider: enabled ? provider : "off",
     enabled,
     url: enabled ? url : "",
-    portalUrl:
-      enabled && resolvedProvider === "quackback"
-        ? `${url}/`
-        : enabled
-        ? url
-        : "",
-    productName: normalizeText(
-      env?.VITE_FEEDBACK_PRODUCT_NAME,
-      DEFAULT_PRODUCT_NAME
-    ),
-    productKey: normalizeText(env?.VITE_FEEDBACK_PRODUCT_KEY, DEFAULT_PRODUCT_KEY),
+    portalUrl: enabled ? url : "",
   });
 };
 

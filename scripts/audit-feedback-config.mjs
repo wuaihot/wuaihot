@@ -1,33 +1,21 @@
 import assert from "node:assert/strict";
-import { resolveFeedbackConfig } from "../src/config/feedback.mjs";
+import { FEEDBACK_PROVIDERS, resolveFeedbackConfig } from "../src/config/feedback.mjs";
+
+assert.deepEqual([...FEEDBACK_PROVIDERS], ["off", "github", "url"]);
 
 const disabled = resolveFeedbackConfig({});
 assert.equal(disabled.provider, "off");
 assert.equal(disabled.enabled, false);
 assert.equal(disabled.url, "");
 assert.equal(disabled.portalUrl, "");
-assert.equal(disabled.productName, "吾爱热榜");
-assert.equal(disabled.productKey, "wuaihot");
-
-const quackback = resolveFeedbackConfig({
-  VITE_FEEDBACK_PROVIDER: "quackback",
-  VITE_FEEDBACK_URL: "https://feedback.example.com/",
-  VITE_FEEDBACK_PRODUCT_NAME: "Example Hot",
-  VITE_FEEDBACK_PRODUCT_KEY: "example-hot",
-});
-assert.equal(quackback.provider, "quackback");
-assert.equal(quackback.enabled, true);
-assert.equal(quackback.url, "https://feedback.example.com");
-assert.equal(quackback.portalUrl, "https://feedback.example.com/");
-assert.equal(quackback.productName, "Example Hot");
-assert.equal(quackback.productKey, "example-hot");
 
 const github = resolveFeedbackConfig({
   VITE_FEEDBACK_PROVIDER: "github",
-  VITE_FEEDBACK_URL: "https://github.com/example/repo/issues",
+  VITE_FEEDBACK_URL: "https://github.com/wuaihot/wuaihot/issues",
 });
 assert.equal(github.provider, "github");
 assert.equal(github.enabled, true);
+assert.equal(github.portalUrl, "https://github.com/wuaihot/wuaihot/issues");
 
 const customUrl = resolveFeedbackConfig({
   VITE_FEEDBACK_PROVIDER: "url",
@@ -44,6 +32,14 @@ const unsafeUrl = resolveFeedbackConfig({
 assert.equal(unsafeUrl.provider, "off");
 assert.equal(unsafeUrl.enabled, false);
 
+const unsupportedLegacyProvider = resolveFeedbackConfig({
+  VITE_FEEDBACK_PROVIDER: "quackback",
+  VITE_FEEDBACK_URL: "https://example.com/",
+});
+assert.equal(unsupportedLegacyProvider.provider, "off");
+assert.equal(unsupportedLegacyProvider.enabled, false);
+assert.equal(unsupportedLegacyProvider.portalUrl, "");
+
 const invalidProvider = resolveFeedbackConfig({
   VITE_FEEDBACK_PROVIDER: "invalid",
   VITE_FEEDBACK_URL: "https://example.com",
@@ -51,10 +47,8 @@ const invalidProvider = resolveFeedbackConfig({
 assert.equal(invalidProvider.provider, "off");
 assert.equal(invalidProvider.enabled, false);
 
-const missingUrl = resolveFeedbackConfig({
-  VITE_FEEDBACK_PROVIDER: "quackback",
-});
+const missingUrl = resolveFeedbackConfig({ VITE_FEEDBACK_PROVIDER: "github" });
 assert.equal(missingUrl.provider, "off");
 assert.equal(missingUrl.enabled, false);
 
-console.log("[feedback] configuration audit passed");
+console.log("[feedback] external-only configuration audit passed");

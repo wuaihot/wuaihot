@@ -74,10 +74,8 @@ pnpm build
 - VITE_RIGHTS_CONTACT_EMAIL：可选权利/侵权下架联系邮箱；留空则页脚不显示该入口
 - VITE_BUILD_NUMBER：可选构建号覆盖值
 - VITE_CLARITY_PROJECT_ID：可选 Microsoft Clarity 项目 ID
-- VITE_FEEDBACK_PROVIDER：off / quackback / github / url
+- VITE_FEEDBACK_PROVIDER：off / github / url（仅安全外跳；旧内嵌反馈 SDK 已退役）
 - VITE_FEEDBACK_URL：反馈入口
-- VITE_FEEDBACK_PRODUCT_NAME：反馈产品名，默认“吾爱热榜”
-- VITE_FEEDBACK_PRODUCT_KEY：反馈稳定标识，默认“wuaihot”
 - PRERENDER：是否启用预渲染
 
 公开仓库或浏览器端环境变量中不要放置 Token、Cookie、API Key、OAuth Secret、管理密钥或数据库凭据。

@@ -1,14 +1,11 @@
 <template>
   <div
-    v-show="!feedbackOpen && (feedbackConfig.enabled || backTopVisible)"
+    v-show="feedbackConfig.enabled || backTopVisible"
     class="floating-actions"
     role="group"
     :aria-label="t('feedback.actions')"
   >
-    <FeedbackWidget
-      v-if="feedbackConfig.enabled"
-      @update:open="feedbackOpen = $event"
-    />
+    <FeedbackWidget v-if="feedbackConfig.enabled" />
 
     <n-float-button
       v-if="backTopVisible"
@@ -36,7 +33,6 @@ import { feedbackConfig } from "@/config/feedback.mjs";
 const emit = defineEmits(["update:back-top-show"]);
 const { t } = useI18n({ useScope: "global" });
 
-const feedbackOpen = ref(false);
 const backTopVisible = ref(false);
 let scrollContainer = null;
 
