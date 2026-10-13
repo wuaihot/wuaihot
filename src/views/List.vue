@@ -2,10 +2,13 @@
   <div v-if="useStreamSourcePage" class="list source-stream-page">
     <CategoryStream
       :sources="sourceStreamSources"
+      :show-source-navigation="false"
       :source-page-source="listType"
     />
   </div>
   <div v-else class="list">
+    <RankingTimeFilter v-if="isQuickPreview" :source-name="listType" :active-variant="listSubType" @change="changePreviewSubtype" />
+    <SubtypeBar v-if="isQuickPreview && subtypeGroups.length" :groups="subtypeGroups" :active-value="listSubType" :fallback-label="t('hotList.rankingOptions')" @change="changePreviewSubtype" />
     <div v-if="showNativeOrderControl" class="subtype-actions">
       <MarketRankDirectionControl
         :direction="marketRankDirection"
@@ -40,6 +43,7 @@
                 </n-text>
               </div>
               <div class="data">
+                <PageWidthMenu v-if="!isQuickPreview" scope="ranking" />
                 <n-text v-if="listData.total" :depth="3" class="total">
                   {{ t("list.totalSummary", { total: listData.total }) }}
                 </n-text>
@@ -220,7 +224,6 @@
                             <span
                               v-if="metric.key === 'hot'"
                               class="ranking-heat-label"
-                              :title="metric.label"
                               :aria-label="metric.label"
                             >
                               <n-icon :component="Fire" />
@@ -258,6 +261,7 @@
                     </div>
                   </div>
                 </n-a>
+                <AiSocialEventSources v-if="item.extra?.socialPost?.eventGroup" :group="item.extra.socialPost.eventGroup" :locale="locale" />
               </n-list-item>
             </n-list>
             <n-pagination
@@ -285,7 +289,9 @@ import {
   getSourceCategoryIds,
   sourceBelongsToCategory,
 } from "@/utils/categoryTree";
-import { useRoute, useRouter } from "vue-router";
+import { useRankingReaderContext } from "@/composables/useRankingReaderContext";
+import RankingTimeFilter from "@/components/RankingTimeFilter.vue";
+import SubtypeBar from "@/components/SubtypeBar.vue";
 import { useI18n } from "vue-i18n";
 import { formatTime } from "@/utils/getTime";
 import { getSharedRanking } from "@/utils/rankingCollection";
@@ -297,9 +303,11 @@ import MarketQuoteTable from "@/components/MarketQuoteTable.vue";
 import MarketListSortControl from "@/components/MarketListSortControl.vue";
 import MarketRankDirectionControl from "@/components/MarketRankDirectionControl.vue";
 import CategoryStream from "@/components/CategoryStream.vue";
+import AiSocialEventSources from "@/components/AiSocialEventSources.vue";
+import PageWidthMenu from "@/components/PageWidthMenu.vue";
 import {
   buildSourceSubtypeParams,
-  getSourceSubtypeControlGroups,
+  getSourceContentControlGroups,
   getSourceSubtypeOptions,
   getSourceVariantOptions,
   persistSourceSubtype,
@@ -343,8 +351,8 @@ import {
   shouldUseReadableTitleTranslation,
 } from "@/utils/readableTitles";
 
-const router = useRouter();
-const route = useRoute();
+const { route, router, isQuickPreview } = useRankingReaderContext();
+const changePreviewSubtype = value => router.replace({ path: buildRankPath(getLocaleFromRoute(route), listType.value, value), query:route.query.scope ? { scope:route.query.scope } : {} });
 const store = mainStore();
 const { locale, t } = useI18n({ useScope: "global" });
 const isClient = typeof window !== "undefined";
@@ -354,6 +362,8 @@ const isPrerender =
   window.__PRERENDER_INJECTED.prerender;
 const coverErrorMap = reactive({});
 const API_LOCALIZED_SOURCE_NAMES = new Set([
+  "ai-x-updates",
+  "ai-bluesky-updates",
   "designarena",
   "clawhub",
   "clawhub-skills",
@@ -382,6 +392,8 @@ const resolveRouteType = (targetRoute) =>
       targetRoute?.query?.type ||
       availableNews.value[0]?.name,
   );
+const readerActive = ref(true);
+const isReadingRoute = () => readerActive.value && ["list", "list-locale", "list-legacy"].includes(String(route.name || ""));
 const listType = ref(resolveRouteType(router.currentRoute.value));
 const listSubType = ref(null);
 const pageNumber = ref(
@@ -444,25 +456,7 @@ const useStreamSourcePage = computed(
     !isProfessionalMarketSource.value &&
     !isSortableMarketSource.value,
 );
-const sourceStreamSources = computed(() => {
-  const current = currentSourceMeta.value;
-  const [primaryCategoryId] = current
-    ? getSourceCategoryIds(current, store.categories)
-    : [];
-  return store.newsArr
-    .filter((item) => item.show)
-    .filter((item) =>
-      primaryCategoryId
-        ? sourceBelongsToCategory(
-            item,
-            primaryCategoryId,
-            store.categories,
-          )
-        : true,
-    )
-    .slice()
-    .sort((left, right) => left.order - right.order);
-});
+const sourceStreamSources = computed(() => currentSourceMeta.value ? [currentSourceMeta.value] : []);
 const listHeaderTitle = computed(() =>
   getSourceDisplayLabel(
     currentSourceMeta.value || {
@@ -530,6 +524,7 @@ const applyListSearch = (items = []) => {
       item?.symbol,
       item?.name,
       item?.subtitle,
+      item?.extra?.socialPost?.eventGroup?.posts?.map(post=>post.originalText+' '+post.title).join(' '),
     ].some((value) => normalizeSearchText(value).includes(query)),
   );
 };
@@ -636,7 +631,7 @@ const subtypeCatalogRevision = useTrendsCatalogRevision();
 const subtypeGroups = computed(() => {
   subtypeCatalogRevision.value;
   return localizeSubtypeGroups(
-    getSourceSubtypeControlGroups(listType.value, listSubType.value),
+    getSourceContentControlGroups(listType.value, listSubType.value),
     locale.value,
   );
 });
@@ -704,7 +699,7 @@ const DETAIL_FALLBACK_DELAY_MS = 600;
 
 // 获取热榜数据
 const getHotListsData = async (name, isNew = false) => {
-  if (!name || useStreamSourcePage.value) return;
+  if (!isReadingRoute() || !name || useStreamSourcePage.value) return;
   if (isPrerender) {
     const label = getSourceDisplayLabel(
       store.newsArr.find((item) => item.name === name) ||
@@ -750,6 +745,7 @@ const getHotListsData = async (name, isNew = false) => {
       {
         useApi2,
         forceNoCache: Boolean(isNew),
+        rankingLimit: 100,
         timeout: DETAIL_REQUEST_TIMEOUT_MS,
         fallbackDelay: DETAIL_FALLBACK_DELAY_MS,
       },
@@ -762,6 +758,7 @@ const getHotListsData = async (name, isNew = false) => {
       response = await getSharedRanking(item.name, true, requestParams, {
         useApi2,
         forceNoCache: true,
+        rankingLimit: 100,
         timeout: DETAIL_REQUEST_TIMEOUT_MS,
         fallbackDelay: DETAIL_FALLBACK_DELAY_MS,
       });
@@ -794,7 +791,8 @@ const getHotListsData = async (name, isNew = false) => {
         {
           useApi2,
           forceNoCache: true,
-          timeout: DETAIL_REQUEST_TIMEOUT_MS,
+          rankingLimit: 100,
+        timeout: DETAIL_REQUEST_TIMEOUT_MS,
           fallbackDelay: DETAIL_FALLBACK_DELAY_MS,
         },
       );
@@ -942,6 +940,7 @@ watch(
 watch(
   () => pageNumber.value,
   (val) => {
+    if (!isReadingRoute() || useStreamSourcePage.value) return;
     const query = { ...route.query };
     delete query.type;
     delete query.subtype;
@@ -955,7 +954,7 @@ watch(
       ),
       query,
     });
-    document.querySelector(".n-back-top")?.click();
+    if (!isQuickPreview) document.querySelector(".n-back-top")?.click();
   },
 );
 
@@ -975,7 +974,7 @@ watch(
       listType.value = resolveRouteType(val);
       pageNumber.value = Number(val.query.page) || 1;
       listSubType.value = resolveSubType(val);
-      persistSourceSubtype(listType.value, listSubType.value);
+      if (!isQuickPreview) persistSourceSubtype(listType.value, listSubType.value);
       getHotListsData(listType.value);
     }
   },
@@ -984,6 +983,7 @@ watch(
 watch(
   () => [availableNews.value, store.activeCategory],
   () => {
+    if (!isReadingRoute()) return;
     const visibleSource = availableNews.value.find(
       (item) => item.name === listType.value,
     );
@@ -1008,10 +1008,11 @@ watch(
 watch(
   () => [listType.value, activeTypeOptions.value],
   () => {
+    if (!isReadingRoute()) return;
     const nextSubtype = resolveSubType(router.currentRoute.value);
     if (nextSubtype === listSubType.value) return;
     listSubType.value = nextSubtype;
-    persistSourceSubtype(listType.value, listSubType.value);
+    if (!isQuickPreview) persistSourceSubtype(listType.value, listSubType.value);
     if (listData.value) getHotListsData(listType.value);
   },
   { deep: true },
@@ -1029,17 +1030,20 @@ onMounted(() => {
 });
 
 onActivated(() => {
+  readerActive.value = true;
+  listType.value = resolveRouteType(router.currentRoute.value);
+  pageNumber.value = Number(route.query.page) || 1;
   if (isClient) {
     window.removeEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
     window.addEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
   }
   listSubType.value = resolveSubType(router.currentRoute.value);
-  if (!listData.value) {
-    getHotListsData(listType.value);
-  }
+  getHotListsData(listType.value);
 });
 
 onDeactivated(() => {
+  readerActive.value = false;
+  listRequestId += 1;
   if (isClient) window.removeEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
 });
 
@@ -1370,25 +1374,32 @@ onBeforeUnmount(() => {
       .ranking-metrics {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        align-items: baseline;
+        gap: 4px 12px;
         margin-top: 7px;
+        color: var(--n-text-color-3);
       }
       .ranking-metric {
         display: inline-flex;
         align-items: baseline;
         gap: 4px;
-        padding: 2px 7px;
-        border: 1px solid var(--n-border-color);
-        border-radius: 999px;
-        color: var(--n-text-color-3);
+        color: inherit;
         font-size: 11px;
-        line-height: 16px;
+        line-height: 18px;
+        white-space: nowrap;
         strong {
           color: var(--n-text-color-2);
           font-size: 12px;
           font-weight: 600;
           font-variant-numeric: tabular-nums;
         }
+      }
+      .ranking-heat-label,
+      .ranking-hot-icon {
+        display: inline-flex;
+        align-items: center;
+        color: var(--n-text-color-3);
+        font-size: 13px;
       }
       .message {
         display: flex;

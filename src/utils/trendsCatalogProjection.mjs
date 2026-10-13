@@ -1,3 +1,5 @@
+import { hasIndependentRankingAdapter } from "../config/independentRankingAdapters.mjs";
+
 export const flattenSubtypeOptions = (groups = []) =>
   groups.flatMap((group) => group.items || []);
 
@@ -19,21 +21,10 @@ const findTransportGroup = (staticGroups = [], remoteOptions = []) => {
   return best;
 };
 
-const canProjectSource = (staticGroups = [], remoteGroups = []) => {
-  if (!staticGroups.length) return true;
-  const remoteValues = new Set(flattenSubtypeOptions(remoteGroups).map((item) => item.value));
-  const overlappingStaticOptions = flattenSubtypeOptions(staticGroups)
-    .filter((item) => remoteValues.has(item.value));
-  if (!overlappingStaticOptions.length) return false;
-  return overlappingStaticOptions.every(
-    (item) => !item.apiValue || item.apiValue === item.value,
-  );
-};
-
 const normalizeRemoteGroups = (sourceName, variantGroups = [], staticGroupsBySource = {}) =>
   variantGroups
     .map((group) => {
-      const items = (group.options || [])
+      const remoteItems = (group.options || [])
         .filter((option) => !option?.runtimeAvailability || option.runtimeAvailability === "available")
         .map((option) => ({
           label: String(option?.label || option?.key || "").trim(),
@@ -49,8 +40,26 @@ const normalizeRemoteGroups = (sourceName, variantGroups = [], staticGroupsBySou
             : {}),
         }))
         .filter((item) => item.value);
-      if (!items.length) return null;
-      const transportGroup = findTransportGroup(staticGroupsBySource[sourceName] || [], items);
+      if (!remoteItems.length) return null;
+      const transportGroup = findTransportGroup(
+        staticGroupsBySource[sourceName] || [],
+        remoteItems,
+      );
+      const transportOptions = new Map(
+        (transportGroup?.items || []).map((item) => [String(item?.value || ""), item]),
+      );
+      const items = remoteItems.map((item) => {
+        const transportOption = transportOptions.get(item.value);
+        return {
+          ...item,
+          ...(transportOption?.apiParams && typeof transportOption.apiParams === "object"
+            ? { apiParams: { ...transportOption.apiParams } }
+            : {}),
+          ...(transportOption?.apiValue != null
+            ? { apiValue: transportOption.apiValue }
+            : {}),
+        };
+      });
       return {
         key: String(group?.key || transportGroup?.key || "ranking").trim() || "ranking",
         label: String(group?.label || transportGroup?.label || "").trim(),
@@ -69,10 +78,19 @@ export const projectTrendsCatalog = (catalog = {}, staticGroupsBySource = {}) =>
     const sourceName = String(source?.key || "").trim();
     if (!sourceName) continue;
     if (LOCAL_VARIANT_CONTRACT_SOURCES.has(sourceName)) continue;
+    if (hasIndependentRankingAdapter(sourceName) && source.publicAvailable === false && source.displayAvailable === false) continue;
     const groups = normalizeRemoteGroups(sourceName, source?.variantGroups || [], staticGroupsBySource);
-    if (!groups.length || !canProjectSource(staticGroupsBySource[sourceName] || [], groups)) continue;
-    const options = flattenSubtypeOptions(groups);
-    const selectorEnabled = source?.variantSelectorEnabled !== false && options.length > 1;
+    const explicitOptions = flattenSubtypeOptions(groups);
+    const defaultVariant = String(source?.defaultVariant || "").trim();
+    const options = explicitOptions.length
+      ? explicitOptions
+      : defaultVariant
+        ? [{
+            label: String(source?.rankingLabel || defaultVariant).trim() || defaultVariant,
+            value: defaultVariant,
+          }]
+        : [];
+    const selectorEnabled = source?.variantSelectorEnabled !== false && explicitOptions.length > 1;
     groupsBySource.set(sourceName, selectorEnabled ? groups : []);
     variantsBySource.set(sourceName, options);
     const activeDimensionValues = new Map();
@@ -99,7 +117,6 @@ export const projectTrendsCatalog = (catalog = {}, staticGroupsBySource = {}) =>
       })
       .filter((dimension) => dimension.key && dimension.items.length);
     if (dimensions.length) dimensionsBySource.set(sourceName, dimensions);
-    const defaultVariant = String(source?.defaultVariant || "").trim();
     if (defaultVariant && options.some((item) => item.value === defaultVariant)) {
       defaultsBySource.set(sourceName, defaultVariant);
     }

@@ -1,5 +1,5 @@
 <template>
-  <span v-if="badges.length" class="ranking-badges notranslate" translate="no">
+  <span v-if="badges.length" class="ranking-badges notranslate" translate="no" :style="categoryStyle">
     <span
       v-for="(badge, badgeIndex) in badges"
       :key="`${badge.kind}-${badge.sourceCode || badge.label}-${badgeIndex}`"
@@ -11,10 +11,11 @@
           'is-animated': badge.animated,
           'has-icon': Boolean(iconUrl(badge)),
           'is-exclusive': badge.sourceCode === '独家' || badge.label === '独家',
+          'is-semantic-category': isSemanticCategory(badge),
         },
       ]"
       role="img"
-      :title="badge.label"
+      :title="nativeTitles ? badge.label : undefined"
       :aria-label="badge.label"
     >
       <img
@@ -31,15 +32,21 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
+import { useThemeVars } from 'naive-ui';
 import { resolveRankingBadgeIconUrl } from '@/utils/rankingBadges';
 
 const props = defineProps({
   badges: { type: Array, default: () => [] },
+  semanticCategories: Boolean,
+  nativeTitles: { type: Boolean, default: true },
 });
 
+const theme = useThemeVars();
+const categoryStyle = computed(() => ({ '--ranking-category-text': theme.value.textColor2, '--ranking-category-bg': theme.value.hoverColor }));
+const isSemanticCategory = badge => props.semanticCategories && ['category', 'source'].includes(badge.kind) && !['独家', '独播'].includes(badge.label);
 const failedUrls = reactive({});
-const iconUrl = (badge) => resolveRankingBadgeIconUrl(badge, failedUrls);
+const iconUrl = (badge) => isSemanticCategory(badge) ? '' : resolveRankingBadgeIconUrl(badge, failedUrls);
 const handleImageError = (badge) => {
   const failed = iconUrl(badge);
   if (failed) failedUrls[failed] = true;
@@ -100,6 +107,11 @@ const handleImageError = (badge) => {
 .ranking-badge.is-category,
 .ranking-badge.is-source { background: color-mix(in srgb, var(--n-text-color, #606770) 68%, transparent); }
 .ranking-badge.is-source.is-exclusive { background: rgb(147, 83, 224); }
+.ranking-badge.is-semantic-category {
+  color: var(--ranking-category-text);
+  background: var(--ranking-category-bg);
+  font-weight: 500;
+}
 .ranking-badge.has-icon {
   width: auto;
   min-width: 18px;

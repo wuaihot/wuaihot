@@ -1,6 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { projectSubtypeGroupsForBuild } = require("./lib/trends-catalog-build.cjs");
+const {
+  extractVisibleStaticSourceNames,
+  projectSubtypeGroupsForBuild,
+  selectBuildSourceNames,
+} = require("./lib/trends-catalog-build.cjs");
 
 const repoRoot = process.cwd();
 const distDir = path.join(repoRoot, "dist");
@@ -438,15 +442,8 @@ const getLocalizedSourceDisplayLabel = (
   );
 };
 
-const getSourceNames = (storeText) => {
-  const newsSectionMatch = storeText.match(
-    /defaultNewsArr:\s*\[(.*?)\n\s*\],\n\s*newsArr:/s
-  );
-  const source = newsSectionMatch?.[1] || storeText;
-  return [
-    ...new Set([...source.matchAll(/name:\s*"([^"]+)"/g)].map((match) => match[1])),
-  ];
-};
+const getSourceNames = (storeText) =>
+  extractVisibleStaticSourceNames(storeText);
 
 const getSubtypeValues = (sourceSubtypeGroups) => {
   const result = new Map();
@@ -954,13 +951,13 @@ async function main() {
   const catalogPrioritySources = catalogSources.filter(
     (source) => source.priorityTier === "A" || source.priorityTier === "B",
   );
-  const sourceNames = [
-    ...new Set([
-      ...getSourceNames(storeSource),
-      ...catalogPrioritySources.map((source) => source.key),
-      ...variantCategoryProjections.map((projection) => projection.sourceName),
-    ]),
-  ];
+  const sourceNames = selectBuildSourceNames({
+    staticSourceNames: getSourceNames(storeSource),
+    catalogSources,
+    projectionSourceNames: variantCategoryProjections.map(
+      (projection) => projection.sourceName,
+    ),
+  });
   const catalogSourceNames = new Map(
     catalogPrioritySources.map((source) => [source.key, source.name]),
   );

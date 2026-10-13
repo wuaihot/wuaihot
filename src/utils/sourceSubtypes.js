@@ -1,8 +1,15 @@
 import { flattenSubtypeOptions, projectTrendsCatalog } from "./trendsCatalogProjection.mjs";
 
+import { rankingContentOptions, rankingPeriodOptions, contentVariantFor, rankingFamilyVariants, contentControls } from "./rankingPeriods.mjs";
+
 const STORAGE_PREFIX = "dailyhot:source-subtype:";
 
 const SOURCE_SUBTYPE_GROUPS = {
+  "ai-x-updates": [{ key: "person", label: "人物 / 账号", items: [{value:"all",label:"全部动态"},{value:"thsottiaux",label:"Tibo"},{value:"openaidevs",label:"OpenAI Developers"},{value:"openai",label:"OpenAI"},{value:"anthropicai",label:"Anthropic"}] }],
+  "ai-bluesky-updates": [{ key: "person", label: "人物 / 账号", items: [{value:"all",label:"全部动态"},{value:"simonwillison.net",label:"Simon Willison"},{value:"eugeneyan.com",label:"Eugene Yan"}] }],
+  "ai-official-intake": [{ key: "source", label: "来源", items: [{"value":"all","label":"一手动态"},{"value":"minimax-blog","label":"MiniMax 官方发布"},{"value":"kimi-blog","label":"Kimi 官方研究"},{"value":"qwen-blog","label":"Qwen 官方博客"},{"value":"gemini-blog","label":"Google Gemini"},{"value":"simon-blog","label":"Simon Willison"},{"value":"lilian-blog","label":"Lilian Weng"},{"value":"chip-blog","label":"Chip Huyen"},{"value":"qwen","label":"Qwen · 模型仓库"},{"value":"deepseek","label":"DeepSeek · 模型仓库"},{"value":"kimi","label":"Kimi · 模型仓库"},{"value":"glm","label":"智谱 GLM · 模型仓库"},{"value":"minimax","label":"MiniMax · 模型仓库"},{"value":"mistral","label":"Mistral · 模型仓库"},{"value":"google","label":"Google · 模型仓库"},{"value":"nvidia","label":"NVIDIA · 模型仓库"},{"value":"simon-bluesky","label":"Simon Willison · Bluesky"}] }],
+  "ai-model-board": [{ key: "ranking", label: "榜单", items: [{"value":"consensus","label":"跨榜综合"},{"value":"livebench","label":"LiveBench 综合"},{"value":"coding","label":"LiveBench 编程"},{"value":"reasoning","label":"LiveBench 推理"},{"value":"analysis","label":"LiveBench 数据分析"},{"value":"aa","label":"Artificial Analysis"},{"value":"arena","label":"Arena 用户偏好"}] }],
+  livebench: [{ key: "scope", label: "能力", items: [{"value":"livebench","label":"LiveBench 综合"},{"value":"coding","label":"LiveBench 编程"},{"value":"reasoning","label":"LiveBench 推理"},{"value":"analysis","label":"LiveBench 数据分析"}] }],
   douyin: [
     {
       key: "rank",
@@ -954,6 +961,8 @@ const SOURCE_SUBTYPE_GROUPS = {
   ],
 };
 
+import { INDEPENDENT_RANKING_ADAPTERS, hasIndependentRankingAdapter } from "../config/independentRankingAdapters.mjs";
+
 const AGGREGATE_SUBTYPE_SOURCES = ["clawhub"];
 const REMOTE_SOURCE_SUBTYPE_GROUPS = new Map();
 const REMOTE_SOURCE_CATALOG = new Map();
@@ -989,6 +998,9 @@ export const applyTrendsSourceCatalog = (catalog = {}) => {
       category: String(source?.category || "general").trim(),
       priorityTier: String(source?.priorityTier || "").trim(),
       rankingLabel: String(source?.rankingLabel || "").trim(),
+      ...(source?.dataKind ? { dataKind: String(source.dataKind).trim() } : {}),
+      ...(typeof source?.hotspotEligible === "boolean" ? { hotspotEligible: source.hotspotEligible } : {}),
+      ...(source?.derivedFromSourceKey ? { derivedFromSourceKey: String(source.derivedFromSourceKey).trim() } : {}),
       defaultVariant: String(source?.defaultVariant || "").trim(),
       publicAvailable: source?.publicAvailable === true,
       displayAvailable: source?.displayAvailable === true,
@@ -1005,16 +1017,16 @@ export const applyTrendsSourceCatalog = (catalog = {}) => {
   REMOTE_SOURCE_VARIANT_DIMENSIONS.clear();
   for (const source of sourceEntries) REMOTE_SOURCE_CATALOG.set(source.key, source);
   for (const [sourceName, groups] of projection.groupsBySource) {
-    REMOTE_SOURCE_SUBTYPE_GROUPS.set(sourceName, groups);
+    if (!INDEPENDENT_RANKING_ADAPTERS[sourceName]?.staticVariants) REMOTE_SOURCE_SUBTYPE_GROUPS.set(sourceName, groups);
   }
   for (const [sourceName, defaultSubtype] of projection.defaultsBySource) {
     REMOTE_SOURCE_DEFAULT_SUBTYPES.set(sourceName, defaultSubtype);
   }
   for (const [sourceName, variants] of projection.variantsBySource) {
-    REMOTE_SOURCE_VARIANTS.set(sourceName, variants);
+    if (!INDEPENDENT_RANKING_ADAPTERS[sourceName]?.staticVariants) REMOTE_SOURCE_VARIANTS.set(sourceName, variants);
   }
   for (const [sourceName, dimensions] of projection.dimensionsBySource) {
-    REMOTE_SOURCE_VARIANT_DIMENSIONS.set(sourceName, dimensions);
+    if (!INDEPENDENT_RANKING_ADAPTERS[sourceName]?.staticVariants) REMOTE_SOURCE_VARIANT_DIMENSIONS.set(sourceName, dimensions);
   }
   REMOTE_SOURCE_CATALOG_SIGNATURE = nextSignature;
   if (changed) {
@@ -1043,7 +1055,7 @@ export const getTrendsCatalogSources = () => [...REMOTE_SOURCE_CATALOG.values()]
 export const filterReadableTrendsCatalogManagedSources = (items = []) => {
   if (!REMOTE_SOURCE_CATALOG.size) return Array.isArray(items) ? [...items] : [];
   return (Array.isArray(items) ? items : []).filter((item) => {
-    if (!item?.catalogManaged) return true;
+    if (!item?.catalogManaged || hasIndependentRankingAdapter(item?.name)) return true;
     const source = REMOTE_SOURCE_CATALOG.get(String(item?.name || ""));
     if (item?.directoryOnly === true) return Boolean(source);
     return Boolean(source && (source.publicAvailable || source.displayAvailable));
@@ -1302,4 +1314,22 @@ export const buildSourceSubtypeParams = (sourceName, subtype) => {
     return { ...option.apiParams };
   }
   return { [group?.param || "type"]: option?.apiValue || resolved };
+};
+
+export const getSourceContentOptions = source => rankingContentOptions(source,getSourceVariantOptions(source));
+export const getSourcePeriodOptions = (source,active) => rankingPeriodOptions(source,getSourceVariantOptions(source),active);
+export const getSourceContentVariant = (source,value) => contentVariantFor(source,getSourceVariantOptions(source),value);
+export const expandSourceContentVariants = (source,allowed) => rankingFamilyVariants(source,getSourceVariantOptions(source),allowed);
+export const getSourceContentControlGroups = (source,active) => contentControls(source,getSourceSubtypeControlGroups(source,active),getSourceVariantOptions(source),active);
+export const readSourceContentPeriod = (source,variant) => {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const content=getSourceContentVariant(source,variant);
+    const value=localStorage.getItem(`dailyhot:source-period:${source}:${content}`);
+    return expandSourceContentVariants(source,[content]).some(o=>o.value===value) ? value : null;
+  } catch {return null;}
+};
+export const persistSourceContentPeriod = (source,variant) => {
+  if (typeof localStorage === "undefined") return;
+  try {localStorage.setItem(`dailyhot:source-period:${source}:${getSourceContentVariant(source,variant)}`,variant);} catch {}
 };

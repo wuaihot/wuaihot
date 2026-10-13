@@ -174,6 +174,7 @@
               </div>
             </div>
           </div>
+          <RankingProjectionControl :scope="selectedCategoryId === 'all' ? '__all__' : String(selectedCategoryId)" />
           <div class="boards-toolbar">
             <div>
               <strong>{{ selectedCategoryLabel }}</strong>
@@ -302,6 +303,7 @@
 
 <script setup>
 import draggable from "vuedraggable";
+import RankingProjectionControl from "./RankingProjectionControl.vue";
 import { mainStore } from "@/store";
 import {
   canMoveCategory,
@@ -785,6 +787,9 @@ const restoreDefaults = () => {
     ...item,
     categoryIdsCustomized: false,
   }));
+  store.newsOrderCustomized = false;
+  store.newsOrderOverrides = {};
+  store.unavailableNewsPreferences = {};
   store.ensureBuiltinCategories();
   store.ensureNewsList();
   selectedCategoryId.value = "all";

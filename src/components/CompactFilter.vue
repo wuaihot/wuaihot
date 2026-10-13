@@ -10,12 +10,15 @@
   >
     <button
       type="button"
-      @mouseenter="handleTriggerEnter"
-      @mouseleave="handleTriggerLeave"
+      @pointerenter="handleTriggerEnter"
+      @pointerleave="handleTriggerLeave"
+      @click="handleTriggerClick"
+      @keydown.esc.prevent="closeDropdown"
       class="compact-filter"
       :class="{ 'is-active': hasExplicitSelection }"
       :aria-label="ariaLabel || label"
-      aria-haspopup="listbox"
+      aria-haspopup="menu"
+      :aria-expanded="dropdownShow"
     >
       <span class="compact-filter__label">{{ label }}</span>
       <i
@@ -52,19 +55,27 @@ const dropdownShow = ref(false);
 const menuId = `compact-filter:${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
 let hoverMediaQuery;
 let closeTimer;
+let enterTimer;
+const cancelEnter = () => {
+  clearTimeout(enterTimer);
+  enterTimer = undefined;
+};
 
 const updateHoverCapability = (event) => {
   hoverCapable.value = Boolean(event?.matches ?? hoverMediaQuery?.matches);
+  if (!hoverCapable.value) cancelEnter();
 };
 const cancelClose = () => {
   clearTimeout(closeTimer);
   closeTimer = undefined;
 };
 const closeDropdown = () => {
+  cancelEnter();
   cancelClose();
   dropdownShow.value = false;
 };
 const openDropdown = () => {
+  cancelEnter();
   cancelClose();
   if (dropdownShow.value) return;
   dropdownShow.value = true;
@@ -72,13 +83,23 @@ const openDropdown = () => {
 };
 const scheduleClose = () => {
   cancelClose();
-  closeTimer = setTimeout(closeDropdown, 140);
+  closeTimer = setTimeout(closeDropdown, 170);
 };
-const handleTriggerEnter = () => {
-  if (hoverCapable.value) openDropdown();
+const handleTriggerEnter = (event) => {
+  if (!hoverCapable.value || event.pointerType !== "mouse") return;
+  cancelClose();
+  cancelEnter();
+  if (!dropdownShow.value) enterTimer = setTimeout(openDropdown, 130);
 };
-const handleTriggerLeave = () => {
-  if (hoverCapable.value) scheduleClose();
+const handleTriggerLeave = (event) => {
+  if (!hoverCapable.value || event.pointerType !== "mouse") return;
+  cancelEnter();
+  if (dropdownShow.value) scheduleClose();
+};
+const handleTriggerClick = () => {
+  if (!hoverCapable.value) return;
+  if (dropdownShow.value) closeDropdown();
+  else openDropdown();
 };
 const menuProps = () => ({
   onMouseenter: cancelClose,
@@ -94,6 +115,7 @@ onMounted(() => {
   window.addEventListener(HOVER_MENU_OPEN_EVENT, handleForeignMenuOpen);
 });
 onBeforeUnmount(() => {
+  cancelEnter();
   cancelClose();
   hoverMediaQuery?.removeEventListener?.("change", updateHoverCapability);
   window.removeEventListener(HOVER_MENU_OPEN_EVENT, handleForeignMenuOpen);
@@ -199,6 +221,8 @@ const handleSelect = (value) => {
   white-space: nowrap;
 }
 .compact-filter svg {
+  display: block;
+  align-self: center;
   width: 10px;
   height: 10px;
   flex: 0 0 auto;

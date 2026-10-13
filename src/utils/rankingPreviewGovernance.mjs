@@ -1,7 +1,9 @@
+import {normalizeRankingMetric} from './rankingMetricSemantics.js';
 import { formatCompactMetric } from "./compactMetric.js";
 
 const HEAT_LIKE_VALUE_SOURCES = new Set(["qq-news", "zhihu"]);
 const INLINE_METRIC_SOURCES = new Set(["autohome-sales"]);
+const INLINE_METRIC_KINDS = new Set(["score"]);
 const GENERIC_METRIC_LABELS = new Set([
   "指标",
   "指標",
@@ -77,6 +79,7 @@ export const removeRedundantPreviewDescription = ({
 };
 
 const resolvePreviewHeat = (item = {}, sourceName = "") => {
+  item=normalizeRankingMetric(item,sourceName);
   const legacyHot = normalizeNumeric(item?.hot);
   if (legacyHot !== null) return legacyHot;
 
@@ -91,12 +94,20 @@ const resolvePreviewHeat = (item = {}, sourceName = "") => {
 };
 
 const resolveInlineMetric = (item = {}, sourceName = "", locale = "zh-CN") => {
-  if (!INLINE_METRIC_SOURCES.has(sourceName)) return null;
+  const kind =
+    String(item?.metric?.kind || "value").trim().toLowerCase() || "value";
+  if (
+    !INLINE_METRIC_SOURCES.has(sourceName) &&
+    !INLINE_METRIC_KINDS.has(kind)
+  ) {
+    return null;
+  }
   const numeric = normalizeNumeric(item?.metric?.value);
   const label = String(item?.metric?.label || "").trim();
   if (numeric === null || !label) return null;
   return {
-    key: `inline:${String(item?.metric?.kind || "value").trim().toLowerCase() || "value"}`,
+    key: `inline:${kind}`,
+    kind,
     label,
     numeric,
     value: formatCompactMetric(numeric, locale),
@@ -112,6 +123,7 @@ export const resolveRankingPreviewGovernance = ({
   authorVisible = false,
 } = {}) => {
   const normalizedSource = String(sourceName || "").trim();
+  item=normalizeRankingMetric(item,normalizedSource);
   const inlineMetric = resolveInlineMetric(item, normalizedSource, locale);
   const heat = resolvePreviewHeat(item, normalizedSource);
   const nextDescription = removeRedundantPreviewDescription({
@@ -177,3 +189,13 @@ export const resolveRankingPreviewMode = ({
   }
   return "detail";
 };
+
+// The same admission rule controls both the rich preview and native title fallback.
+export const canShowRankingPreview = ({
+  desktop = false,
+  marketQuote = false,
+  fundMetric = false,
+  indexOverview = false,
+  ...content
+} = {}) => desktop && !fundMetric && (!marketQuote || indexOverview) &&
+  resolveRankingPreviewMode(content) !== "hidden";

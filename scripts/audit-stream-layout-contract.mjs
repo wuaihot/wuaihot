@@ -1,5 +1,20 @@
 import fs from "node:fs";
 import assert from "node:assert/strict";
+import { resolveReadingWidth, clampReadingWidth } from "../src/utils/readingWidth.js";
+
+const widthPreferences = { siteContainerWidth: 1800, focusContainerWidth: 1280, rankingContainerWidth: null, topicContainerWidth: null };
+assert.equal(resolveReadingWidth(widthPreferences, "ranking"), 1280, "legacy width must survive");
+assert.equal(resolveReadingWidth(widthPreferences, "topic"), 1280);
+widthPreferences.rankingContainerWidth = 1080;
+assert.equal(resolveReadingWidth(widthPreferences, "topic"), 1280, "ranking width cannot change topic width");
+widthPreferences.topicContainerWidth = 1600;
+assert.equal(resolveReadingWidth(widthPreferences, "ranking"), 1080, "topic width cannot change ranking width");
+assert.equal(widthPreferences.siteContainerWidth, 1800);
+assert.equal(clampReadingWidth("broken"), 1360);
+assert.equal(clampReadingWidth(null), 1360);
+assert.equal(clampReadingWidth(0), 1080);
+assert.equal(clampReadingWidth(Infinity), 1360);
+assert.equal(clampReadingWidth(9999), 1600);
 import { resolveResponsiveCardColumns } from "../src/utils/responsiveColumns.js";
 import { isSeriousEvent, isSeriousEventText } from "../src/utils/seriousEvents.js";
 import { pickTopicSummary } from "../src/utils/topicSummary.js";
@@ -7,6 +22,7 @@ import {
   COVER_PRESENTATION_MODES,
   classifyCoverPresentationRatio,
   inferCoverPresentationMode,
+  normalizeCardCoverPresentationMode,
 } from "../src/utils/coverPresentation.js";
 
 const component = fs.readFileSync("src/components/CategoryStream.vue", "utf8");
@@ -20,6 +36,7 @@ const store = fs.readFileSync("src/store/index.js", "utf8");
 const coverPresentation = fs.readFileSync("src/utils/coverPresentation.js", "utf8");
 const coverPreviewGeometry = fs.readFileSync("src/utils/coverPreviewGeometry.js", "utf8");
 const floatingCoverPreview = fs.readFileSync("src/utils/floatingCoverPreview.js", "utf8");
+const expandableCoverStyle = fs.readFileSync("src/styles/expandable-cover.css", "utf8");
 const expandableCoverGeometry = fs.readFileSync("src/utils/expandableCoverGeometry.js", "utf8");
 const globalStyle = fs.readFileSync("src/style/global.scss", "utf8");
 const home = fs.readFileSync("src/views/Home.vue", "utf8");
@@ -41,6 +58,7 @@ const marketListSortControl = fs.readFileSync(
 const contextToolbar = fs.readFileSync("src/components/ContextToolbar.vue", "utf8");
 const listView = fs.readFileSync("src/views/List.vue", "utf8");
 const readableTitles = fs.readFileSync("src/utils/readableTitles.js", "utf8");
+const rankingCollection = fs.readFileSync("src/utils/rankingCollection.js", "utf8");
 const sourceLogos = fs.readFileSync("src/utils/sourceLogos.js", "utf8");
 const sourceSubtypes = fs.readFileSync("src/utils/sourceSubtypes.js", "utf8");
 const musicSources = fs.readFileSync("src/utils/musicSources.js", "utf8");
@@ -69,13 +87,17 @@ assert.match(
 );
 assert.match(rankingCardOperations, /:trigger="triggerMode"/);
 assert.match(rankingCardOperations, /\(hover: hover\) and \(pointer: fine\)/);
-assert.match(rankingCardOperations, /@mouseenter="handleTriggerEnter"/);
+assert.match(rankingCardOperations, /@pointerenter="handleTriggerEnter"/);
+assert.match(rankingCardOperations, /event.pointerType !== [\x27"]mouse[\x27"]/);
+assert.match(rankingCardOperations, /:aria-expanded="menuOpen"/);
 assert.match(rankingCardOperations, /@clickoutside="closeMenu"/);
 assert.match(rankingCardOperations, /ranking-card-operations__selection-link/);
 assert.doesNotMatch(rankingCardOperations, /ranking-card-operations__selection-actions button \{/);
 assert.match(rankingSplitControl, /:trigger="triggerMode"/);
 assert.match(rankingSplitControl, /\(hover: hover\) and \(pointer: fine\)/);
-assert.match(rankingSplitControl, /@mouseenter="handleTriggerEnter"/);
+assert.match(rankingSplitControl, /@pointerenter="handleTriggerEnter"/);
+assert.match(rankingSplitControl, /event.pointerType !== [\x27"]mouse[\x27"]/);
+assert.match(rankingSplitControl, /setTimeout\(openMenu, 130\)/);
 assert.match(rankingSplitControl, /@clickoutside="closeMenu"/);
 
 assert.match(store, /siteContainerWidth: 1400/);
@@ -92,10 +114,20 @@ assert.match(app, /clamp\(24px, 3vw, 48px\)/);
 assert.match(header, /max-width: var\(--site-container-width, 1400px\)/);
 assert.match(footer, /var\(--site-container-width, 1400px\)/);
 assert.match(generalSettings, /v-model:value="siteContainerWidth"/);
-assert.match(generalSettings, /v-model:value="focusContainerWidth"/);
-assert.match(component, /var\(--site-focus-container-width, 1360px\)/);
+assert.match(generalSettings, /PageWidthControl scope="ranking"/);
+assert.match(generalSettings, /PageWidthControl scope="topic"/);
+assert.match(component, /var\(--site-ranking-container-width, 1360px\)/);
 assert.match(chigua, /var\(--site-container-width, 1400px\)/);
-assert.match(chigua, /\.topic-feed-section \{[\s\S]{0,80}box-sizing: border-box;[\s\S]{0,100}var\(--site-focus-container-width, 1360px\)/);
+assert.match(chigua, /\.topic-feed-section \{[\s\S]{0,80}box-sizing: border-box;[\s\S]{0,100}var\(--site-topic-container-width, 1360px\)/);
+// Sibling width regions must not inherit a shared maximum from the topic shell.
+assert.match(app, /isSplitTopicRoute = computed\(\(\) => \/\^\(chigua\|ai\)/);
+assert.match(app, /\.app-layout\.is-split-topic-page \.reading-shell \{\s*width: calc\(100% - var\(--site-gutter-total\)\);/);
+assert.match(app, /:deep\(:is\(\.context-toolbar, \.topic-overview\)\)\s*\{[\s\S]{0,100}width: min\(100%, var\(--site-container-width\)\)/);
+assert.match(app, /:deep\(\.topic-reader\)\s*\{[\s\S]{0,100}width: min\(100%, var\(--site-topic-container-width\)\)[\s\S]{0,100}container: topic-reader \/ inline-size/);
+assert.match(chigua, /ref="chiguaTopicRef" class="topic-overview"/);
+assert.match(aiTopic, /ref="readerContainerRef" class="topic-reader"/);
+assert.match(aiTopic, /readerContainerRef\.value\?\.getBoundingClientRect\(\)\.width/);
+assert.match(aiTopic, /containerObserver\.observe\(readerContainerRef\.value\)/);
 
 assert.match(store, /homeCardColumns: 4/);
 assert.match(store, /homeCompactColumns: 5/);
@@ -129,6 +161,32 @@ for (const sourceName of ["qq-music", "netease-music", "kugou-music", "kuwo-musi
   );
 }
 assert.match(store, /"apple-music": \{[\s\S]{0,180}categoryIds: \["entertainment-music"\]/);
+assert.match(
+  store,
+  /label: "微博"[\s\S]{0,100}name: "weibo"[\s\S]{0,100}coverPresentationMode: "mixed"/,
+  "Weibo variants contain heterogeneous media ratios and must stay in mixed card-cover mode instead of sample-inferred portrait mode",
+);
+assert.equal(
+  inferCoverPresentationMode([
+    { width: 600, height: 900 },
+    { width: 600, height: 900 },
+    { width: 600, height: 900 },
+  ]),
+  COVER_PRESENTATION_MODES.AUTO,
+  "AUTO cover inference must not lock an entire ranking to portrait from only three lazy-loaded samples",
+);
+assert.equal(
+  inferCoverPresentationMode([
+    { width: 600, height: 900 },
+    { width: 600, height: 900 },
+    { width: 600, height: 900 },
+    { width: 600, height: 900 },
+    { width: 600, height: 900 },
+    { width: 1200, height: 675 },
+  ]),
+  COVER_PRESENTATION_MODES.MIXED,
+  "AUTO cover inference must remain mixed as soon as sampled media is not structurally uniform",
+);
 assert.match(taxonomyV3, /"apple-music"[\s\S]{0,160}"songs"[\s\S]{0,160}"entertainment-music-songs"/);
 assert.match(taxonomyV3, /"ximalaya-rankings"[\s\S]{0,180}"classic-fiction-ticket"[\s\S]{0,180}"entertainment-reading-novels"/);
 assert.match(taxonomyV3, /"apple-app-store"[\s\S]{0,160}"games-free"[\s\S]{0,160}"games-ranking"/);
@@ -255,7 +313,7 @@ assert.match(template, /category-stream__context/);
 assert.match(template, /category-stream__variant-nav/);
 assert.match(template, /currentVariantLabel/);
 assert.match(template, /sourceVariantPathFor\(currentPageSource\.name, item\.value\)/);
-assert.match(template, /@click="rememberSourceVariant\(currentPageSource\.name, item\.value\)"/);
+assert.match(template, /@click="selectSourceVariant\(\$event, currentPageSource\.name, item\.value\)"/);
 assert.match(template, /v-for="entry in pagedEntries"/);
 assert.match(template, /:class="\{ 'has-media': !minimalMode && showImages && Boolean\(entry\.cover\) && !coverImageErrors\[entry\.cover\] \}"/);
 assert.match(template, /v-if="sourcePageMode && !minimalMode && showImages && entry\.cover && !coverImageErrors\[entry\.cover\]"[\s\S]{0,180}category-stream__media is-cover is-previewable/);
@@ -355,22 +413,19 @@ assert.match(component, /ensureActiveSourceVisible/);
 assert.match(component, /const remembered = readSourceSubtype\(source\.name\)/);
 assert.match(component, /const options = getSourceSubtypeOptions\(source\.name\)/);
 assert.match(component, /options\.length[\s\S]{0,120}resolveSourceSubtype\(options, remembered\)[\s\S]{0,80}: remembered/);
-assert.match(component, /rememberSourceVariant/);
+assert.match(component, /selectSourceVariant/);
+assert.match(component, /if \(!isQuickPreview && resolved\) persistSourceSubtype/);
 assert.match(component, /container\.scrollTop \+= delta/);
 assert.match(component, /const sourceNavigationPathFor = \(source\) => \{[\s\S]{0,420}readSourceSubtype\(source\.name\)[\s\S]{0,260}rememberedSubtype \|\| getDefaultSourceSubtype/);
-assert.match(component, /const rememberSourceVariant = \(sourceName, variant\) => \{[\s\S]{0,260}persistSourceSubtype\(sourceName, resolved\)/);
-assert.match(contextToolbar, /\.context-breadcrumb__caret \{[\s\S]{0,180}stroke: currentColor;[\s\S]{0,80}opacity: 0\.66/);
-assert.match(contextToolbar, /routeKind === 'home'[\s\S]{0,100}routeKind === 'category'[\s\S]{0,100}routeKind === 'list'[\s\S]{0,160}context-toolbar__manager/);
+assert.match(component, /const selectSourceVariant = \(event, sourceName, variant\) => \{[\s\S]{0,400}if \(!isQuickPreview && resolved\) persistSourceSubtype\(sourceName, resolved\)/);
+assert.match(contextToolbar, /\.context-breadcrumb__caret \{[\s\S]{0,180}stroke:\s*currentColor;[\s\S]{0,80}opacity:\s*0\.66/);
+assert.doesNotMatch(contextToolbar.split("</template>")[0], /context-search|context-toolbar__manager/, "search and manager belong to the global header, never the breadcrumb");
 assert.match(
   router,
   /\["home", "home-locale", "category", "category-locale"\]\.includes\([\s\S]{0,80}String\(to\.name \|\| ""\)/,
   "list routes must not mutate persisted activeCategory during route entry",
 );
-assert.match(
-  contextToolbar,
-  /routeKind\.value === "category"[\s\S]{0,140}store\.activeCategory !== category\.name[\s\S]{0,100}store\.setActiveCategory\(category\.name\)/,
-  "ContextToolbar must keep activeCategory writes scoped to category pages",
-);
+assert.doesNotMatch(contextToolbar, /store\.setActiveCategory/, "ContextToolbar must derive category without persisted writes");
 assert.doesNotMatch(
   contextToolbar,
   /\(routeKind\.value === "category" \|\| routeKind\.value === "list"\)[\s\S]{0,180}store\.setActiveCategory/,
@@ -384,12 +439,12 @@ assert.match(
 assert.doesNotMatch(contextToolbar, /\.context-breadcrumb__caret \{[^}]*stroke: var\(--n-text-color-3\)/s);
 assert.match(component, /category-stream\.is-source-page \.category-stream__rank \{[\s\S]{0,100}align-self: center/);
 
-assert.match(home, /import CategorySourceRail from "@\/components\/CategorySourceRail\.vue"/);
-assert.match(home, /<CategorySourceRail[\s\S]{0,160}:sources="scopedNews"/);
-assert.doesNotMatch(home, /CategoryStream/);
+assert.match(app, /RankingNavigation/);
+assert.match(app, /include="List" :max="1"/);
+assert.doesNotMatch(contextToolbar, /navigation\.setViewMode/);
+assert.match(listView, /:show-source-navigation="false"/);
+assert.doesNotMatch(home, /CategorySourceRail|CategoryStream|saveStreamOrder/);
 assert.doesNotMatch(home, /category-context-nav/);
-assert.match(home, /@reorder="saveStreamOrder"/);
-assert.match(home, /const saveStreamOrder =/);
 assert.match(categoryRail, /grid-template-columns: 220px minmax\(0, 1fr\)/);
 assert.match(categoryRail, /scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/);
 assert.match(categoryRail, /closest\?\.\('\.n-scrollbar-container'\)/);
@@ -472,6 +527,36 @@ assert.match(component, /const coverPresentationModeForEntry = \(entry\) =>[\s\S
 assert.match(component, /inferCoverPresentationMode\([\s\S]{0,120}Object\.values\(coverPresentationSamples\[key\] \|\| \{\}\)/);
 assert.match(component, /configured === COVER_PRESENTATION_MODES\.AUTO[\s\S]{0,120}inferredCoverPresentationMode\.value/);
 assert.match(component, /const currentCoverObjectFit = computed\(\(\) => "contain"\)/);
+assert.match(
+  component,
+  /const CATEGORY_STREAM_COLLECTION_TTL_MS = 5 \* 60 \* 1000;/,
+  "category streams must reuse recently loaded rankings across route switches",
+);
+assert.match(
+  component,
+  /collectionTtlMs: LIVE_SOCIAL_SOURCES\.has\(source\.name\)\?SOCIAL_CARD_RECHECK_MS:CATEGORY_STREAM_COLLECTION_TTL_MS/,
+  "category requests must keep the shared five-minute cache, but recheck only time-sensitive social sources at a shorter bounded cadence",
+);
+assert.match(
+  rankingCollection,
+  /const DEFAULT_TTL_MS = 5 \* 60_000;/,
+  "shared ranking cache must remain reusable for five minutes across home, category and detail route switches",
+);
+assert.match(
+  rankingCollection,
+  /const DEFAULT_STALE_RETENTION_MS = 30 \* 60_000;/,
+  "expired ranking cache must remain immediately reusable during the 30-minute stale-while-revalidate window",
+);
+assert.match(
+  rankingCollection,
+  /cached\.staleUntil[\s\S]{0,500}startRankingRequest[\s\S]{0,320}return cached\.response;/,
+  "stale rankings must render immediately while a non-blocking refresh runs in the background",
+);
+assert.match(
+  component,
+  /const CATEGORY_STREAM_LOAD_CONCURRENCY = 6;/,
+  "large category pages must use bounded parallel loading instead of a four-request bottleneck",
+);
 assert.match(component, /rememberCoverPresentationSample = \(image, entry = null\)/);
 assert.match(component, /image\?\.naturalWidth[\s\S]{0,80}image\?\.naturalHeight/);
 assert.match(component, /COVER_PRESENTATION_MODES\.AUTO,[\s\S]{0,100}COVER_PRESENTATION_MODES\.MIXED,[\s\S]{0,160}includes\(stream\?\.dataset\?\.coverPresentation\)/);
@@ -487,6 +572,41 @@ assert.equal(classifyCoverPresentationRatio(600, 900), COVER_PRESENTATION_MODES.
 assert.equal(classifyCoverPresentationRatio(900, 900), COVER_PRESENTATION_MODES.SQUARE);
 assert.equal(classifyCoverPresentationRatio(1600, 900), COVER_PRESENTATION_MODES.LANDSCAPE);
 assert.equal(
+  normalizeCardCoverPresentationMode(COVER_PRESENTATION_MODES.PORTRAIT),
+  COVER_PRESENTATION_MODES.PORTRAIT,
+);
+assert.equal(
+  normalizeCardCoverPresentationMode(COVER_PRESENTATION_MODES.SQUARE),
+  COVER_PRESENTATION_MODES.SQUARE,
+);
+for (const mode of [
+  COVER_PRESENTATION_MODES.LANDSCAPE,
+  COVER_PRESENTATION_MODES.MIXED,
+  COVER_PRESENTATION_MODES.AUTO,
+  COVER_PRESENTATION_MODES.LEGACY_CONTAIN,
+]) {
+  assert.equal(
+    normalizeCardCoverPresentationMode(mode),
+    COVER_PRESENTATION_MODES.MIXED,
+    `card cover mode ${mode} must collapse to mixed instead of introducing a fourth landscape/contain layout`,
+  );
+}
+assert.match(
+  hotList,
+  /normalizeCardCoverPresentationMode\(configured\)/,
+  "HotList must normalize configured cover modes at the card presentation boundary",
+);
+assert.match(
+  hotList,
+  /normalizeCardCoverPresentationMode\([\s\S]{0,160}inferCoverPresentationMode/,
+  "HotList inferred cover ratios must also collapse landscape into the generic mixed card mode",
+);
+assert.doesNotMatch(
+  hotList,
+  /data-cover-presentation="landscape-uniform"[\s\S]{0,500}object-fit:\s*contain/,
+  "card view must never retain a dedicated landscape-contain presentation",
+);
+assert.equal(
   inferCoverPresentationMode([{ width: 600, height: 900 }, { width: 620, height: 900 }]),
   COVER_PRESENTATION_MODES.AUTO,
 );
@@ -496,6 +616,17 @@ assert.equal(
     { width: 620, height: 900 },
     { width: 580, height: 900 },
   ]),
+  COVER_PRESENTATION_MODES.AUTO,
+);
+assert.equal(
+  inferCoverPresentationMode([
+    { width: 600, height: 900 },
+    { width: 620, height: 900 },
+    { width: 580, height: 900 },
+    { width: 610, height: 900 },
+    { width: 590, height: 900 },
+    { width: 605, height: 900 },
+  ]),
   COVER_PRESENTATION_MODES.PORTRAIT,
 );
 assert.equal(
@@ -503,7 +634,9 @@ assert.equal(
     { width: 800, height: 800 },
     { width: 900, height: 900 },
     { width: 1000, height: 1000 },
-    { width: 1600, height: 900 },
+    { width: 760, height: 800 },
+    { width: 820, height: 800 },
+    { width: 780, height: 800 },
   ]),
   COVER_PRESENTATION_MODES.SQUARE,
 );
@@ -511,6 +644,8 @@ assert.equal(
   inferCoverPresentationMode([
     { width: 600, height: 900 },
     { width: 620, height: 900 },
+    { width: 580, height: 900 },
+    { width: 610, height: 900 },
     { width: 1600, height: 900 },
     { width: 1500, height: 900 },
   ]),
@@ -518,8 +653,11 @@ assert.equal(
 );
 assert.match(store, /name: "douyin",[\s\S]{0,80}coverPresentationMode: "mixed"/);
 assert.match(store, /name: "xiaohongshu",[\s\S]{0,80}coverPresentationMode: "mixed"/);
-assert.match(store, /label: "百度",[\s\S]{0,80}name: "baidu",[\s\S]{0,80}order: 1/);
-assert.doesNotMatch(store, /label: "百度",[\s\S]{0,80}name: "baidu",[\s\S]{0,60}coverPresentationMode/);
+assert.doesNotMatch(
+  store,
+  /label: "百度",[\s\S]{0,80}name: "baidu",[\s\S]{0,80}coverPresentationMode: "mixed"/,
+  "Baidu mixed crop belongs to card presentation, not the global source/detail configuration",
+);
 assert.match(store, /name: "kuaishou",[\s\S]{0,80}coverPresentationMode: "mixed"/);
 assert.match(store, /name: "douban-movie",[\s\S]{0,80}coverPresentationMode: "portrait-uniform"/);
 assert.match(store, /name: "weread",[\s\S]{0,80}coverPresentationMode: "portrait-uniform"/);
@@ -527,7 +665,16 @@ assert.match(store, /"bilibili-live": \{[\s\S]{0,180}coverPresentationMode: "squ
 assert.match(store, /"qq-music": \{[\s\S]{0,180}coverPresentationMode: "square-uniform"/);
 assert.match(store, /"qidian-books": \{[\s\S]{0,180}coverPresentationMode: "portrait-uniform"/);
 assert.match(store, /"apple-app-store": \{[^\n]*coverPresentationMode: "square-uniform"/);
-assert.match(store, /name: "qq-news",[\s\S]{0,80}coverPresentationMode: "landscape-uniform"/);
+assert.match(
+  store,
+  /name: "qq-news",[\s\S]{0,80}coverPresentationMode: "landscape-uniform"/,
+  "Tencent News may retain its landscape source/detail semantics; HotList alone collapses it to mixed",
+);
+assert.match(
+  store,
+  /baidu: \{ from: "mixed", to: null \}/,
+  "legacy Baidu card-only mixed overrides must be removed from persisted global source configuration",
+);
 assert.match(store, /name: "miyoushe",[\s\S]{0,80}coverPresentationMode: "landscape-uniform"/);
 assert.doesNotMatch(store, /label: "原神",[\s\S]{0,80}name: "genshin"/);
 assert.doesNotMatch(store, /label: "崩坏：星穹铁道",[\s\S]{0,80}name: "starrail"/);
@@ -553,8 +700,8 @@ assert.match(taxonomyV3, /sourceName: "baidu",[\s\S]{0,100}variant: "movie"[\s\S
 assert.match(home, /const systemProjected = VARIANT_CATEGORY_PROJECTIONS\.map/);
 assert.match(home, /getSourceVariantOptions\(projection\.sourceName\)/);
 assert.match(home, /availableVariants\.length[\s\S]{0,180}!availableVariants\.some/);
-assert.match(home, /import \{ getCategoryScopedVariantOptions \} from "@\/utils\/categoryVariantScope"/);
-assert.match(home, /const scopedOptions = getCategoryScopedVariantOptions\(/);
+assert.match(home, /import \{ getCategoryScopedContentOptions \} from "@\/utils\/categoryVariantScope"/);
+assert.match(home, /const scopedOptions = getCategoryScopedContentOptions\(/);
 assert.match(home, /splitSelectionFor\([\s\S]{0,100}targetCategory,[\s\S]{0,100}base\.name,[\s\S]{0,100}variants/);
 assert.match(home, /cardKey: "category-group:" \+ targetCategory \+ ":" \+ base\.name/);
 assert.match(categoryVariantScope, /const projectedVariants = new Set/);
@@ -599,10 +746,10 @@ assert.match(component, /const queueCoverGeometrySync = \(\) => \{[\s\S]{0,240}n
 assert.match(component, /onMounted\(\(\) => \{[\s\S]{0,180}queueCoverGeometrySync\(\)[\s\S]{0,180}addEventListener\(\"resize\", handleCoverGeometryViewportResize/);
 assert.match(component, /onBeforeUnmount\(\(\) => \{[\s\S]{0,220}removeEventListener\(\"resize\", handleCoverGeometryViewportResize\)/);
 assert.match(component, /pagedEntries\.value\.map[\s\S]{0,260}queueCoverGeometrySync[\s\S]{0,100}flush: \"post\"/);
-assert.match(component, /preview-image\.n-image\.is-cover-geometry-ready[\s\S]{0,520}right: 0;[\s\S]{0,160}width: var\(--cover-base-viewport-width[\s\S]{0,160}height: var\(--cover-base-viewport-height[\s\S]{0,160}max-width: none;[\s\S]{0,100}max-height: none;[\s\S]{0,120}overflow: hidden;[\s\S]{0,120}transform: translateY\(-50%\)/);
-assert.match(component, /preview-image\.n-image\.is-cover-geometry-ready img[\s\S]{0,520}right: var\(--cover-base-image-right[\s\S]{0,180}width: var\(--cover-base-image-width[\s\S]{0,160}height: var\(--cover-base-image-height[\s\S]{0,160}object-fit: contain !important/);
-assert.match(component, /row\.has-media:hover[\s\S]{0,280}preview-image\.n-image\.is-cover-geometry-ready[\s\S]{0,220}width: var\(--cover-hover-width[\s\S]{0,160}height: var\(--cover-hover-height[\s\S]{0,160}box-shadow:/);
-assert.match(component, /row\.has-media:hover[\s\S]{0,520}preview-image\.n-image\.is-cover-geometry-ready img[\s\S]{0,160}right: 0;[\s\S]{0,160}width: var\(--cover-hover-width[\s\S]{0,160}height: var\(--cover-hover-height/);
+assert.match(expandableCoverStyle, /expandable-cover__image\.n-image\.is-cover-geometry-ready[\s\S]{0,520}right: 0;[\s\S]{0,160}width: var\(--cover-base-viewport-width[\s\S]{0,160}height: var\(--cover-base-viewport-height[\s\S]{0,160}max-width: none;[\s\S]{0,100}max-height: none;[\s\S]{0,120}overflow: hidden;[\s\S]{0,120}transform: translateY\(-50%\)/);
+assert.match(expandableCoverStyle, /expandable-cover__image\.n-image\.is-cover-geometry-ready img[\s\S]{0,520}right: var\(--cover-base-image-right[\s\S]{0,180}width: var\(--cover-base-image-width[\s\S]{0,160}height: var\(--cover-base-image-height[\s\S]{0,160}object-fit: contain !important/);
+assert.match(expandableCoverStyle, /expandable-cover-row:hover[\s\S]{0,280}expandable-cover__image\.n-image\.is-cover-geometry-ready[\s\S]{0,220}width: var\(--cover-hover-width[\s\S]{0,160}height: var\(--cover-hover-height[\s\S]{0,160}box-shadow:/);
+assert.match(expandableCoverStyle, /expandable-cover-row:hover[\s\S]{0,520}expandable-cover__image\.n-image\.is-cover-geometry-ready img[\s\S]{0,160}right: 0;[\s\S]{0,160}width: var\(--cover-hover-width[\s\S]{0,160}height: var\(--cover-hover-height/);
 assert.doesNotMatch(component, /category-stream\.is-source-page:not\(\[data-cover-presentation=\"mixed\"\]\)[\s\S]{0,500}transform: scale/);
 assert.doesNotMatch(component, /--cover-hover-scale|--cover-hover-shift-x/);
 assert.match(template, /<n-image[\s\S]{0,260}:src="coverSrc\(entry\.cover\)"[\s\S]{0,180}:preview-src="getCoverFullSrc\(entry\.cover\)"[\s\S]{0,320}:object-fit="currentCoverObjectFit"[\s\S]{0,320}onLoad: \(event\) => handleCoverImageLoad\(event, entry\)/);
@@ -613,10 +760,10 @@ assert.match(expandableCoverGeometry, /minScale = 1\.35/);
 assert.match(expandableCoverGeometry, /maxScale = 4\.5/);
 assert.match(expandableCoverGeometry, /fillScale = Math\.max\(mediaWidth \/ fullWidth, mediaHeight \/ fullHeight, 1\)/);
 assert.match(expandableCoverGeometry, /Math\.max\(fillScale \* hoverBoost, minScale\)/);
-assert.match(component, /transform-origin: right center/);
+assert.match(expandableCoverStyle, /transform-origin: right center/);
 assert.doesNotMatch(component, /hoverShiftX|--cover-hover-scale|--cover-hover-shift-x/);
 assert.doesNotMatch(component, /transform: scale\(var\(--cover-hover-scale/);
-assert.match(component, /box-shadow: 0 12px 28px rgba\(0, 0, 0, 0\.16\)/);
+assert.match(expandableCoverStyle, /box-shadow: 0 12px 28px rgba\(0, 0, 0, 0\.16\)/);
 assert.match(globalStyle, /--ranking-stream-mobile-rank-width: 34px;/);
 assert.match(globalStyle, /--ranking-stream-mobile-media-width: 76px;/);
 assert.match(globalStyle, /--ranking-stream-mobile-media-height: 64px;/);
@@ -641,7 +788,8 @@ assert.match(home, /const ALL_SPLIT_SCOPE = "__all__"/);
 assert.match(home, /const allScopeNews = computed/);
 assert.match(home, /const showAllSplitDirectory = computed/);
 assert.match(home, /const allCategorySections = computed/);
-assert.match(home, /class="all-category-toc"/);
+assert.match(home, /class="all-category-groups"/);
+assert.match(app, /global-ranking-sidebar/);
 assert.match(home, /category\?\.navOrder \?\? category\?\.order/);
 assert.match(home, /compareCategoryPaths/);
 assert.match(
@@ -686,19 +834,28 @@ assert.match(component, /authorVisible: Boolean\(displayArtist\)/);
 assert.match(
   hotList,
   /displayDesc: previewGovernance\.description,[\s\S]{0,120}displayAuthor,[\s\S]{0,120}previewHeat:/,
-  "governed preview decoration must keep the music artist on the visible row",
+  "governed preview decoration must keep the canonical music artist available to the visible row",
 );
-assert.match(hotList, /class="item-author notranslate"/);
+assert.match(
+  hotList,
+  /class="item-copy"[\s\S]{0,900}class="title-text"[\s\S]{0,900}v-if="item\.displayAuthor"[\s\S]{0,120}class="item-author notranslate"/,
+  "music ranking cards must render the artist beneath the song title inside the vertical copy stack",
+);
 assert.match(hotList, /const resolveCardSecondaryMeta = \(item, displayDesc = "", authorVisible = false\) =>/);
 assert.match(hotList, /append\(item\?\.actors\)[\s\S]{0,260}append\(item\?\.extra\?\.cast\)[\s\S]{0,220}append\(displayDesc\)/);
 assert.match(hotList, /const shouldShowCardSecondaryMeta = \(item\) =>[\s\S]{0,180}COVER_PRESENTATION_MODES\.PORTRAIT[\s\S]{0,160}cardSecondaryMeta/);
 assert.match(hotList, /class="item-secondary-meta"[\s\S]{0,120}\{\{ item\.cardSecondaryMeta \}\}/);
 assert.match(hotList, /\.item-secondary-meta \{[\s\S]{0,260}color: var\(--n-text-color-3\)[\s\S]{0,220}text-overflow: ellipsis[\s\S]{0,120}white-space: nowrap/);
-assert.match(hotList, /class="item-author__mark"[\s\S]{0,80}>♪</);
-assert.match(component, /class="category-stream__artist notranslate"/);
-assert.match(component, /class="category-stream__artist-mark"[\s\S]{0,80}>♪</);
-assert.match(component, /\.category-stream__artist \{[\s\S]{0,240}color: var\(--n-text-color-3\)[\s\S]{0,180}font-weight: 560/);
-assert.match(hotList, /\.item-author \{[\s\S]{0,240}color: var\(--n-text-color-3\)[\s\S]{0,180}font-weight: 560/);
+assert.doesNotMatch(hotList, /item-author__mark|>♪</);
+assert.match(
+  component,
+  /<\/div>\s*<span\s+v-if="entry\.displayArtist"\s+class="category-stream__artist notranslate"/,
+  "source detail streams must close the complete title row before rendering artist metadata on a second line",
+);
+assert.doesNotMatch(component, /category-stream__artist-mark|>♪</);
+assert.match(component, /\.category-stream__artist \{[\s\S]{0,260}margin-top: 2px[\s\S]{0,180}color: var\(--category-stream-text-3\)[\s\S]{0,180}font-weight: 450[\s\S]{0,120}opacity: 0\.88/);
+assert.match(hotList, /\.item-author \{[\s\S]{0,260}max-width: 100%[\s\S]{0,180}margin-top: 1px[\s\S]{0,180}color: var\(--n-text-color-3\)[\s\S]{0,180}font-size: 0\.82em[\s\S]{0,140}opacity: 0\.62/);
+assert.doesNotMatch(component, /category-stream__title-row\.has-artist|flex:\s*0 1 38%|max-width:\s*38%/);
 assert.match(
   hotList,
   /const cardSubtitle = computed\(\(\) => \{[\s\S]{0,220}isProjectionInstance\.value[\s\S]{0,220}projectionLabel[\s\S]{0,160}return "";/,
@@ -716,21 +873,19 @@ assert.match(
 );
 assert.match(
   rankingCardOperations,
-  /v-if="isProjection && showMergeAll"[\s\S]{0,420}@click\.stop="mergeAll"/,
+  /v-if="canMergeAll"[\s\S]{0,420}@click\.stop="mergeAll"/,
   "the primary projection must expose a one-click merge-all action alongside its individual merge action",
 );
 assert.doesNotMatch(home, /promotedRankings/);
-assert.match(contextToolbar, /const SPLIT_SCOPE_ALL = "__all__"/);
-assert.match(contextToolbar, /const splitScopeRef = computed/);
-assert.match(contextToolbar, /const splitTargets = computed/);
-assert.match(contextToolbar, /getCategoryScopedVariantOptions\(/);
-assert.match(contextToolbar, /const allScopeFullySplit = computed/);
-assert.match(contextToolbar, /const toggleScopeSplit = \(\) =>/);
-assert.match(
-  contextToolbar,
-  /class="context-view-switch"[\s\S]{0,1800}v-if="showScopeSplitControl"[\s\S]{0,320}class="context-view-split"/,
-  "page-level split control must live beside the view switch rather than in the breadcrumb",
-);
+const projectionControl = fs.readFileSync("src/components/RankingProjectionControl.vue", "utf8");
+assert.match(hotboardManager, /<RankingProjectionControl/);
+assert.match(projectionControl, /getCategoryScopedContentOptions\(/);
+assert.match(projectionControl, /setCategorySplitVariants\(/);
+assert.doesNotMatch(contextToolbar.split("</template>")[0], /context-view-switch|context-view-split/);
+assert.match(component, /class="category-stream__settings-menu"><n-popover v-model:show="settingsPopoverOpen" trigger="click" placement="bottom-end"/);
+assert.match(component, /<aside v-if="!isQuickPreview" class="category-stream__controls"/);
+assert.match(component, /category-stream__bottom-pagination/);
+assert.match(home, /catalog-toc/);
 assert.doesNotMatch(contextToolbar, /context-breadcrumb__scope-action/);
 assert.match(categoryRail, /import RankingSplitControl/);
 assert.match(categoryRail, /categoryAllProjectionVariants\(source\)/);
@@ -752,26 +907,9 @@ assert.match(rankingSplitControl, /draftVariants/);
 assert.match(rankingSplitControl, /setCategorySplitVariants/);
 assert.match(rankingSplitControl, /const mergeCurrent =/);
 assert.match(rankingSplitControl, /const mergeAll =/);
-assert.match(
-  rankingCardOperations,
-  /const directSplitOnly = computed\([\s\S]{0,520}isProjection\.value \|\| normalizedVariants\.value\.length === 2/,
-  "exactly two child rankings or an already-split projection must be eligible for one direct action",
-);
-assert.match(
-  rankingCardOperations,
-  /v-if="directSplitOnly"[\s\S]{0,420}@click\.stop="runDirectSplitAction"/,
-  "direct split-only cards and projection cards must expose one top-right split or merge action",
-);
-assert.match(
-  rankingCardOperations,
-  /const splitMenuOnly = computed\([\s\S]{0,520}!isProjection\.value[\s\S]{0,180}normalizedVariants\.value\.length > 2/,
-  "three-or-more child rankings on the grouped primary card must use the selection-menu path",
-);
-assert.match(
-  rankingCardOperations,
-  /<n-popover[\s\S]{0,900}splitMenuOnly && splitVariantsNormalized\.length/,
-  "multi-ranking split must keep the single top-right popover entry and show split-count state",
-);
+assert.match(rankingCardOperations, /<RankingTimeFilter/, "time filtering must be available in card operations, including single rankings");
+assert.doesNotMatch(rankingCardOperations, /directSplitOnly|splitMenuOnly/, "time filter cannot be bypassed by a split-only trigger");
+assert.match(rankingCardOperations, /splitVariantsNormalized.length/, "split-count remains visible in the unified operation entry");
 assert.match(rankingCardOperations, /t\("hotList\.rankOperations"\)/);
 assert.match(
   rankingCardOperations,
@@ -841,9 +979,10 @@ assert.match(
 );
 assert.match(
   component,
-  /catch \{[\s\S]{0,180}sourceStates\[source\.name\] = "failed"/,
-  "CategoryStream must leave loading state when a provider throws or times out",
+  /catch \(error\) \{[\s\S]{0,350}sourceStates\[source\.name\] = sourceResults\[source\.name\] \? "loaded" : "failed"/,
+  "CategoryStream must leave loading state and preserve readable data when refresh fails",
 );
+assert.match(component, /if \(isRankingAdmissionFailure\(error\)\) delete sourceResults\[source\.name\]/, "revoked sources cannot remain visible through refresh fallback");
 assert.match(listView, /DETAIL_REQUEST_TIMEOUT_MS = 6000/);
 assert.match(listView, /DETAIL_FALLBACK_DELAY_MS = 600/);
 assert.equal(
@@ -873,6 +1012,21 @@ assert.match(hotList, /<RankingBadgeGroup[\s\S]{0,160}:badges="item\.inlinePrefi
 assert.match(sharedBadges, /resolveRankingBadgeIconUrl/);
 assert.match(sharedBadges, /ranking-badge\.is-explosive/);
 assert.match(sharedBadges, /ranking-badge\.is-animated \.ranking-badge-icon/);
+assert.doesNotMatch(
+  sharedBadges,
+  /\.ranking-badges\.is-suffix \.ranking-badge:not\(\.has-icon\)/,
+  "suffix badges such as 微博 热/新 must retain the established badge container instead of being flattened to text",
+);
+assert.doesNotMatch(
+  component,
+  /\.category-stream__badges\.is-suffix \.category-stream__badge:not\(\.has-icon\)/,
+  "category streams must not silently flatten suffix badges to plain text",
+);
+assert.doesNotMatch(
+  hotList,
+  /class="is-suffix"[\s\S]{0,120}:badges="item\.suffixBadges"/,
+  "ranking cards must not opt suffix badges into the removed plain-text presentation",
+);
 
 assert.doesNotMatch(subtypeBar, /trigger-more-count|remainingOptionCount/);
 assert.doesNotMatch(subtypeBar, /trigger-meta|currentMeta|runtime-dot|runtimeMeta|menu-item-meta/);
@@ -913,7 +1067,7 @@ assert.match(trendStrip, /trend-card\.is-new/);
 assert.match(trendStrip, /trend-card\.is-falling/);
 
 assert.match(topicLaneGrid, /:class="\[`is-\$\{lane\.key\}`, \{ \'is-scrollable\': lane\.scrollable \}\]"/);
-assert.match(chigua, /grid-template-columns: 280px minmax\(520px, 720px\) 280px;[\s\S]{0,120}gap: 16px/);
+assert.match(chigua, /grid-template-columns: minmax\(170px, 17%\) minmax\(0, 1fr\) minmax\(190px, 20%\);[\s\S]{0,120}gap: 16px/);
 assert.match(chigua, /FEATURED_LANE_KEYS = \["fresh", "rising", "resonance", "hot"\]/);
 assert.match(chigua, /fresh: isFreshEvent/);
 assert.match(chigua, /rising: isRisingEvent/);
@@ -953,7 +1107,7 @@ assert.match(chigua, /resolveResponsiveCardColumns/);
 assert.match(chigua, /--chigua-featured-columns/);
 assert.match(chigua, /repeat\(var\(--chigua-featured-columns, 4\), minmax\(0, 1fr\)\)/);
 const chiguaLanesIndex = chigua.indexOf('class="topic-featured-lanes"');
-const chiguaFeedIndex = chigua.indexOf('class="topic-section topic-feed-section"');
+const chiguaFeedIndex = chigua.indexOf('class="topic-section topic-feed-section topic-reader"');
 assert.ok(chiguaLanesIndex !== -1 && chiguaFeedIndex !== -1 && chiguaLanesIndex < chiguaFeedIndex, "featured lanes must remain above the focused realtime feed workspace");
 assert.match(chigua, /class="radar-refresh"/);
 assert.match(chigua, /@click="loadTopic\(true\)"/);
@@ -1112,13 +1266,12 @@ assert.match(chigua, /\.event-title h3 \{[\s\S]{0,180}font-size: var\(--ranking-
 assert.match(chigua, /handleEventCoverPreviewKeydown/);
 assert.match(chigua, /align-content: start/);
 assert.match(chigua, /class="radar-watermelon"/);
-assert.match(chigua, /grid-template-columns: 280px minmax\(520px, 720px\) 280px;[\s\S]{0,120}gap: 16px/);
+assert.match(chigua, /grid-template-columns: minmax\(170px, 17%\) minmax\(0, 1fr\) minmax\(190px, 20%\);[\s\S]{0,120}gap: 16px/);
 assert.match(chigua, /\.topic-category-title,[\s\S]{0,120}box-sizing: border-box;[\s\S]{0,160}min-height: 38px/);
 assert.doesNotMatch(chigua, /topic-trend-title/);
 assert.doesNotMatch(chigua, /topic-trend-card/);
 assert.match(chigua, /\.event-toolbar \{[\s\S]{0,120}box-sizing: border-box;[\s\S]{0,140}min-height: 38px/);
-assert.match(chigua, /@media \(max-width: 1360px\)[\s\S]{0,180}minmax\(180px, 220px\) minmax\(0, 720px\) minmax\(180px, 220px\)/);
-assert.match(chigua, /@media \(max-width: 1120px\) and \(min-width: 821px\)/);
+assert.match(chigua, /@container topic-reader \(max-width: 1120px\) and \(min-width: 821px\)/);
 assert.match(chigua, /@media \(max-width: 820px\)/);
 assert.match(topicLaneGrid, /lane\.subtitle && !lane\.hideSubtitle/);
 assert.match(topicLaneGrid, /:title="lane\.subtitle \|\| undefined"/);
@@ -1172,7 +1325,7 @@ assert.match(chigua, /class="topic-control-section topic-control-pagination"/);
 assert.match(chigua, /class="topic-pagination-control"/);
 assert.match(chigua, /class="topic-pagination-meta"/);
 assert.match(chigua, /\.event-pagination--mobile \{[\s\S]{0,80}display: none/);
-assert.match(chigua, /@media \(max-width: 1120px\) and \(min-width: 821px\)[\s\S]{0,900}\.topic-control-pagination \{[\s\S]{0,140}grid-column: 1 \/ -1/);
+assert.match(chigua, /@container topic-reader \(max-width: 1120px\) and \(min-width: 821px\)[\s\S]{0,900}\.topic-control-pagination \{[\s\S]{0,140}grid-column: 1 \/ -1/);
 assert.match(chigua, /@media \(max-width: 820px\)[\s\S]{0,3000}\.topic-control-pagination \{ display: none; \}[\s\S]{0,140}\.event-pagination--mobile \{ display: flex; \}/);
 assert.match(topicLaneGrid, /name="title-actions"/);
 
@@ -1214,3 +1367,14 @@ assert.match(chigua, /\.topic-controls[\s\S]{0,120}order: 2/);
 assert.match(chigua, /\.topic-main \{ order: 3; \}/);
 
 console.log("[stream-layout-contract] ranking workbench, source variants, category rail and chigua intelligence workspace verified");
+
+assert.match(app, /\.app-layout\.is-ranking-page \.reading-shell \{ container: ranking-reader \/ inline-size; \}/);
+assert.doesNotMatch(component, /container: ranking-reader \/ inline-size/);
+assert.match(component, /@container ranking-reader \(min-width: 1080px\)/);
+assert.match(component, /closest\("\.reading-shell"\)/);
+const pageWidthControl = fs.readFileSync("src/components/PageWidthControl.vue", "utf8");
+assert.match(pageWidthControl, /@change="commitWidth"/);
+assert.doesNotMatch(pageWidthControl, /@input="commitWidth"/);
+assert.match(component, /ResizeObserver[\s\S]{0,1000}settingsPopoverOpen[\s\S]{0,480}category-stream__settings-trigger/);
+assert.match(template, /v-if="!isQuickPreview" class="category-stream__controls"/);
+assert.match(template, /RankingReaderSettings sidebar/);

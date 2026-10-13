@@ -170,7 +170,6 @@
                     <span
                       v-if="entry.rankingMeta.primaryMetric.key === 'hot'"
                       class="category-story-card__heat-label"
-                      :title="entry.rankingMeta.primaryMetric.label"
                       :aria-label="entry.rankingMeta.primaryMetric.label"
                     >
                       <n-icon :component="Fire" />

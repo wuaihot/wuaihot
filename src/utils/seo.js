@@ -383,11 +383,12 @@ const CATEGORY_SEO_MAP = {
     keywords: ["中文AI资讯", "量子位", "新浪AI", "国内AI新闻", "大模型新闻", "AI产业", "AI热点"],
   },
   AI: {
-    title: "AI 热榜",
-    titleTail: "模型评测、官方动态、产品生态与中文AI资讯聚合",
+    title: "AI 聚合看板",
+    titleTail: "模型排行榜、官方动态与AI产品资讯多平台榜单",
     description:
-      "AI 热榜聚合 OpenRouter、Artificial Analysis、Arena AI、OpenAI、Anthropic、Hugging Face、Product Hunt、Hacker News、量子位与新浪 AI，覆盖模型评测、产品生态、官方动态、研究社区与中文 AI 资讯。",
+      "AI 聚合看板汇集 OpenRouter、Artificial Analysis、Arena AI、OpenAI、Anthropic、Hugging Face、Product Hunt、Hacker News、量子位与新浪 AI 等多平台榜单，集中浏览模型评测、产品生态、官方动态与研究社区。",
     keywords: [
+      "AI聚合看板",
       "AI热榜",
       "AI排行榜",
       "大模型排行榜",

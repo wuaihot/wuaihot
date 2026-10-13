@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  canShowRankingPreview,
   removeRedundantPreviewDescription,
   resolveRankingPreviewGovernance,
   resolveRankingPreviewMode,
@@ -78,6 +80,23 @@ const baseMeta = (metrics = [], context = []) => ({
 
 {
   const governed = resolveRankingPreviewGovernance({
+    item: { title: "敦煌英雄", metric: { kind: "score", label: "豆瓣评分", value: 6 } },
+    rankingMeta: baseMeta([{ key: "display:score", label: "豆瓣评分", value: "6", numeric: 6 }]),
+    sourceName: "douban-movie",
+    description: "2026 / 中国大陆 / 动作 古装",
+  });
+  assert.deepEqual(governed.inlineMetric, {
+    key: "inline:score",
+    kind: "score",
+    label: "豆瓣评分",
+    numeric: 6,
+    value: "6",
+  });
+  assert.equal(governed.rankingMeta.hasContent, false, "score displayed inline must not repeat in preview metadata");
+}
+
+{
+  const governed = resolveRankingPreviewGovernance({
     item: { title: "星愿", metric: { kind: "value", label: "销量", value: 39_651 } },
     rankingMeta: baseMeta([{ key: "display:value", label: "销量", value: "3.97万", numeric: 39_651 }]),
     sourceName: "autohome-sales",
@@ -85,6 +104,7 @@ const baseMeta = (metrics = [], context = []) => ({
   });
   assert.deepEqual(governed.inlineMetric, {
     key: "inline:value",
+    kind: "value",
     label: "销量",
     numeric: 39_651,
     value: "4万",
@@ -104,3 +124,17 @@ assert.equal(
 );
 
 console.log("Ranking preview governance audit passed.");
+
+const socialPreview = { desktop: true, description: "Verified social announcement", rankingMeta: baseMeta() };
+assert.equal(canShowRankingPreview(socialPreview), true, "social cards use a single rich preview");
+assert.equal(canShowRankingPreview({ ...socialPreview, desktop: false }), false, "mobile retains native title fallback");
+assert.equal(canShowRankingPreview({ desktop: true }), false, "rows without preview content retain native title fallback");
+assert.equal(canShowRankingPreview({ desktop: true, hasCover: true }), true, "cover-only previews also suppress competing native titles");
+assert.equal(canShowRankingPreview({ ...socialPreview, fundMetric: true }), false, "fund rows retain their dedicated native information");
+assert.equal(canShowRankingPreview({ ...socialPreview, marketQuote: true }), false, "market quotes retain their dedicated native information");
+assert.equal(canShowRankingPreview({ ...socialPreview, marketQuote: true, indexOverview: true }), true);
+const card = readFileSync(new URL("../src/components/HotList.vue", import.meta.url), "utf8");
+assert.ok(card.includes('const nativeTitle = cardNativeTitle(item, item.originalTitle);'), "translation DOM repair must use the same title fallback policy");
+assert.ok(!card.includes('linkNode.setAttribute("title", item.originalTitle)'), "translation must not restore a competing native tooltip");
+assert.ok(card.includes(':native-titles="!canShowItemPreview(item)"'), "nested badges must not reintroduce native tooltips");
+console.log("Card tooltip exclusivity audit passed: social, media-only, mobile, empty and financial rows.");

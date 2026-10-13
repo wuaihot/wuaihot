@@ -12,6 +12,50 @@ const cachedSurfaceKeys = (catalog, surface) =>
       .map((source) => source.key),
   );
 
+const catalogVariantCount = (sources = []) =>
+  sources.reduce(
+    (total, source) =>
+      total +
+      (source?.variantGroups || []).reduce(
+        (groupTotal, group) => groupTotal + (group?.options || []).length,
+        0,
+      ),
+    0,
+  );
+
+const statusCounts = (status) => {
+  const sources = Number(status?.sources);
+  const variants = Number(status?.variants);
+  if (!Number.isFinite(sources) || !Number.isFinite(variants)) return null;
+  return { sources, variants };
+};
+
+export const catalogMatchesSurfaceStatus = (catalog, status) => {
+  const expected = statusCounts(status);
+  if (!catalog || !expected) return true;
+  const sources = Array.isArray(catalog.sources) ? catalog.sources : [];
+  const actualSources = Number.isFinite(Number(catalog.total))
+    ? Number(catalog.total)
+    : sources.length;
+  const actualVariants = Number.isFinite(Number(catalog.variants))
+    ? Number(catalog.variants)
+    : catalogVariantCount(sources);
+  return actualSources === expected.sources && actualVariants === expected.variants;
+};
+
+export const mergedCatalogSurfaceMatchesStatus = (
+  catalog,
+  status,
+  availabilityKey = "displayAvailable",
+) => {
+  const expected = statusCounts(status);
+  if (!catalog || !expected) return true;
+  const sources = (catalog.sources || []).filter(
+    (source) => source?.[availabilityKey] === true,
+  );
+  return sources.length === expected.sources && catalogVariantCount(sources) === expected.variants;
+};
+
 const mergeCatalogSources = (publicCatalog, displayCatalog) => {
   const sources = new Map();
   for (const catalog of [displayCatalog, publicCatalog]) {

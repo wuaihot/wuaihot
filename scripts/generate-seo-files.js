@@ -1,6 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { projectSubtypeGroupsForBuild } = require("./lib/trends-catalog-build.cjs");
+const {
+  extractVisibleStaticSourceNames,
+  projectSubtypeGroupsForBuild,
+  selectBuildSourceNames,
+} = require("./lib/trends-catalog-build.cjs");
 
 const rawSiteUrl = process.env.VITE_SITE_URL || "";
 const siteUrl = rawSiteUrl.replace(/\/+$/, "");
@@ -87,11 +91,8 @@ async function main() {
   const storeSource = fs.readFileSync(storePath, "utf8");
   const subtypeSource = fs.readFileSync(subtypePath, "utf8");
   const taxonomySource = fs.readFileSync(taxonomyPath, "utf8");
-  const newsSectionMatch = storeSource.match(/defaultNewsArr:\s*\[(.*?)\n\s*\],\n\s*newsArr:/s);
-  const newsSection = newsSectionMatch?.[1] || "";
-
   const categorySlugs = BUILTIN_CATEGORIES.map((item) => item.slug).filter(Boolean);
-  const staticSourceNames = [...newsSection.matchAll(/name:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const staticSourceNames = extractVisibleStaticSourceNames(storeSource);
   const staticSourceSubtypeGroups = parseConstant(subtypeSource, "SOURCE_SUBTYPE_GROUPS");
   const variantCategoryProjections = parseConstant(
     taxonomySource,
@@ -104,16 +105,13 @@ async function main() {
     staticSourceSubtypeGroups,
     "seo",
   );
-  const catalogPrioritySourceNames = catalogSources
-    .filter((source) => source.priorityTier === "A" || source.priorityTier === "B")
-    .map((source) => source.key);
-  const sourceNames = [
-    ...new Set([
-      ...staticSourceNames,
-      ...catalogPrioritySourceNames,
-      ...variantCategoryProjections.map((projection) => projection.sourceName),
-    ]),
-  ];
+  const sourceNames = selectBuildSourceNames({
+    staticSourceNames,
+    catalogSources,
+    projectionSourceNames: variantCategoryProjections.map(
+      (projection) => projection.sourceName,
+    ),
+  });
   const aggregateSubtypeSources = new Set(
     parseConstant(subtypeSource, "AGGREGATE_SUBTYPE_SOURCES")
   );

@@ -30,20 +30,7 @@
             <h2>{{ copy.feedTitle }}</h2>
             <span>{{ formatUpdated(result?.updateTime) }}</span>
           </div>
-          <label class="topic-search">
-            <span class="sr-only">{{ ui.search }}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"
-              />
-            </svg>
-            <input
-              v-model.trim="searchQuery"
-              type="search"
-              :placeholder="ui.searchPlaceholder"
-              @keydown.esc="searchQuery = ''"
-            />
-          </label>
+
           <div class="toolbar-filter-strip" role="group" :aria-label="ui.filters">
             <CompactFilter
               v-model="activeSource"
@@ -94,6 +81,7 @@
             </button>
           </div>
           <div class="toolbar-actions">
+            <PageWidthMenu scope="topic" />
             <div class="topic-status">
               <strong>{{ filteredData.length }}</strong>
               <span>{{
@@ -233,6 +221,7 @@
 </template>
 
 <script setup>
+import PageWidthMenu from "@/components/PageWidthMenu.vue";
 import CompactFilter from "@/components/CompactFilter.vue";
 import { DATA_REFRESH_EVENT } from "@/utils/dataRefresh";
 import { getHotListsWithFallback } from "@/api";
@@ -242,9 +231,11 @@ import { getLocaleFromRoute, normalizeLocale } from "@/utils/locale";
 import { getSourceLabel, getSourceSubtitleLabel } from "@/utils/sourceLabels";
 import { getSourceLogo, getSourceLogoFallback } from "@/utils/sourceLogos";
 import { enhanceReadableResultTitles } from "@/utils/readableTitles";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { useContextSearch } from "@/composables/useContextSearch";
 
 const route = useRoute();
+const router = useRouter();
 const result = ref(null);
 const loading = ref(false);
 const loadError = ref("");
@@ -286,7 +277,7 @@ const activeSort = ref(
     : "smart",
 );
 const activeConfirmed = ref(queryValue(route.query.confirmed) === "1");
-const searchQuery = ref(queryValue(route.query.q).trim());
+const searchQuery = useContextSearch(route, router);
 const locale = computed(() => normalizeLocale(getLocaleFromRoute(route)));
 const copy = computed(
   () => WOOL_TOPIC_METADATA[locale.value] || WOOL_TOPIC_METADATA["zh-CN"],
@@ -1225,19 +1216,7 @@ const syncQuery = () => {
     setOrDelete("intent", activeIntent.value, "all");
     setOrDelete("page", currentPage.value > 1 ? String(currentPage.value) : "");
     setOrDelete("size", pageSize.value !== 30 ? String(pageSize.value) : "");
-    const params = new URLSearchParams();
-    Object.entries(query).forEach(([key, value]) => {
-      if (Array.isArray(value))
-        value.forEach((item) => params.append(key, String(item)));
-      else if (value !== undefined && value !== null)
-        params.set(key, String(value));
-    });
-    const search = params.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${route.path}${search ? `?${search}` : ""}${route.hash || ""}`,
-    );
+    void router.replace({ path: route.path, query, hash: route.hash });
   }, 220);
 };
 
@@ -1372,7 +1351,7 @@ onBeforeUnmount(() => {
   --wool-list-padding-y: 11px;
   display: grid;
   gap: var(--wool-section-gap);
-  width: min(100%, 1240px);
+  width: 100%;
   margin: 0 auto;
 }
 .topic-section {
@@ -1645,42 +1624,6 @@ onBeforeUnmount(() => {
 }
 .time-filter {
   flex: 1 1 auto;
-}
-.platform-filter {
-  position: relative;
-  flex: 0 0 auto;
-}
-.platform-filter select {
-  appearance: none;
-  height: 30px;
-  max-width: 150px;
-  padding: 0 28px 0 10px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.2));
-  border-radius: 999px;
-  background: var(--n-color, #fff);
-  color: var(--n-text-color-2, #555);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.platform-filter::after {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  width: 6px;
-  height: 6px;
-  border-right: 1px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  color: var(--n-text-color-3, #777);
-  content: "";
-  pointer-events: none;
-  transform: translateY(-70%) rotate(45deg);
-}
-.platform-filter select:hover,
-.platform-filter select:focus-visible {
-  border-color: currentColor;
-  outline: none;
-  color: var(--n-text-color, #222);
 }
 .opportunity-source {
   display: flex;
@@ -2001,45 +1944,6 @@ onBeforeUnmount(() => {
 .toolbar-filter-strip::-webkit-scrollbar {
   display: none;
 }
-.toolbar-select {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: 0 0 auto;
-  height: 31px;
-  padding: 0 7px;
-  border: 1px solid var(--n-border-color, rgba(127, 127, 127, 0.18));
-  border-radius: 8px;
-  background: color-mix(
-    in srgb,
-    var(--n-color, #fff) 97%,
-    var(--n-text-color, #222) 3%
-  );
-}
-.toolbar-select > span {
-  color: var(--n-text-color-3, #777);
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.toolbar-select .source-health {
-  margin-left: 0;
-}
-.toolbar-select select {
-  max-width: 160px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--n-text-color, #222);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.toolbar-select select:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
-}
 .reset-filter {
   flex: 0 0 auto;
   height: 31px;
@@ -2168,11 +2072,6 @@ onBeforeUnmount(() => {
     flex: 0 0 auto;
     white-space: nowrap;
   }
-  .platform-filter select {
-    max-width: 112px;
-    padding-left: 9px;
-    font-size: 11px;
-  }
   .opportunity-instructions {
     grid-template-columns: 1fr;
     gap: 4px;
@@ -2251,13 +2150,6 @@ onBeforeUnmount(() => {
     padding-right: 13px;
     gap: 6px;
   }
-  .toolbar-select {
-    height: 30px;
-    padding: 0 6px;
-  }
-  .toolbar-select select {
-    max-width: 136px;
-    font-size: 11px;
-  }
+
 }
 </style>

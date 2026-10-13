@@ -1,3 +1,4 @@
+import { rankingContentOptions } from "./rankingPeriods.mjs";
 import { VARIANT_CATEGORY_PROJECTIONS } from "@/config/taxonomy-v3";
 import {
   getSourceCategoryIds,
@@ -76,3 +77,5 @@ export const getCategoryScopedVariantOptions = (
     })
     .filter(Boolean);
 };
+
+export const getCategoryScopedContentOptions = (source,categoryRef,categories=[]) => rankingContentOptions(source.name,getCategoryScopedVariantOptions(source,categoryRef,categories));

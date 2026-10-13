@@ -68,6 +68,56 @@ assert.match(
 );
 assert.match(
   hotList,
+  /item\.inlineMetric[\s\S]{0,120}item-inline-metric/,
+  "HotList must render governed inline ranking metrics next to the title",
+);
+assert.match(
+  hotList,
+  /item\.inlineMetric\?\.kind === 'score'[\s\S]{0,220}class="item-inline-metric is-score"[\s\S]{0,180}<strong>\{\{ item\.inlineMetric\.value \}\}<\/strong>/,
+  "score metrics must render as the colored value immediately after the card title",
+);
+assert.match(
+  hotList,
+  /\.item-inline-metric[\s\S]{0,520}&\.is-score[\s\S]{0,180}color: var\(--n-warning-color, #f0a020\)/,
+  "card score values must keep the established colored score treatment",
+);
+assert.match(
+  hotList,
+  /&\.is-score \{[\s\S]{0,180}font-size: 1em;/,
+  "card score values must stay at the same typographic size as the title instead of shrinking below it",
+);
+assert.match(
+  stream,
+  /const previewGovernance = resolveRankingPreviewGovernance\(/,
+  "CategoryStream must route ranking items through the shared preview governance",
+);
+assert.match(
+  stream,
+  /inlineMetric:\s*previewGovernance\.inlineMetric/,
+  "CategoryStream must expose only the governed inline metric",
+);
+assert.match(
+  stream,
+  /entry\.inlineMetric[\s\S]{0,180}category-stream__inline-metric/,
+  "CategoryStream must render governed inline metrics in the title row",
+);
+assert.match(
+  stream,
+  /entry\.inlineMetric\.kind !== 'score'[\s\S]{0,140}\{\{ entry\.inlineMetric\.label \}\}/,
+  "score metrics must suppress the redundant score label in category streams",
+);
+assert.match(
+  stream,
+  /\.category-stream__inline-metric\.is-score[\s\S]{0,140}color: var\(--n-warning-color, #f0a020\)/,
+  "category stream score values must preserve their colored title Meta",
+);
+assert.match(
+  stream,
+  /\.category-stream__inline-metric\.is-score \{[\s\S]{0,160}font-size: var\(--category-stream-font-size, 15px\);/,
+  "category stream score values must match the title font size",
+);
+assert.match(
+  hotList,
   /previewItem\.previewHeat !== null[\s\S]{0,180}previewItem\.previewHeat !== undefined[\s\S]{0,180}previewItem\.previewHeat !== ['"]{2}/,
   "HotList hover preview must render a governed real zero heat value instead of treating it as missing",
 );
@@ -138,6 +188,21 @@ assert.match(stream, /metric\.key === ['"]hot['"][\s\S]{0,240}<n-icon :component
 assert.match(rail, /primaryMetric\.key === ['"]hot['"][\s\S]{0,300}<n-icon :component="Fire" \/>/, "CategorySourceRail heat metrics must use the established IconPark Fire icon");
 assert.match(list, /metric\.key === ['"]hot['"][\s\S]{0,240}<n-icon :component="Fire" \/>/, "List heat metrics must use the established IconPark Fire icon");
 assert.match(hotList, /preview-hot-icon[\s\S]{0,120}:component="Fire"/, "HotList preview heat must preserve the established IconPark Fire icon");
+for (const [name, source] of Object.entries({ stream, rail, list })) {
+  assert.doesNotMatch(
+    source,
+    /(?:heat-label|primaryMetric\.key === ['"]hot['"])[\s\S]{0,180}:title=/,
+    `${name} heat metrics must not add a redundant native hover tooltip`,
+  );
+}
+const listMetricStyleStart = list.indexOf(".ranking-metric {");
+const listMetricStyleEnd = list.indexOf("}", listMetricStyleStart);
+const listMetricStyle = list.slice(listMetricStyleStart, listMetricStyleEnd);
+assert.doesNotMatch(
+  listMetricStyle,
+  /border-radius|padding|border\s*:/,
+  "List ranking metrics must render as plain semantic metadata, not rounded pills",
+);
 for (const [name, source] of Object.entries({ stream, rail, hotList, list })) {
   assert.doesNotMatch(source, /<UiGlyph[^>]*name="fire"/, `${name} must not replace the established heat icon with a custom UiGlyph fire`);
 }

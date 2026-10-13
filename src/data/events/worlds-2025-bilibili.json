@@ -1,0 +1,420 @@
+{
+  "season": 2025,
+  "source": "https://www.bilibili.com/list/ml3656165318",
+  "author": "哔哩哔哩英雄联盟赛事",
+  "authorUrl": "https://space.bilibili.com/50329118/",
+  "verifiedAt": "2026-10-06",
+  "method": "Opened all 41 visible playlist entries in the Codex built-in browser and verified each video's heading link, event date and opponent pair. Playback was not exhaustively verified.",
+  "records": [
+    {
+      "matchId": "12879",
+      "date": "2025-11-09",
+      "teams": [
+        "KT",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】11月9日 KT vs T1",
+      "url": "https://www.bilibili.com/video/BV1oskQBLEA6/"
+    },
+    {
+      "matchId": "12877",
+      "date": "2025-11-02",
+      "teams": [
+        "T1",
+        "TES"
+      ],
+      "title": "【2025全球总决赛】11月2日 T1 vs TES",
+      "url": "https://www.bilibili.com/video/BV12ayZBQE96/"
+    },
+    {
+      "matchId": "12878",
+      "date": "2025-11-01",
+      "teams": [
+        "GEN",
+        "KT"
+      ],
+      "title": "【2025全球总决赛】11月1日 GEN vs KT",
+      "url": "https://www.bilibili.com/video/BV1gF17BjEDv/"
+    },
+    {
+      "matchId": "12876",
+      "date": "2025-10-31",
+      "teams": [
+        "AL",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月31日 AL vs T1",
+      "url": "https://www.bilibili.com/video/BV1zW1KBcEJG/"
+    },
+    {
+      "matchId": "12875",
+      "date": "2025-10-30",
+      "teams": [
+        "G2",
+        "TES"
+      ],
+      "title": "【2025全球总决赛】10月30日 G2 vs TES",
+      "url": "https://www.bilibili.com/video/BV1riyhBNErP/"
+    },
+    {
+      "matchId": "12874",
+      "date": "2025-10-29",
+      "teams": [
+        "KT",
+        "CFO"
+      ],
+      "title": "【2025全球总决赛】10月29日 KT vs CFO",
+      "url": "https://www.bilibili.com/video/BV1moySBYECy/"
+    },
+    {
+      "matchId": "12873",
+      "date": "2025-10-28",
+      "teams": [
+        "HLE",
+        "GEN"
+      ],
+      "title": "【2025全球总决赛】10月28日 HLE vs GEN",
+      "url": "https://www.bilibili.com/video/BV1mdyBBeE5T/"
+    },
+    {
+      "matchId": "12872",
+      "date": "2025-10-25",
+      "teams": [
+        "MKOI",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月25日 MKOI vs T1",
+      "url": "https://www.bilibili.com/video/BV1ZasdzNEWN/"
+    },
+    {
+      "matchId": "12871",
+      "date": "2025-10-25",
+      "teams": [
+        "BLG",
+        "TES"
+      ],
+      "title": "【2025全球总决赛】10月25日 BLG vs TES",
+      "url": "https://www.bilibili.com/video/BV1qZsozTE8n/"
+    },
+    {
+      "matchId": "12870",
+      "date": "2025-10-25",
+      "teams": [
+        "CFO",
+        "FLY"
+      ],
+      "title": "【2025全球总决赛】10月25日 CFO vs FLY",
+      "url": "https://www.bilibili.com/video/BV1ubsRzJE51/"
+    },
+    {
+      "matchId": "12869",
+      "date": "2025-10-24",
+      "teams": [
+        "100T",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月24日 100T vs T1",
+      "url": "https://www.bilibili.com/video/BV1gNsHzdE76/"
+    },
+    {
+      "matchId": "12868",
+      "date": "2025-10-24",
+      "teams": [
+        "BLG",
+        "VKS"
+      ],
+      "title": "【2025全球总决赛】10月24日 BLG vs VKS",
+      "url": "https://www.bilibili.com/video/BV1FxsHzGE3B/"
+    },
+    {
+      "matchId": "12867",
+      "date": "2025-10-23",
+      "teams": [
+        "GEN",
+        "TES"
+      ],
+      "title": "【2025全球总决赛】10月23日 GEN vs TES",
+      "url": "https://www.bilibili.com/video/BV1uQsGzYEQp/"
+    },
+    {
+      "matchId": "12866",
+      "date": "2025-10-23",
+      "teams": [
+        "MKOI",
+        "TSW"
+      ],
+      "title": "【2025全球总决赛】10月23日 MKOI vs TSW",
+      "url": "https://www.bilibili.com/video/BV16YsqzQEnm/"
+    },
+    {
+      "matchId": "12865",
+      "date": "2025-10-22",
+      "teams": [
+        "G2",
+        "FLY"
+      ],
+      "title": "【2025全球总决赛】10月22日 G2 vs FLY",
+      "url": "https://www.bilibili.com/video/BV1hBsbzjEKz/"
+    },
+    {
+      "matchId": "12864",
+      "date": "2025-10-22",
+      "teams": [
+        "CFO",
+        "HLE"
+      ],
+      "title": "【2025全球总决赛】10月22日 CFO vs HLE",
+      "url": "https://www.bilibili.com/video/BV1G7s8zSEA7/"
+    },
+    {
+      "matchId": "12863",
+      "date": "2025-10-19",
+      "teams": [
+        "VKS",
+        "PSG"
+      ],
+      "title": "【2025全球总决赛】10月19日 VKS vs PSG",
+      "url": "https://www.bilibili.com/video/BV1h5sNz1Esa/"
+    },
+    {
+      "matchId": "12862",
+      "date": "2025-10-19",
+      "teams": [
+        "FNC",
+        "MKOI"
+      ],
+      "title": "【2025全球总决赛】10月19日 FNC vs MKOI",
+      "url": "https://www.bilibili.com/video/BV1wUswzRENf/"
+    },
+    {
+      "matchId": "12861",
+      "date": "2025-10-18",
+      "teams": [
+        "100T",
+        "HLE"
+      ],
+      "title": "【2025全球总决赛】10月18日 100T vs HLE",
+      "url": "https://www.bilibili.com/video/BV19FW4z6EJe/"
+    },
+    {
+      "matchId": "12860",
+      "date": "2025-10-18",
+      "teams": [
+        "G2",
+        "BLG"
+      ],
+      "title": "【2025全球总决赛】10月18日 G2 vs BLG",
+      "url": "https://www.bilibili.com/video/BV1ZSWxz7EBN/"
+    },
+    {
+      "matchId": "12859",
+      "date": "2025-10-18",
+      "teams": [
+        "GEN",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月18日 GEN vs T1",
+      "url": "https://www.bilibili.com/video/BV1U3W4zAETP/"
+    },
+    {
+      "matchId": "12858",
+      "date": "2025-10-18",
+      "teams": [
+        "TSW",
+        "FLY"
+      ],
+      "title": "【2025全球总决赛】10月18日 TSW vs FLY",
+      "url": "https://www.bilibili.com/video/BV1tXW4zNE4H/"
+    },
+    {
+      "matchId": "12857",
+      "date": "2025-10-17",
+      "teams": [
+        "CFO",
+        "AL"
+      ],
+      "title": "【2025全球总决赛】10月17日 CFO vs AL",
+      "url": "https://www.bilibili.com/video/BV14BWEzkErQ/"
+    },
+    {
+      "matchId": "12856",
+      "date": "2025-10-17",
+      "teams": [
+        "KT",
+        "TES"
+      ],
+      "title": "【2025全球总决赛】10月17日 KT vs TES",
+      "url": "https://www.bilibili.com/video/BV1CmWEziEEp/"
+    },
+    {
+      "matchId": "12855",
+      "date": "2025-10-16",
+      "teams": [
+        "HLE",
+        "PSG"
+      ],
+      "title": "【2025全球总决赛】10月16日 HLE vs PSG",
+      "url": "https://www.bilibili.com/video/BV15jWqz6ETy/"
+    },
+    {
+      "matchId": "12854",
+      "date": "2025-10-16",
+      "teams": [
+        "BLG",
+        "FNC"
+      ],
+      "title": "【2025全球总决赛】10月16日 BLG vs FNC",
+      "url": "https://www.bilibili.com/video/BV16yWqznE1n/"
+    },
+    {
+      "matchId": "12853",
+      "date": "2025-10-16",
+      "teams": [
+        "GEN",
+        "AL"
+      ],
+      "title": "【2025全球总决赛】10月16日 GEN vs AL",
+      "url": "https://www.bilibili.com/video/BV1XAWBzMEew/"
+    },
+    {
+      "matchId": "12852",
+      "date": "2025-10-16",
+      "teams": [
+        "CFO",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月16日 CFO vs T1",
+      "url": "https://www.bilibili.com/video/BV1XLWvzaEpZ/"
+    },
+    {
+      "matchId": "12851",
+      "date": "2025-10-16",
+      "teams": [
+        "TES",
+        "100T"
+      ],
+      "title": "【2025全球总决赛】10月16日 TES vs 100T",
+      "url": "https://www.bilibili.com/video/BV1FwWvzGE4H/"
+    },
+    {
+      "matchId": "12850",
+      "date": "2025-10-16",
+      "teams": [
+        "MKOI",
+        "G2"
+      ],
+      "title": "【2025全球总决赛】10月16日 MKOI vs G2",
+      "url": "https://www.bilibili.com/video/BV12bWvzXEg2/"
+    },
+    {
+      "matchId": "12849",
+      "date": "2025-10-16",
+      "teams": [
+        "KT",
+        "TSW"
+      ],
+      "title": "【2025全球总决赛】10月16日 KT vs TSW",
+      "url": "https://www.bilibili.com/video/BV1FCWvz5Ebj/"
+    },
+    {
+      "matchId": "12848",
+      "date": "2025-10-16",
+      "teams": [
+        "VKS",
+        "FLY"
+      ],
+      "title": "【2025全球总决赛】10月16日 VKS vs FLY",
+      "url": "https://www.bilibili.com/video/BV17bWizkELo/"
+    },
+    {
+      "matchId": "12847",
+      "date": "2025-10-15",
+      "teams": [
+        "GEN",
+        "PSG"
+      ],
+      "title": "【2025全球总决赛】10月15日 GEN vs PSG",
+      "url": "https://www.bilibili.com/video/BV1fi4BzxEPi/"
+    },
+    {
+      "matchId": "12846",
+      "date": "2025-10-15",
+      "teams": [
+        "G2",
+        "TES"
+      ],
+      "title": "【2025全球总决赛】10月15日 G2 vs TES",
+      "url": "https://www.bilibili.com/video/BV1NP4zzMEBZ/"
+    },
+    {
+      "matchId": "12845",
+      "date": "2025-10-15",
+      "teams": [
+        "HLE",
+        "AL"
+      ],
+      "title": "【2025全球总决赛】10月15日 HLE vs AL",
+      "url": "https://www.bilibili.com/video/BV1mf4Bz6EiA/"
+    },
+    {
+      "matchId": "12844",
+      "date": "2025-10-15",
+      "teams": [
+        "FLY",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月15日 FLY vs T1",
+      "url": "https://www.bilibili.com/video/BV1hT4izBE55/"
+    },
+    {
+      "matchId": "12843",
+      "date": "2025-10-15",
+      "teams": [
+        "BLG",
+        "100T"
+      ],
+      "title": "【2025全球总决赛】10月15日 BLG vs 100T",
+      "url": "https://www.bilibili.com/video/BV1Ea4izHEp3/"
+    },
+    {
+      "matchId": "12842",
+      "date": "2025-10-15",
+      "teams": [
+        "KT",
+        "MKOI"
+      ],
+      "title": "【2025全球总决赛】10月15日 KT vs MKOI",
+      "url": "https://www.bilibili.com/video/BV1Q14izrESL/"
+    },
+    {
+      "matchId": "12841",
+      "date": "2025-10-15",
+      "teams": [
+        "CFO",
+        "FNC"
+      ],
+      "title": "【2025全球总决赛】10月15日 CFO vs FNC",
+      "url": "https://www.bilibili.com/video/BV1g84qzkEqD/"
+    },
+    {
+      "matchId": "12840",
+      "date": "2025-10-15",
+      "teams": [
+        "TSW",
+        "VKS"
+      ],
+      "title": "【2025全球总决赛】10月15日 TSW vs VKS",
+      "url": "https://www.bilibili.com/video/BV1Qr4eziE7S/"
+    },
+    {
+      "matchId": "12839",
+      "date": "2025-10-14",
+      "teams": [
+        "IG",
+        "T1"
+      ],
+      "title": "【2025全球总决赛】10月14日 IG vs T1",
+      "url": "https://www.bilibili.com/video/BV1Sv4tzjEqR/"
+    }
+  ]
+}

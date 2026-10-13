@@ -6,7 +6,7 @@
 > 本仓库仅发布经过安全审计的稳定源码快照；日常开发过程、内部 Issue/PR 与详细提交历史不在此同步。
 
   <p>聚合今日热榜、全网热搜、实时热点与跨平台趋势榜单的开源前端。</p>
-  <p><a href="https://hot.wuaishare.cn/">在线体验</a> · <a href="https://github.com/wuaihot/wuaihot/issues">Issues</a></p>
+  <p><a href="https://hot.wuaishare.cn/">在线体验</a> · <a href="https://github.com/wuaihot/wuaihot/issues">Issues</a> · <a href="https://github.com/wuaihot/wuaihot/discussions">Discussions</a></p>
   <img src="./screenshots/main.webp" style="border-radius: 16px" />
 </div>
 
@@ -96,7 +96,9 @@ wuaihot 核心代码**不硬编码 WP Better 或吾爱热榜生产 API**。官�
 
 ## 贡献与反馈
 
-代码缺陷、兼容问题与开发建议请提交到 [GitHub Issues](https://github.com/wuaihot/wuaihot/issues)。线上实例的内容、数据源与产品体验建议可使用站点配置的反馈入口。
+可复现的代码缺陷、数据源异常和明确的功能请求请提交到公开仓库 [GitHub Issues](https://github.com/wuaihot/wuaihot/issues)；使用求助、经验分享、开放式想法和社区交流请前往 [GitHub Discussions](https://github.com/wuaihot/wuaihot/discussions)。两者共同构成对外反馈与社区协作入口，不必向其他第三方反馈系统重复提交。
+
+如果访问 GitHub 受网络环境限制，可以通过站点权利与联系信息寻找维护者联系方式；请勿通过公开 Issue/Discussion 传输账户凭据或个人敏感信息。
 
 在提交 Issue、日志或截图前，请移除任何 Token、Cookie、密码、API Key 与个人敏感信息。
 

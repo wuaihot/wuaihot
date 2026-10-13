@@ -1,3 +1,8 @@
+overrides:
+  fast-uri: 3.1.7
+  immutable: 4.3.9
+  proxy-addr: 2.0.8
+
 allowBuilds:
   '@parcel/watcher': false
   esbuild: true

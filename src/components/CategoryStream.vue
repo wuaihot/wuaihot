@@ -7,7 +7,8 @@
       'shows-images': showImages,
       'shows-descriptions': showDescriptions,
       'is-minimal': minimalMode,
-      'is-source-page': sourcePageMode,
+      'is-source-page': sourcePageMode, 'uses-global-navigation': !showSourceNavigation,
+      'is-quick-preview': isQuickPreview,
       'is-xiaohongshu-source-page': isXiaohongshuSourcePage,
     }"
     :data-cover-presentation="sourcePageMode ? currentCoverPresentationMode : undefined"
@@ -18,7 +19,7 @@
     </div>
 
     <div v-else class="category-stream__body">
-      <aside class="category-stream__rail category-stream__source-rail" :aria-label="copy.sourceNavigation">
+      <aside v-if="showSourceNavigation" class="category-stream__rail category-stream__source-rail" :aria-label="copy.sourceNavigation">
         <div class="category-stream__rail-card">
           <div class="category-stream__rail-title">
             <strong>{{ copy.sourceNavigation }}</strong>
@@ -41,20 +42,23 @@
         </div>
       </aside>
 
-      <main class="category-stream__main">
+      <section class="category-stream__main">
         <header v-if="sourcePageMode && currentPageSource" class="category-stream__context">
           <div class="category-stream__context-top">
             <div class="category-stream__context-identity">
               <img :src="getSourceLogo(currentPageSource.name)" :alt="sourceLabelFor(currentPageSource)" @error="handleLogoError" />
               <div>
                 <span>{{ sourceLabelFor(currentPageSource) }}</span>
-                <h1>{{ currentVariantLabel }}</h1>
+                <h1>{{ currentVariantLabel }} </h1>
               </div>
             </div>
             <div class="category-stream__context-status">
+              <RankingTimeFilter compact :source-name="currentPageSource.name" :active-variant="currentTocSubtype" :disabled="currentSourceLoading" @change="selectCurrentPeriod" />
               <span class="category-stream__status-dot" :class="{ loading: currentSourceLoading }"></span>
               <span>{{ statusText }}</span>
+              <span v-if="sourceResults[currentPageSource.name]?.refreshFallback" class="category-stream__context-time is-refresh-fallback">{{ locale.startsWith('zh') ? '刷新暂未成功，保留上次数据' : 'Refresh unavailable; showing previous data' }}</span>
               <span v-if="currentUpdateTime" class="category-stream__context-time">{{ currentUpdateTime }}</span>
+              <AiSocialHealth v-if="['ai-x-updates','ai-bluesky-updates'].includes(sourcePageSource) && sourceResults[sourcePageSource]?.mode==='snapshot'" :payload="sourceResults[sourcePageSource]" :locale="locale" />
               <button
                 type="button"
                 class="category-stream__context-refresh"
@@ -78,6 +82,10 @@
                 </div>
               </n-popover>
             </div>
+            <div v-if="!isQuickPreview" class="category-stream__settings-menu"><n-popover v-model:show="settingsPopoverOpen" trigger="click" placement="bottom-end" :show-arrow="false">
+              <template #trigger><button type="button" class="category-stream__settings-trigger" :aria-label="copy.browseSettings">{{ copy.browseSettings }}</button></template>
+              <RankingReaderSettings :copy="copy" :show-descriptions="showDescriptions" :show-images="showImages" :minimal-mode="minimalMode" :page-size="pageSize" :page-size-options="pageSizeOptions" @descriptions="setShowDescriptions" @images="setShowImages" @page-size="updatePageSize" />
+            </n-popover></div>
           </div>
 
           <nav v-if="sourceTocItemCount(currentPageSource.name) > 1" class="category-stream__variant-nav" aria-label="榜单分类">
@@ -90,21 +98,22 @@
                 {{ group.label }}
               </span>
               <div class="category-stream__variant-tabs">
-                <router-link
+                <a
                   v-for="item in group.items || []"
                   :key="item.value"
                   class="category-stream__variant-tab"
                   :class="{ active: isActiveTocVariant(currentPageSource.name, item.value) }"
-                  :to="sourceVariantPathFor(currentPageSource.name, item.value)"
-                  @click="rememberSourceVariant(currentPageSource.name, item.value)"
+                  :href="router.resolve(sourceVariantPathFor(currentPageSource.name, item.value)).href"
+                  @click="selectSourceVariant($event, currentPageSource.name, item.value)"
                   :aria-current="isActiveTocVariant(currentPageSource.name, item.value) ? 'page' : undefined"
                 >
                   {{ item.label }}
-                </router-link>
+                </a>
               </div>
             </section>
           </nav>
         </header>
+        <AiModelCoverage v-if="sourcePageMode && sourcePageSource==='ai-model-board' && sourceResults[sourcePageSource]?.selectedType==='consensus'" :payload="sourceResults[sourcePageSource]" :locale="locale" />
 
         <div v-if="!visibleEntries.length && pendingCount" class="category-stream__skeleton">
           <div v-for="index in 8" :key="index"></div>
@@ -116,7 +125,7 @@
           <article
             v-for="entry in pagedEntries"
             :key="entry.key"
-            class="category-stream__row"
+            class="category-stream__row expandable-cover-row"
             :class="{ 'has-media': !minimalMode && showImages && Boolean(entry.cover) && !coverImageErrors[entry.cover] }"
             :data-cover-presentation="coverPresentationModeForEntry(entry)"
             @mouseenter="prepareRowCoverHover"
@@ -128,10 +137,10 @@
 
             <div
               v-if="sourcePageMode && !minimalMode && showImages && entry.cover && !coverImageErrors[entry.cover]"
-              class="category-stream__media is-cover is-previewable"
+              class="category-stream__media is-cover is-previewable expandable-cover"
             >
               <n-image
-                class="category-stream__preview-image"
+                class="category-stream__preview-image expandable-cover__image"
                 :src="coverSrc(entry.cover)"
                 :preview-src="getCoverFullSrc(entry.cover)"
                 :alt="coverPreviewLabel(entry)"
@@ -162,49 +171,30 @@
 
             <div class="category-stream__content-wrap">
               <a class="category-stream__content" :href="entry.href" :target="linkTarget" rel="noopener noreferrer nofollow">
-                <div
-                  class="category-stream__title-row"
-                  :class="{ 'has-artist': entry.displayArtist }"
-                >
-                  <span v-if="entry.inlinePrefixBadges.length" class="category-stream__badges is-prefix notranslate" translate="no">
-                    <span
-                      v-for="(badge, badgeIndex) in entry.inlinePrefixBadges"
-                      :key="`prefix-${badge.kind}-${badge.sourceCode || badge.label}-${badgeIndex}`"
-                      class="category-stream__badge"
-                      :class="[`is-${badge.kind}`, { 'is-strong': badge.prominence === 'strong', 'has-icon': Boolean(resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors)) }]"
-                      role="img"
-                      :title="badge.label"
-                      :aria-label="badge.label"
-                    >
-                      <img v-if="resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors)" :src="resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors)" alt="" loading="lazy" @error="handleRankingBadgeImageError(resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors))" />
-                      <span v-else aria-hidden="true">{{ badge.label }}</span>
-                    </span>
-                  </span>
+                <div class="category-stream__title-row">
+                  <RankingBadgeGroup v-if="entry.inlinePrefixBadges.length" class="category-stream__badges is-prefix" :badges="entry.inlinePrefixBadges" semantic-categories />
                   <div class="category-stream__title">{{ entry.title }}</div>
+                  <RankingBadgeGroup v-if="entry.suffixBadges.length" class="category-stream__badges is-suffix" :badges="entry.suffixBadges" semantic-categories />
                   <span
-                    v-if="entry.displayArtist"
-                    class="category-stream__artist notranslate"
-                    translate="no"
-                    :title="entry.displayArtist"
+                    v-if="entry.inlineMetric"
+                    class="category-stream__inline-metric"
+                    :class="`is-${entry.inlineMetric.kind || 'value'}`"
+                    :title="`${entry.inlineMetric.label} ${entry.inlineMetric.value}`"
                   >
-                    <span class="category-stream__artist-mark" aria-hidden="true">♪</span>
-                    <span class="category-stream__artist-name">{{ entry.displayArtist }}</span>
-                  </span>
-                  <span v-if="entry.suffixBadges.length" class="category-stream__badges notranslate" translate="no">
-                    <span
-                      v-for="(badge, badgeIndex) in entry.suffixBadges"
-                      :key="`${badge.kind}-${badge.sourceCode || badge.label}-${badgeIndex}`"
-                      class="category-stream__badge"
-                      :class="[`is-${badge.kind}`, { 'is-strong': badge.prominence === 'strong', 'is-animated': badge.animated, 'has-icon': Boolean(resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors)) }]"
-                      role="img"
-                      :title="badge.label"
-                      :aria-label="badge.label"
-                    >
-                      <img v-if="resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors)" :src="resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors)" alt="" loading="lazy" @error="handleRankingBadgeImageError(resolveRankingBadgeIconUrl(badge, rankingBadgeImageErrors))" />
-                      <span v-else aria-hidden="true">{{ badge.label }}</span>
+                    <span v-if="entry.inlineMetric.kind !== 'score'">
+                      {{ entry.inlineMetric.label }}
                     </span>
+                    <strong>{{ entry.inlineMetric.value }}</strong>
                   </span>
                 </div>
+                <span
+                  v-if="entry.displayArtist"
+                  class="category-stream__artist notranslate"
+                  translate="no"
+                  :title="entry.displayArtist"
+                >
+                  <span class="category-stream__artist-name">{{ entry.displayArtist }}</span>
+                </span>
                 <p v-if="showDescriptions && entry.description" class="category-stream__desc">{{ entry.description }}</p>
                 <div v-if="showDescriptions && entry.rankingMeta?.hasContent" class="category-stream__meta">
                   <span
@@ -216,7 +206,6 @@
                     <span
                       v-if="metric.key === 'hot'"
                       class="category-stream__heat-label"
-                      :title="metric.label"
                       :aria-label="metric.label"
                     >
                       <n-icon :component="Fire" />
@@ -241,45 +230,37 @@
                   </span>
                 </div>
               </a>
+              <AiModelRowEvidence v-if="entry.aiModel?.evidence" :row="entry.aiModel" :locale="locale" />
+              <AiSocialEventSources v-if="entry.extra?.socialPost?.eventGroup" :group="entry.extra.socialPost.eventGroup" :locale="locale" />
             </div>
           </article>
         </div>
-      </main>
+        <nav v-if="pageCount > 1" class="category-stream__bottom-pagination" :aria-label="copy.pagination">
+          <n-pagination size="small" :page="currentPage" :page-count="pageCount" :page-slot="5" @update:page="updatePage" />
+        </nav>
+      </section>
 
-      <aside class="category-stream__controls" :aria-label="copy.browseSettings">
-        <div class="category-stream__controls-card">
-          <div class="category-stream__controls-heading">
-            <strong>{{ copy.browseSettings }}</strong>
-            <span>{{ currentPage }}/{{ pageCount }}</span>
-          </div>
-          <section class="category-stream__control-section">
-            <span class="category-stream__control-label">{{ copy.display }}</span>
-            <div class="category-stream__display-options">
-              <n-checkbox :checked="showDescriptions" @update:checked="setShowDescriptions">{{ copy.summary }}</n-checkbox>
-              <n-checkbox :checked="showImages" @update:checked="setShowImages">{{ copy.images }}</n-checkbox>
-            </div>
-            <p v-if="minimalMode" class="category-stream__minimal-hint">{{ copy.minimalHint }}</p>
-          </section>
-          <section class="category-stream__control-section">
-            <label class="category-stream__control-row">
-              <span>{{ copy.perPage }}</span>
-              <n-select size="tiny" :show-checkmark="false" :value="pageSize" :options="pageSizeOptions" @update:value="updatePageSize" />
-            </label>
-          </section>
-          <section v-if="pageCount > 1" class="category-stream__control-section category-stream__pagination-block">
-            <span class="category-stream__control-label">{{ copy.pagination }}</span>
-            <n-pagination size="small" :page="currentPage" :page-count="pageCount" :page-slot="3" @update:page="updatePage" />
-          </section>
-        </div>
+      <aside v-if="!isQuickPreview" class="category-stream__controls" :aria-label="copy.browseSettings">
+        <RankingReaderSettings sidebar :copy="copy" :show-descriptions="showDescriptions" :show-images="showImages" :minimal-mode="minimalMode" :page-size="pageSize" :page-size-options="pageSizeOptions" @descriptions="setShowDescriptions" @images="setShowImages" @page-size="updatePageSize" />
       </aside>
     </div>
   </section>
 </template>
 
 <script setup>
+import "@/styles/expandable-cover.css";
+import {localizedPublicationUrl,publicationCover} from "@/utils/sourcePublicationPresentation.js";
+import RankingTimeFilter from "./RankingTimeFilter.vue";
+import AiModelCoverage from './AiModelCoverage.vue';
+import AiSocialHealth from './AiSocialHealth.vue';
+import AiSocialEventSources from './AiSocialEventSources.vue';
+import {restoreRankingEntityTitles} from '@/utils/rankingEntityTitles.mjs';
+import RankingReaderSettings from "./RankingReaderSettings.vue";
 import {
   computed,
   nextTick,
+  onActivated,
+  onDeactivated,
   onBeforeUnmount,
   onMounted,
   reactive,
@@ -287,21 +268,24 @@ import {
   toRaw,
   watch,
 } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRankingReaderContext } from "@/composables/useRankingReaderContext";
 import { useI18n } from "vue-i18n";
 import { mainStore } from "@/store";
-import { getSharedRanking } from "@/utils/rankingCollection";
+import { getSharedRanking, isRankingAdmissionFailure } from "@/utils/rankingCollection";
 import {
   buildSourceSubtypeParams,
   getDefaultSourceSubtype,
-  getSourceSubtypeControlGroups,
+  getSourceContentControlGroups,
   getSourceSubtypeOptions,
+  getSourceVariantOptions,
   readSourceSubtype,
   persistSourceSubtype,
+  persistSourceContentPeriod,
   resolveSourceSubtype,
 } from "@/utils/sourceSubtypes";
 import {
   getSourceDisplayLabel,
+  getSubtypeLabel,
   localizeSubtypeGroups,
 } from "@/utils/sourceLabels";
 import {
@@ -313,16 +297,20 @@ import {
   enhanceReadableResultTitles,
   shouldUseReadableTitleTranslation,
 } from "@/utils/readableTitles";
+import AiModelRowEvidence from "./AiModelRowEvidence.vue";
 import { getSourceLogo, getSourceLogoFallback } from "@/utils/sourceLogos";
 import { isMusicArtistSource } from "@/utils/musicSources";
 import { COVER_REFERRER_POLICY, getCoverDisplaySrc, getCoverFullSrc } from "@/utils/imageProxy";
-import { normalizeRankingBadges, resolveRankingBadgeIconUrl } from "@/utils/rankingBadges";
+import { normalizeRankingBadges } from "@/utils/rankingBadges";
+import RankingBadgeGroup from '@/components/RankingBadgeGroup.vue';
 import UiGlyph from "@/components/ui/UiGlyph.vue";
 import { Comment, Fire, Like, PreviewOpen, Refresh, Star } from "@icon-park/vue-next";
 import { formatTime } from "@/utils/getTime";
 import { getRankingItemMeta } from "@/utils/rankingItemMeta";
+import { resolveRankingPreviewGovernance } from "@/utils/rankingPreviewGovernance.mjs";
 import { DATA_REFRESH_EVENT } from "@/utils/dataRefresh";
 import { useTrendsCatalogRevision } from "@/composables/useTrendsCatalogRevision";
+import { useRankingNavigation } from "@/composables/useRankingNavigation";
 import {
   COVER_PRESENTATION_MODES,
   inferCoverPresentationMode,
@@ -333,13 +321,34 @@ import { applyExpandableCoverGeometry } from "@/utils/expandableCoverGeometry";
 const props = defineProps({
   sources: { type: Array, default: () => [] },
   sourcePageSource: { type: String, default: "" },
+  showSourceNavigation: { type: Boolean, default: true },
 });
 
 const streamRoot = ref(null);
-const route = useRoute();
-const router = useRouter();
+const settingsPopoverOpen = ref(false);
+let settingsResizeObserver;
+onMounted(() => {
+  if (isQuickPreview || typeof ResizeObserver === "undefined") return;
+  settingsResizeObserver = new ResizeObserver(() => {
+    const sidebar = streamRoot.value?.querySelector(".category-stream__controls");
+    const sidebarVisible = sidebar && getComputedStyle(sidebar).display !== "none";
+    if (sidebarVisible && settingsPopoverOpen.value) {
+      const transferFocus = document.activeElement?.closest(".reader-settings");
+      settingsPopoverOpen.value = false;
+      if (transferFocus) nextTick(() => sidebar.querySelector('input[type="range"]')?.focus());
+    } else if (sidebar?.contains(document.activeElement) && !sidebarVisible) {
+      streamRoot.value?.querySelector(".category-stream__settings-trigger")?.focus();
+    }
+  });
+  const detailContainer = streamRoot.value?.closest(".reading-shell");
+  if (detailContainer) settingsResizeObserver.observe(detailContainer);
+});
+onBeforeUnmount(() => settingsResizeObserver?.disconnect());
+const { route, router, isQuickPreview } = useRankingReaderContext();
 const store = mainStore();
-const rankingBadgeImageErrors = reactive({});
+const rankingNavigation = isQuickPreview ? null : useRankingNavigation();
+const readerActive = ref(true);
+const canLoad = () => readerActive.value && (!props.sourcePageSource || (["list", "list-locale", "list-legacy"].includes(String(route.name || "")) && props.sourcePageSource === route.params.sourceSlug));
 const coverImageErrors = reactive({});
 const subtypeCatalogRevision = useTrendsCatalogRevision();
 const { locale: i18nLocale } = useI18n({ useScope: "global" });
@@ -484,8 +493,11 @@ const copy = computed(() => COPY[locale.value] || COPY["zh-CN"]);
 const sourceResults = reactive({});
 const sourceStates = reactive({});
 const sourceRequestVersions = Object.create(null);
+const sourceLoadedAt = Object.create(null);
 
 const API_LOCALIZED_SOURCE_NAMES = new Set([
+  "ai-x-updates",
+  "ai-bluesky-updates",
   "designarena",
   "clawhub",
   "clawhub-skills",
@@ -626,7 +638,7 @@ const sourceTocGroups = (sourceName) => {
   const activeVariant = isActiveTocSource(sourceName)
     ? currentTocSubtype.value
     : getDefaultSourceSubtype(sourceName);
-  return localizeSubtypeGroups(getSourceSubtypeControlGroups(sourceName, activeVariant), locale.value)
+  return localizeSubtypeGroups(getSourceContentControlGroups(sourceName, activeVariant), locale.value)
     .map((group) => ({
       ...group,
       items: (group.items || []).filter((item) => item?.value),
@@ -671,11 +683,22 @@ const sourceNavigationPathFor = (source) => {
     rememberedSubtype || getDefaultSourceSubtype(source.name) || "",
   );
 };
-const sourceVariantPathFor = (sourceName, variant) =>
-  buildRankPath(locale.value, sourceName, variant || "");
-const rememberSourceVariant = (sourceName, variant) => {
+const selectCurrentPeriod = variant => {
+  if (!isQuickPreview) {
+    persistSourceSubtype(props.sourcePageSource,variant);
+    persistSourceContentPeriod(props.sourcePageSource,variant);
+  }
+  router.push(sourceVariantPathFor(props.sourcePageSource,variant));
+};
+const sourceVariantPathFor = (sourceName, variant) => isQuickPreview
+  ? { path: buildRankPath(locale.value, sourceName, variant || ""), query: route.query.scope ? { scope: route.query.scope } : {} }
+  : rankingNavigation.nodeLocation({ sourceName, variant: variant || "", scope: rankingNavigation.scope.value });
+const selectSourceVariant = (event, sourceName, variant) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
   const resolved = resolveSourceSubtype(getSourceSubtypeOptions(sourceName), variant);
-  if (resolved) persistSourceSubtype(sourceName, resolved);
+  if (!isQuickPreview && resolved) persistSourceSubtype(sourceName, resolved);
+  router.push(sourceVariantPathFor(sourceName, variant));
 };
 const updatePageSize = (value) => {
   const next = PAGE_SIZE_VALUES.includes(Number(value)) ? Number(value) : 30;
@@ -861,15 +884,23 @@ const currentVariantLabel = computed(() => {
   const option = sourceTocGroups(source.name)
     .flatMap((group) => group.items || [])
     .find((item) => item.value === current);
-  return option?.label || sourceLabelFor(source);
+  return option?.label || getSubtypeLabel(getSourceVariantOptions(source.name).find(o=>o.value===current),locale.value) || sourceLabelFor(source);
 });
 const sourcePathFor = (source) =>
   buildRankPath(locale.value, source.name, sourceSubtypeFor(source.name) || "");
 
 const DETAIL_REQUEST_TIMEOUT_MS = 6000;
 const DETAIL_FALLBACK_DELAY_MS = 600;
+const CATEGORY_STREAM_COLLECTION_TTL_MS = 5 * 60 * 1000;
+// The official X author feed is collected every five minutes. Its cards must
+// not remain pinned to a previous snapshot when a cached category is revisited.
+const SOCIAL_CARD_RECHECK_MS = 2 * 60 * 1000;
+const LIVE_SOCIAL_SOURCES = new Set(['ai-x-updates','ai-bluesky-updates']);
+const CATEGORY_STREAM_LOAD_CONCURRENCY = 6;
 
 const loadSource = async (source, force = false) => {
+  if (!canLoad()) return;
+  if (sourceStates[source.name] === "loading") return;
   if (!force && sourceResults[source.name]) return;
   const requestVersion = (sourceRequestVersions[source.name] || 0) + 1;
   sourceRequestVersions[source.name] = requestVersion;
@@ -883,9 +914,11 @@ const loadSource = async (source, force = false) => {
       buildSourceParams(source),
       {
         useApi2,
+        rankingLimit: sourcePageMode.value ? 100 : 20,
         forceNoCache: force,
         timeout: DETAIL_REQUEST_TIMEOUT_MS,
         fallbackDelay: DETAIL_FALLBACK_DELAY_MS,
+        collectionTtlMs: LIVE_SOCIAL_SOURCES.has(source.name)?SOCIAL_CARD_RECHECK_MS:CATEGORY_STREAM_COLLECTION_TTL_MS,
       },
     );
     if (sourceRequestVersions[source.name] !== requestVersion) return;
@@ -898,8 +931,9 @@ const loadSource = async (source, force = false) => {
       return;
     }
 
-    const result = response.result;
+    const result = restoreRankingEntityTitles(response.result, source.name);
     sourceResults[source.name] = result;
+    sourceLoadedAt[source.name] = Date.now();
     sourceStates[source.name] = "loaded";
     store.markAvailable(source.name);
 
@@ -923,10 +957,12 @@ const loadSource = async (source, force = false) => {
           // Provider data is already visible; readable titles are best effort.
         });
     }
-  } catch {
+  } catch (error) {
     if (sourceRequestVersions[source.name] !== requestVersion) return;
-    sourceStates[source.name] = "failed";
-    store.markUnavailable(source.name);
+    if (isRankingAdmissionFailure(error)) delete sourceResults[source.name];
+    sourceStates[source.name] = sourceResults[source.name] ? "loaded" : "failed";
+    if (sourceResults[source.name]) sourceResults[source.name] = {...sourceResults[source.name],refreshFallback:true};
+    else store.markUnavailable(source.name);
   }
 };
 
@@ -937,6 +973,7 @@ const refreshCurrentSource = () => {
 };
 
 const loadActiveSources = async ({ forceFailed = false } = {}) => {
+  if (!canLoad()) return;
   const queue = activeSources.value.filter((source) => {
     if (forceFailed) return sourceStates[source.name] === "failed";
     return !sourceResults[source.name] && sourceStates[source.name] !== "loading";
@@ -950,7 +987,12 @@ const loadActiveSources = async ({ forceFailed = false } = {}) => {
   };
   await Promise.all(
     Array.from(
-      { length: Math.min(4, Math.max(1, queue.length)) },
+      {
+        length: Math.min(
+          CATEGORY_STREAM_LOAD_CONCURRENCY,
+          Math.max(1, queue.length),
+        ),
+      },
       () => worker(),
     ),
   );
@@ -965,7 +1007,7 @@ watch(
   () => {
     void loadActiveSources();
   },
-  { immediate: true },
+  { immediate: true, flush: "post" },
 );
 
 watch(
@@ -981,12 +1023,13 @@ watch(
     route.query?.subtype || "",
   ],
   () => {
-    if (!sourcePageMode.value || !props.sourcePageSource) return;
+    if (!canLoad() || !sourcePageMode.value || !props.sourcePageSource) return;
     delete sourceResults[props.sourcePageSource];
     sourceStates[props.sourcePageSource] = "idle";
     void loadActiveSources();
     ensureActiveSourceVisible();
   },
+  { flush: "post" },
 );
 
 watch(
@@ -1004,6 +1047,7 @@ watch(
 );
 
 const handleDataRefresh = async () => {
+  if (!canLoad()) return;
   await Promise.all(activeSources.value.map((source) => loadSource(source, true)));
 };
 
@@ -1014,7 +1058,31 @@ onMounted(() => {
   nextTick(ensureActiveSourceVisible);
 });
 
+onActivated(() => {
+  readerActive.value = true;
+  window.removeEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
+  window.addEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
+  void loadActiveSources();
+  // A KeepAlive category has in-memory cards. Reload only stale social source
+  // cards; unrelated rankings, filters and user refresh preference are intact.
+  for(const source of activeSources.value){
+    if(!LIVE_SOCIAL_SOURCES.has(source.name)||!sourceResults[source.name]
+      ||sourceStates[source.name]==='loading')continue;
+    if(Date.now()-(sourceLoadedAt[source.name]||0)>=SOCIAL_CARD_RECHECK_MS)
+      void loadSource(source,true);
+  }
+});
+onDeactivated(() => {
+  readerActive.value = false;
+  for (const name of Object.keys(sourceStates)) {
+    if (sourceStates[name] !== "loading") continue;
+    sourceRequestVersions[name] = (sourceRequestVersions[name] || 0) + 1;
+    sourceStates[name] = "idle";
+  }
+  window.removeEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
+});
 onBeforeUnmount(() => {
+  readerActive.value = false;
   if (typeof window !== "undefined") {
     window.removeEventListener(DATA_REFRESH_EVENT, handleDataRefresh);
   }
@@ -1052,22 +1120,33 @@ const entries = computed(() => {
       const title = stripText(item?.title || item?.originalTitle || "");
       const description = stripText(item?.desc || item?.originalDesc || "");
       const hot = stripText(item?.hot || "");
-      const href = item?.url || item?.mobileUrl || "";
+      const href = localizedPublicationUrl(item?.url || item?.mobileUrl || "",locale.value);
       const displayArtist = isMusicArtistSource(source.name)
         ? stripText(item?.author || "")
         : "";
-      const rankingMeta = getRankingItemMeta(item, locale.value, {
+      const rawRankingMeta = getRankingItemMeta(item, locale.value, {
+        sourceName: source.name,
         variant: result?.variant || sourceSubtypeFor(source.name),
+        authorVisible: Boolean(displayArtist),
+      });
+      const previewGovernance = resolveRankingPreviewGovernance({
+        item: { ...item, displayTitle: title },
+        rankingMeta: rawRankingMeta,
+        sourceName: source.name,
+        locale: locale.value,
+        description,
         authorVisible: Boolean(displayArtist),
       });
       output.push({
         ...item,
+        cover: publicationCover(item),
         key:
           String(item?.id || item?.url || item?.mobileUrl || title) +
           "::" +
           source.name +
           "::" +
           (isPinned ? "pinned" : rank),
+        aiModel: item.extra?.aiModel,
         sourceName: source.name,
         sourceLabel,
         sourceLogo: getSourceLogo(source.name),
@@ -1083,9 +1162,10 @@ const entries = computed(() => {
         suffixBadges,
         title,
         displayArtist,
-        description,
+        description: previewGovernance.description,
         hot,
-        rankingMeta,
+        rankingMeta: previewGovernance.rankingMeta,
+        inlineMetric: previewGovernance.inlineMetric,
         href,
       });
     });
@@ -1106,12 +1186,16 @@ const visibleEntries = computed(() => {
       entry.description,
       entry.hot,
       entry.author,
+      entry.inlineMetric
+        ? `${entry.inlineMetric.label} ${entry.inlineMetric.value}`
+        : "",
       entry.rankingMeta?.metrics?.map(({ label, value }) => `${label} ${value}`).join(" "),
       entry.rankingMeta?.context?.map(({ label, value }) => `${label} ${value}`).join(" "),
       entry.sourceLabel,
       entry.sourceName,
       entry.code,
       entry.symbol,
+      entry.extra?.socialPost?.eventGroup?.posts?.map(post=>post.originalText+' '+post.title).join(' '),
     ].some((value) => normalizeSearchText(value).includes(query)),
   );
 });
@@ -1125,7 +1209,7 @@ const pagedEntries = computed(() => {
 watch(
   () => [currentPage.value, pageCount.value],
   ([page, total]) => {
-    if (page > total) updatePage(total);
+    if (canLoad() && !pendingCount.value && page > total) updatePage(total);
   },
 );
 
@@ -1175,9 +1259,6 @@ const rankTone = (rank, isPinned = false) => ({
   "is-three": !isPinned && rank === 3,
   "is-top10": !isPinned && rank > 3 && rank <= 10,
 });
-const handleRankingBadgeImageError = (iconUrl) => {
-  if (iconUrl) rankingBadgeImageErrors[iconUrl] = true;
-};
 const handleLogoError = (event) => {
   if (event.target) event.target.src = getSourceLogoFallback();
 };
@@ -1510,144 +1591,54 @@ const hideBrokenMedia = (event, cover = "") => {
   white-space: nowrap;
 }
 
-.category-stream__title-row.has-artist .category-stream__title {
-  flex: 1 1 auto;
-}
-
-.category-stream__artist {
+.category-stream__inline-metric {
   display: inline-flex;
-  flex: 0 1 38%;
+  flex: 0 0 auto;
   align-items: baseline;
   gap: 4px;
-  min-width: 0;
-  max-width: 38%;
-  overflow: hidden;
-  color: var(--n-text-color-3);
-  font-size: calc(var(--category-stream-font-size, 15px) - 1px);
-  font-weight: 560;
+  color: var(--category-stream-text-3);
+  font-size: 11px;
   line-height: 1.35;
   white-space: nowrap;
 }
 
-.category-stream__artist-mark {
-  flex: 0 0 auto;
-  color: var(--n-primary-color);
-  font-size: .9em;
-  font-weight: 750;
+.category-stream__inline-metric strong {
+  color: var(--category-stream-text-2);
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
 }
+
+.category-stream__inline-metric.is-score {
+  color: var(--n-warning-color, #f0a020);
+  font-size: var(--category-stream-font-size, 15px);
+}
+
+.category-stream__inline-metric.is-score strong {
+  color: inherit;
+  font-weight: 720;
+}
+
+.category-stream__artist {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--category-stream-text-3);
+  font-size: calc(var(--category-stream-font-size, 15px) - 2px);
+  font-weight: 450;
+  line-height: 1.28;
+  opacity: 0.88;
+  white-space: nowrap;
+}
+
 
 .category-stream__artist-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.category-stream__badges {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  line-height: 1;
-}
-
-.category-stream__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 4px;
-  box-sizing: border-box;
-  color: #fff;
-  background: #ff3852;
-  font-size: 11px;
-  font-weight: 750;
-  line-height: 18px;
-}
-
-.category-stream__badge.is-hot,
-.category-stream__badge.is-boiling {
-  background: #ff9406;
-}
-
-.category-stream__badge.is-explosive {
-  position: relative;
-  isolation: isolate;
-  min-width: 20px;
-  height: 20px;
-  border: 1px solid rgba(164, 16, 10, 0.48);
-  border-radius: 4px;
-  background: linear-gradient(180deg, #d52a1f 0%, #b8150d 100%);
-  box-shadow:
-    0 1px 2px rgba(111, 8, 4, 0.28),
-    0 3px 9px rgba(211, 36, 27, 0.32),
-    0 0 13px rgba(255, 74, 58, 0.18);
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 18px;
-  text-shadow: 0 1px 1px rgba(96, 5, 0, 0.28);
-  transform: translateY(-1px);
-}
-
-.category-stream__badge.is-explosive::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: -4px;
-  border-radius: 7px;
-  background: rgba(245, 52, 39, 0.18);
-  filter: blur(5px);
-  pointer-events: none;
-}
-
-.category-stream__badge.is-interpretation,
-.category-stream__badge.is-depth {
-  background: linear-gradient(135deg, #4d7cff, #6d5ce7);
-}
-
-.category-stream__badge.is-rumor {
-  background: #2788f5;
-}
-
-.category-stream__badge.is-challenge {
-  background: #ff4b7d;
-}
-
-.category-stream__badge.is-commercial {
-  background: #00a6d9;
-}
-
-.category-stream__badge.is-category,
-.category-stream__badge.is-source {
-  background: color-mix(in srgb, var(--category-stream-text) 68%, transparent);
-}
-
-.category-stream__badge.has-icon {
-  min-width: 18px;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.category-stream__badge img {
-  display: block;
-  width: auto;
-  max-width: 38px;
-  height: 18px;
-  object-fit: contain;
-}
-
-.category-stream__badge.is-hot-live img {
-  width: 20px;
-  max-width: 20px;
-  height: 20px;
-}
-
-.category-stream__badge.is-animated img {
-  animation: category-ranking-badge-live 1.25s ease-in-out infinite;
-  transform-origin: 50% 80%;
 }
 
 .category-stream__desc {
@@ -1741,15 +1732,7 @@ const hideBrokenMedia = (event, cover = "") => {
   }
 }
 
-@keyframes category-ranking-badge-live {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  45% {
-    transform: translateY(-2px) scale(1.06);
-  }
-}
+
 
 @media (prefers-reduced-motion: reduce) {
   .category-stream__badge.is-animated img {
@@ -2251,7 +2234,7 @@ const hideBrokenMedia = (event, cover = "") => {
 /* Ranking workbench: predictable scan path, quiet side rails, compact context. */
 .category-stream.is-source-page {
   gap: 0;
-  width: min(100%, var(--site-focus-container-width, 1360px));
+  width: min(100%, var(--site-ranking-container-width, 1360px));
   margin-inline: auto;
 }
 
@@ -2342,7 +2325,7 @@ const hideBrokenMedia = (event, cover = "") => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 12px;
 }
 
 .category-stream__context-identity {
@@ -2612,99 +2595,6 @@ const hideBrokenMedia = (event, cover = "") => {
   object-position: center;
 }
 
-.category-stream.is-source-page :deep(.category-stream__preview-image.n-image) {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  border-radius: 0;
-}
-
-.category-stream.is-source-page :deep(.category-stream__preview-image.n-image img) {
-  position: relative;
-  z-index: 1;
-  display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: var(--ranking-stream-media-radius);
-  object-fit: contain;
-  object-position: center;
-  cursor: zoom-in;
-}
-
-.category-stream.is-source-page :deep(.category-stream__preview-image.n-image.is-cover-geometry-ready) {
-  position: absolute;
-  top: calc(50% + var(--cover-hover-center-y-shift, 0px));
-  right: 0;
-  width: var(--cover-base-viewport-width, 100%);
-  height: var(--cover-base-viewport-height, 100%);
-  max-width: none;
-  max-height: none;
-  overflow: hidden;
-  border-radius: var(--ranking-stream-media-radius);
-  transform: translateY(-50%);
-  transition:
-    width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-    height 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-    top 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.18s ease;
-  will-change: width, height;
-}
-
-.category-stream.is-source-page :deep(.category-stream__preview-image.n-image.is-cover-geometry-ready img) {
-  position: absolute;
-  top: 50%;
-  right: var(--cover-base-image-right, 0px);
-  left: auto;
-  width: var(--cover-base-image-width, 100%);
-  height: var(--cover-base-image-height, 100%);
-  max-width: none;
-  max-height: none;
-  border-radius: var(--ranking-stream-media-radius);
-  object-fit: contain !important;
-  transform: translateY(-50%);
-  transform-origin: right center;
-  transition:
-    width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-    height 0.24s cubic-bezier(0.22, 1, 0.36, 1),
-    right 0.24s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: width, height, right;
-}
-
-.category-stream.is-source-page :deep(.category-stream__preview-image.n-image img:focus-visible) {
-  outline: 2px solid var(--category-stream-primary);
-  outline-offset: 2px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .category-stream.is-source-page .category-stream__row.has-media:hover {
-    z-index: 4;
-  }
-
-  .category-stream.is-source-page .category-stream__row.has-media:hover :deep(.category-stream__preview-image.n-image.is-cover-geometry-ready) {
-    z-index: 5;
-    width: var(--cover-hover-width, 113.4px);
-    height: var(--cover-hover-height, 113.4px);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
-  }
-
-  .category-stream.is-source-page .category-stream__row.has-media:hover :deep(.category-stream__preview-image.n-image.is-cover-geometry-ready img) {
-    right: 0;
-    width: var(--cover-hover-width, 113.4px);
-    height: var(--cover-hover-height, 113.4px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .category-stream.is-source-page :deep(.category-stream__preview-image.n-image.is-cover-geometry-ready),
-  .category-stream.is-source-page :deep(.category-stream__preview-image.n-image.is-cover-geometry-ready img) {
-    transition: none;
-  }
-}
-
 .category-stream.is-source-page .category-stream__title {
   font-size: var(--category-stream-font-size, var(--ranking-stream-title-size));
   font-weight: 650;
@@ -2882,9 +2772,23 @@ const hideBrokenMedia = (event, cover = "") => {
   }
   .category-stream__context-top {
     align-items: flex-start;
+    flex-wrap: wrap;
   }
   .category-stream__context-status {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .category-stream__context-status > :not(.ranking-time-filter):not(.category-stream__context-refresh):not(.is-refresh-fallback) {
     display: none;
+  }
+  .category-stream__context-status :deep(select) {
+    min-height: 36px;
+  }
+  .category-stream__context-status .is-refresh-fallback {
+    flex-basis: 100%;
+    white-space: normal;
+    padding: 0;
+    border: 0;
   }
   .category-stream__variant-group {
     align-items: flex-start;
@@ -2962,4 +2866,30 @@ const hideBrokenMedia = (event, cover = "") => {
 }
 
 @keyframes category-stream-spin { to { transform: rotate(360deg); } }
+
+.category-stream.is-source-page.uses-global-navigation .category-stream__body { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.category-stream.is-source-page.uses-global-navigation .category-stream__main { grid-column: 1; grid-row: 1; width: 100%; margin-inline: auto; }
+.category-stream__context-status { margin-inline-start: auto; }
+.category-stream__context-identity { flex: 0 1 auto; }
+.category-stream__settings-trigger { align-self: center; flex: 0 0 auto; min-height: 32px; padding: 4px 10px; border: 1px solid var(--category-stream-border); border-radius: 7px; color: var(--category-stream-text); background: transparent; cursor: pointer; }
+.category-stream__settings-trigger:hover { background: var(--category-stream-hover); }
+.category-stream__settings-trigger:focus-visible { outline: 2px solid var(--category-stream-primary); outline-offset: 2px; }
+.category-stream__bottom-pagination { display: flex; justify-content: center; padding: 24px 0 8px; }
+@media (max-width: 680px) {
+  .category-stream__context-top { gap: 8px; }
+  .category-stream__context-status { margin-inline-start: 0; flex-basis: 100%; order: 3; }
+  .category-stream__settings-trigger { margin-inline-start: auto; }
+  .category-stream__settings-trigger { min-height: 44px; }
+}
+
+/* The available reading area, not the viewport, decides whether settings fit. */
+/* ranking-reader is the full .reading-shell, including the switching navigation. */
+.category-stream.is-source-page.uses-global-navigation .category-stream__controls { display: none; }
+.category-stream__settings-menu { flex: 0 0 auto; margin-inline-start: auto; }
+@container ranking-reader (min-width: 1080px) {
+  .category-stream.is-source-page.uses-global-navigation:not(.is-quick-preview) .category-stream__body { grid-template-columns: minmax(0, 1fr) 220px; gap: 20px; }
+  .category-stream.is-source-page.uses-global-navigation:not(.is-quick-preview) .category-stream__controls { display: block; grid-column: 2; grid-row: 1; position: sticky; top: calc(var(--site-header-height, 64px) + 20px); order: initial; padding: 12px 0 12px 20px; border-inline-start: 1px solid var(--category-stream-border); color: var(--category-stream-text); }
+  .category-stream.is-source-page.uses-global-navigation:not(.is-quick-preview) .category-stream__settings-menu { display: none; }
+}
+@media(max-width:680px) { .category-stream__settings-menu { align-self: center; } }
 </style>

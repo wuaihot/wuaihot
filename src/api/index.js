@@ -1,4 +1,5 @@
 import axios from "@/api/request";
+import { hasIndependentRankingAdapter } from "@/config/independentRankingAdapters.mjs";
 import { raceWithDelayedFallback } from "@/api/fallbackRace.mjs";
 import { getAdminToken } from "@/utils/adminAuth";
 import { getRankingItemTimestamp } from "@/utils/rankingItemMeta";
@@ -11,6 +12,10 @@ import {
 const DEFAULT_FALLBACK_DELAY_MS = 1200;
 const API2_ONLY_SOURCES = new Set(["tianya"]);
 const SAME_ORIGIN_API_SOURCES = new Set([
+  "ai-x-updates", "ai-bluesky-updates", "ai-official-intake",
+  "ai-model-board",
+  "livebench",
+  "lolesports-news",
   "artificialanalysis",
   "bilibili",
   "designarena",
@@ -24,6 +29,8 @@ const SAME_ORIGIN_API_SOURCES = new Set([
   "ai-topic",
 ]);
 const LOCAL_RANKING_ADAPTER_SOURCES = new Set([
+  "anthropic-news",
+  "openrouter-rankings",
   "bilibili",
 ]);
 
@@ -135,6 +142,16 @@ const TRENDS_READ_SOURCES = new Set(
     .filter(Boolean),
 );
 const TRENDS_READ_SURFACE_CONTRACT = "catalog-first-v1";
+const TRENDS_DISPLAY_LEGACY_FALLBACK_VARIANTS = new Map([
+  ["openrouter-rankings", new Set(["models-week"])],
+]);
+const canUseDisplayLegacyFallback = (source, params = {}) => {
+  if (!SAME_ORIGIN_API_SOURCES.has(source)) return false;
+  const allowedVariants = TRENDS_DISPLAY_LEGACY_FALLBACK_VARIANTS.get(source);
+  if (!allowedVariants) return false;
+  const requestedVariant = String(params?.variant ?? params?.type ?? "").trim();
+  return allowedVariants.has(requestedVariant);
+};
 const TRENDS_SHADOW_DEFAULT_VARIANTS = {
   douyin: {
     param: "type",
@@ -278,6 +295,7 @@ const normalizeTrendsRankingResult = (payload, readSurface = "public") => {
     updateTime,
     variant: feed?.variant || "",
     centralized: true,
+    refreshFallback: payload?.refreshFallback === true,
     readSurface,
     observationId: payload?.observation?.id || null,
     data: items.map((item, index) =>
@@ -335,6 +353,34 @@ export const getTopicFeed = async (
   }
 };
 
+export const getTopicArchive = async (topic, { limit = 60, force = false } = {}) => {
+  if (!TRENDS_PUBLIC_API) throw new Error("trends_public_api_unavailable");
+  const url = new URL(`${TRENDS_PUBLIC_API}/topics/${encodeURIComponent(topic)}/archive`);
+  url.searchParams.set("limit", String(Math.max(1, Math.min(100, Math.trunc(limit)))));
+  if (force) url.searchParams.set("_", String(Date.now()));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(url, {
+      method: "GET", credentials: "omit", headers: { Accept: "application/json" },
+      ...(force ? { cache: "no-store" } : {}), signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`trends_topic_archive_http_${response.status}`);
+    const payload = await response.json();
+    const data = payload?.data;
+    if (data?.schema !== "topic-archive-v1"
+      || data?.topic !== topic
+      || !Array.isArray(data.events)
+      || !data.window?.from || !data.window?.toExclusive
+      || data.coverage?.sample !== "latest-complete-nonstale-snapshot-per-source-hour") {
+      throw new Error("trends_topic_archive_invalid_payload");
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const requestEventHub = async (
   path,
   params = {},
@@ -355,7 +401,6 @@ const requestEventHub = async (
       credentials: "omit",
       headers: {
         Accept: "application/json",
-        ...(force ? { "Cache-Control": "no-cache" } : {}),
       },
       ...(force ? { cache: "no-store" } : {}),
       signal: controller.signal,
@@ -384,6 +429,7 @@ export const getEventOverview = (
   {
     date,
     discipline,
+    locale,
     medalLimit = 15,
     scheduleLimit = 36,
     newsLimit = 10,
@@ -395,6 +441,7 @@ export const getEventOverview = (
     {
       date,
       discipline,
+      locale,
       medal_limit: medalLimit,
       schedule_limit: scheduleLimit,
       news_limit: newsLimit,
@@ -414,43 +461,197 @@ export const getEventMedals = (
 
 export const getEventSchedule = (
   event,
-  { date, discipline, limit = 60, force = false } = {},
+  { date, discipline, locale, limit = 60, force = false } = {},
 ) =>
   requestEventHub(
     `/events/${encodeURIComponent(event)}/schedule`,
-    { date, discipline, limit },
+    { date, discipline, locale, limit },
     { force, timeout: 12000 },
   );
 
+const eventDateRange = (from, to) => {
+  const start = String(from || "").slice(0, 10);
+  const end = String(to || "").slice(0, 10);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(start) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(end) ||
+    start > end
+  ) {
+    return [];
+  }
+  const cursor = new Date(`${start}T12:00:00Z`);
+  const last = new Date(`${end}T12:00:00Z`);
+  const dates = [];
+  while (cursor <= last && dates.length < 32) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+};
+
+export const getEventScheduleRange = async (
+  event,
+  {
+    from,
+    to,
+    discipline,
+    locale,
+    limitPerDay = 0,
+    force = false,
+    concurrency = 3,
+  } = {},
+) => {
+  const dates = eventDateRange(from, to);
+  if (!dates.length) throw new Error("event_schedule_invalid_range");
+
+  const results = [];
+  const width = Math.max(1, Math.min(4, Number(concurrency) || 3));
+  for (let offset = 0; offset < dates.length; offset += width) {
+    const batch = dates.slice(offset, offset + width);
+    const settled = await Promise.allSettled(
+      batch.map((date) =>
+        getEventSchedule(event, {
+          date,
+          discipline,
+          locale,
+          limit: limitPerDay,
+          force,
+        }),
+      ),
+    );
+    settled.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        results.push({ date: batch[index], data: result.value });
+      }
+    });
+  }
+  if (!results.length) throw new Error("event_schedule_range_unavailable");
+
+  results.sort((left, right) => left.date.localeCompare(right.date));
+  const disciplineMap = new Map();
+  for (const { data } of results) {
+    for (const item of data?.disciplines || []) {
+      const current = disciplineMap.get(item.key) || {
+        key: item.key,
+        name: item.name || item.key,
+        count: 0,
+      };
+      current.count += Number(item.count || 0);
+      disciplineMap.set(item.key, current);
+    }
+  }
+
+  const items = results
+    .flatMap(({ data }) => (Array.isArray(data?.items) ? data.items : []))
+    .sort((left, right) =>
+      String(left?.startAt || "").localeCompare(String(right?.startAt || "")),
+    );
+
+  return {
+    date: dates.length === 1 ? dates[0] : `${dates[0]}..${dates.at(-1)}`,
+    dateFrom: dates[0],
+    dateTo: dates.at(-1),
+    timezone: results[0]?.data?.timezone || "Asia/Tokyo",
+    total: results.reduce((sum, { data }) => sum + Number(data?.total || 0), 0),
+    liveCount: results.reduce(
+      (sum, { data }) => sum + Number(data?.liveCount || 0),
+      0,
+    ),
+    completedCount: results.reduce(
+      (sum, { data }) => sum + Number(data?.completedCount || 0),
+      0,
+    ),
+    upcomingCount: results.reduce(
+      (sum, { data }) => sum + Number(data?.upcomingCount || 0),
+      0,
+    ),
+    disciplines: [...disciplineMap.values()].sort((left, right) =>
+      String(left.name || left.key).localeCompare(
+        String(right.name || right.key),
+      ),
+    ),
+    items,
+  };
+};
+
+export const getEventDisciplineCatalog = async (
+  event,
+  { from, to, locale, force = false } = {},
+) => {
+  const range = await getEventScheduleRange(event, {
+    from,
+    to,
+    locale,
+    limitPerDay: 0,
+    force,
+    concurrency: 4,
+  });
+  return range.disciplines || [];
+};
+
 export const getEventNews = (
   event,
-  { limit = 12, force = false } = {},
+  { locale, limit = 12, force = false } = {},
 ) =>
   requestEventHub(
     `/events/${encodeURIComponent(event)}/news`,
-    { limit },
+    { locale, limit },
     { force, timeout: 10000 },
   );
+
+export const getEventRegionalNews = (
+  event,
+  { region = 'lpl', locale, limit = 16, force = false } = {},
+) =>
+  requestEventHub(
+    `/events/${encodeURIComponent(event)}/regional-news`,
+    { region, locale, limit },
+    { force, timeout: 12000 },
+  );
+
+export const getEventBriefs = (
+  event,
+  { locale, limit = 8, force = false } = {},
+) =>
+  requestEventHub(
+    `/events/${encodeURIComponent(event)}/briefs`,
+    { locale, limit },
+    { force, timeout: 10000 },
+  );
+
+const SAME_ORIGIN_TRENDS_ORIGIN = import.meta.env.PROD && typeof window !== "undefined"
+  ? window.location.origin : "";
 
 const requestTrendsRanking = async (
   source,
   params = {},
   readSurface = "public",
+  options = {},
 ) => {
   const apiBase =
     readSurface === "display" ? TRENDS_DISPLAY_API : TRENDS_PUBLIC_API;
   if (!apiBase) throw new Error(`trends_${readSurface}_api_unavailable`);
   const variant = getTrendsShadowVariant(source, params);
   if (variant === null) throw new Error("trends_variant_not_enabled");
-  const url = new URL(`${apiBase}/rankings/${encodeURIComponent(source)}`);
-  url.searchParams.set("limit", readSurface === "display" ? "20" : "100");
+  const sameOrigin = Boolean(SAME_ORIGIN_TRENDS_ORIGIN);
+  const url = new URL(
+    sameOrigin ? `/api/trends-ranking/${encodeURIComponent(source)}` : `${apiBase}/rankings/${encodeURIComponent(source)}`,
+    SAME_ORIGIN_TRENDS_ORIGIN || undefined,
+  );
+  if (sameOrigin) url.searchParams.set("surface", readSurface);
+  if (options.forceNoCache) url.searchParams.set("force", "1");
+  const requestedLimit = Number(options.rankingLimit);
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(100, Math.max(1, Math.floor(requestedLimit)))
+    : readSurface === "display" ? 20 : 100;
+  url.searchParams.set("limit", String(limit));
   if (variant) url.searchParams.set("variant", variant);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), sameOrigin ? 9500 : 5000);
   try {
     const response = await fetch(url, {
       method: "GET",
-      credentials: "omit",
+      credentials: sameOrigin ? "same-origin" : "omit",
       headers: { Accept: "application/json" },
       signal: controller.signal,
     });
@@ -602,7 +803,7 @@ const requestAnalytics = async (config) => {
  * @returns
  */
 export const getHotLists = (type, isNew = false, params, options = {}) => {
-  const forceSameOrigin = Boolean(options?.forceSameOrigin);
+  const forceSameOrigin = Boolean(options?.forceSameOrigin) || hasIndependentRankingAdapter(type);
   const useDirectPublicApi =
     DIRECT_PUBLIC_API_SOURCES.has(type) && !forceSameOrigin;
   const useSameOriginApi = forceSameOrigin || SAME_ORIGIN_API_SOURCES.has(type);
@@ -652,8 +853,8 @@ export const getAnalyticsDashboard = (days = 30) =>
       : {},
   });
 
-export const getReadableTranslations = async (texts = [], locale = "zh-CN") => {
-  const apiBases = import.meta.env.PROD
+export const getReadableTranslations = async (texts = [], locale = "zh-CN", {rawFallback=false}={}) => {
+  const apiBases = rawFallback ? ["/api"] : import.meta.env.PROD
     ? Array.from(new Set([PUBLIC_API2_BASE, "/api"].filter(Boolean)))
     : [undefined];
   let lastError;
@@ -662,6 +863,7 @@ export const getReadableTranslations = async (texts = [], locale = "zh-CN") => {
       return await axios({
         method: "POST",
         url: "/readable-translate",
+        ...(rawFallback ? {headers:{"X-Readable-Raw-Fallback":"1"}} : {}),
         ...(baseURL ? { baseURL } : {}),
         params: {
           cache: false,
@@ -699,11 +901,11 @@ export const getHotListsWithFallback = async (
     : getTrendsCatalogReadSurface(type);
   const readSurface = useLocalRankingAdapter
     ? null
-    : catalogReadSurface || (TRENDS_READ_SOURCES.has(type) ? "public" : null);
+    : catalogReadSurface || (!hasIndependentRankingAdapter(type) && TRENDS_READ_SOURCES.has(type) ? "public" : null);
   if (readSurface) {
     const startedAt = performance.now();
     try {
-      const result = await requestTrendsRanking(type, params, readSurface);
+      const result = await requestTrendsRanking(type, params, readSurface, options);
       void requestAnalytics({
         method: "POST",
         url: "/analytics",
@@ -743,18 +945,22 @@ export const getHotListsWithFallback = async (
           },
         },
       }).catch(() => {});
+      const allowDisplayLegacyFallback =
+        readSurface === "display" &&
+        canUseDisplayLegacyFallback(type, params);
       if (
-        readSurface === "display" ||
-        catalogVariant === null ||
-        (catalogVariant !== undefined &&
-          !canFallbackTrendsCatalogVariant(type, catalogVariant))
+        !allowDisplayLegacyFallback &&
+        (readSurface === "display" ||
+          catalogVariant === null ||
+          (catalogVariant !== undefined &&
+            !canFallbackTrendsCatalogVariant(type, catalogVariant)))
       ) {
         throw error;
       }
     }
   }
-  const useDirectPublicApi = DIRECT_PUBLIC_API_SOURCES.has(type);
-  const useSameOriginApi = SAME_ORIGIN_API_SOURCES.has(type);
+  const useDirectPublicApi = DIRECT_PUBLIC_API_SOURCES.has(type) && !hasIndependentRankingAdapter(type);
+  const useSameOriginApi = SAME_ORIGIN_API_SOURCES.has(type) || hasIndependentRankingAdapter(type);
 
   if (useDirectPublicApi) {
     try {

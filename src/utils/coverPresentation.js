@@ -25,8 +25,8 @@ export const classifyCoverPresentationRatio = (width, height) => {
 export const inferCoverPresentationMode = (
   samples = [],
   {
-    minSamples = 3,
-    dominanceThreshold = 0.75,
+    minSamples = 6,
+    dominanceThreshold = 1,
   } = {},
 ) => {
   const normalized = (Array.isArray(samples) ? samples : [])
@@ -70,4 +70,14 @@ export const resolveCoverPresentationMode = (source, fallbackSource = null) => {
   return COVER_PRESENTATION_MODE_VALUES.has(mode)
     ? mode
     : COVER_PRESENTATION_MODES.AUTO;
+};
+
+export const normalizeCardCoverPresentationMode = (mode) => {
+  if (mode === COVER_PRESENTATION_MODES.PORTRAIT) {
+    return COVER_PRESENTATION_MODES.PORTRAIT;
+  }
+  if (mode === COVER_PRESENTATION_MODES.SQUARE) {
+    return COVER_PRESENTATION_MODES.SQUARE;
+  }
+  return COVER_PRESENTATION_MODES.MIXED;
 };

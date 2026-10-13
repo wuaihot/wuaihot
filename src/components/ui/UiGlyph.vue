@@ -1,6 +1,7 @@
 <template>
   <svg class="ui-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <template v-if="name === 'monitor'">
+    <template v-if="name === 'menu'"><path d="M4 6h16M4 12h16M4 18h16" /></template>
+    <template v-else-if="name === 'monitor'">
       <rect x="3.5" y="4" width="17" height="12" rx="2.2" />
       <path d="M8.5 20h7" />
       <path d="M12 16v4" />

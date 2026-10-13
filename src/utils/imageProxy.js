@@ -28,7 +28,9 @@ const normalizeSinaCover = (cover = "", profile = "medium") => {
     const current = segments[1] || "";
     if (!SINA_IMAGE_VARIANTS.has(current)) return cover;
     if (profile === "full") {
-      segments[1] = "large";
+      // A bounded 1024px rendition is materially faster and more reliable than
+      // Sina's unbounded "large" asset while remaining sharp in the lightbox.
+      segments[1] = "mw1024";
     } else {
       const target = profile === "compact" ? "orj360" : "mw690";
       const targetWidth = SINA_IMAGE_VARIANTS.get(target);

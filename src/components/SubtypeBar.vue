@@ -14,8 +14,8 @@
   >
     <div
       class="trigger-wrap"
-      @mouseenter="handleTriggerEnter"
-      @mouseleave="handleTriggerLeave"
+      @pointerenter="handleTriggerEnter"
+      @pointerleave="handleTriggerLeave"
     >
       <button
         ref="triggerRef"
@@ -28,7 +28,7 @@
         @click.stop="toggleMenu"
       >
         <span class="trigger-label">{{ currentLabel }}</span>
-        <span class="trigger-chevron" :class="{ expanded: menuOpen }" aria-hidden="true"></span>
+        <svg class="trigger-chevron" :class="{ expanded: menuOpen }" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4" /></svg>
       </button>
     </div>
 
@@ -54,8 +54,8 @@
           @touchend.stop="unlockCardDrag"
           @touchcancel.stop="unlockCardDrag"
           @click.stop
-          @mouseenter="keepMenuOpen"
-          @mouseleave="handleMenuLeave"
+          @pointerenter="keepMenuOpen"
+          @pointerleave="handleMenuLeave"
         >
           <template v-if="!isMobile">
             <div
@@ -105,11 +105,12 @@
                   @click="toggleAccordion(group)"
                 >
                   <span>{{ group.label || currentLabel }}</span>
-                  <span
+                  <svg
                     class="accordion-chevron"
                     :class="{ expanded: isAccordionOpen(group) }"
-                    aria-hidden="true"
-                  ></span>
+                    viewBox="0 0 16 16"
+                    aria-hidden="true" focusable="false"
+                  ><path d="m4 6 4 4 4-4" /></svg>
                 </button>
                 <div v-show="isAccordionOpen(group)" class="accordion-panel">
                   <button
@@ -157,6 +158,7 @@ const menuStyle = ref({});
 const isMobile = ref(typeof window !== "undefined" ? window.innerWidth <= 680 : false);
 const accordionOpenKeys = ref(new Set());
 let closeTimer = null;
+let hoverOpenTimer = null;
 let dragUnlockTimer = null;
 const EDGE_GAP = 12;
 const DESKTOP_MENU_MAX_WIDTH = 640;
@@ -297,7 +299,9 @@ const clearCloseTimer = () => {
   closeTimer = null;
 };
 
+const cancelHoverOpen = () => { clearTimeout(hoverOpenTimer); hoverOpenTimer = null; };
 const closeMenu = () => {
+  cancelHoverOpen();
   clearCloseTimer();
   menuOpen.value = false;
 };
@@ -334,6 +338,7 @@ const updateMenuPosition = () => {
 };
 
 const openMenu = () => {
+  cancelHoverOpen();
   clearCloseTimer();
   if (isMobile.value) syncDefaultAccordion();
   menuOpen.value = true;
@@ -348,16 +353,20 @@ const toggleMenu = () => {
   else openMenu();
 };
 
-const handleTriggerEnter = () => {
-  if (!isMobile.value) openMenu();
+const precisionMouse = event => !isMobile.value && event.pointerType === 'mouse' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const handleTriggerEnter = event => {
+  if (!precisionMouse(event)) return;
+  clearCloseTimer();
+  cancelHoverOpen();
+  hoverOpenTimer = window.setTimeout(openMenu, 130);
 };
-const handleTriggerLeave = () => {
-  if (!isMobile.value) scheduleCloseMenu();
+const handleTriggerLeave = event => {
+  if (!precisionMouse(event)) return;
+  cancelHoverOpen();
+  if (menuOpen.value) scheduleCloseMenu();
 };
-const keepMenuOpen = () => clearCloseTimer();
-const handleMenuLeave = () => {
-  if (!isMobile.value) scheduleCloseMenu();
-};
+const keepMenuOpen = event => { if (precisionMouse(event)) clearCloseTimer(); };
+const handleMenuLeave = event => { if (precisionMouse(event)) scheduleCloseMenu(); };
 
 const selectItem = (value) => {
   if (!value) return;
@@ -400,6 +409,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", handleWindowChange);
   window.removeEventListener("scroll", updateMenuPosition, true);
   notifyCardDragLock(false);
+  cancelHoverOpen();
   clearCloseTimer();
 });
 </script>
@@ -460,17 +470,23 @@ onBeforeUnmount(() => {
 
 .trigger-chevron,
 .accordion-chevron {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform 0.16s ease;
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  align-self: center;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-origin: 50% 50%;
+  transition: transform .16s ease;
 }
 
-.trigger-chevron.expanded {
-  transform: rotate(225deg) translate(-1px, -1px);
+.trigger-chevron.expanded,
+.accordion-chevron.expanded {
+  transform: rotate(180deg);
 }
 
 .subtype-menu {
@@ -614,9 +630,7 @@ onBeforeUnmount(() => {
   color: #ea444d;
 }
 
-.accordion-chevron.expanded {
-  transform: rotate(225deg) translate(-1px, -1px);
-}
+
 
 .accordion-panel {
   display: grid;
@@ -649,6 +663,9 @@ onBeforeUnmount(() => {
     max-width: 44vw;
     padding: 5px 10px;
   }
-
+}
+@media (prefers-reduced-motion: reduce) {
+  .trigger-chevron, .accordion-chevron,
+  .subtype-menu-enter-active, .subtype-menu-leave-active { transition: none; }
 }
 </style>

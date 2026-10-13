@@ -2,9 +2,9 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const DEFAULT_CATALOG_URL = "";
-const DEFAULT_TIMEOUT_MS = 8000;
-const DEFAULT_ATTEMPTS = 3;
-const DEFAULT_RETRY_DELAY_MS = 500;
+const DEFAULT_TIMEOUT_MS = 20000;
+const DEFAULT_ATTEMPTS = 4;
+const DEFAULT_RETRY_DELAY_MS = 750;
 
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(String(value || ""), 10);
@@ -55,6 +55,7 @@ const fetchCatalog = async () => {
       return catalog;
     } catch (error) {
       lastError = error;
+      console.warn(`[trends-catalog-build] attempt ${attempt}/${attempts} failed (${error?.name === "AbortError" ? "timeout" : "upstream-error"}); ${attempt < attempts ? "retrying" : "build will fail closed"}`);
       if (attempt < attempts) {
         await wait(retryDelayMs * attempt);
       }
@@ -64,6 +65,101 @@ const fetchCatalog = async () => {
   }
 
   throw lastError || new Error("catalog fetch failed");
+};
+
+const normalizeSourceNames = (values = []) => [
+  ...new Set(
+    values
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  ),
+];
+
+const collectTopLevelObjectLiterals = (source = "") => {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let quote = "";
+  let escaped = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        inString = false;
+        quote = "";
+      }
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      inString = true;
+      quote = char;
+      continue;
+    }
+    if (char === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0 && start >= 0) {
+        objects.push(source.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return objects;
+};
+
+const extractVisibleStaticSourceNames = (storeSource = "") => {
+  const newsSectionMatch = String(storeSource).match(
+    /defaultNewsArr:\s*\[(.*?)\n\s*\],\n\s*newsArr:/s,
+  );
+  const newsSection = newsSectionMatch?.[1] || "";
+  return normalizeSourceNames(
+    collectTopLevelObjectLiterals(newsSection)
+      .filter((entry) => !/\bshow:\s*false\b/.test(entry))
+      .map((entry) => entry.match(/\bname:\s*"([^"]+)"/)?.[1] || ""),
+  );
+};
+
+const selectBuildSourceNames = ({
+  staticSourceNames = [],
+  catalogSources = [],
+  projectionSourceNames = [],
+} = {}) => {
+  const staticNames = normalizeSourceNames(staticSourceNames);
+  const projectionNames = normalizeSourceNames(projectionSourceNames);
+  const catalogPriorityNames = catalogSources
+    .map((source) => ({
+      key: String(source?.key || "").trim(),
+      priorityTier: String(source?.priorityTier || "").trim(),
+    }))
+    .filter(
+      (source) =>
+        source.key &&
+        (source.priorityTier === "A" || source.priorityTier === "B"),
+    )
+    .map((source) => source.key);
+
+  return [
+    ...new Set([
+      ...staticNames,
+      ...catalogPriorityNames,
+      ...projectionNames,
+    ]),
+  ];
 };
 
 const projectSubtypeGroupsForBuild = async (staticGroups, label = "build") => {
@@ -114,7 +210,9 @@ const projectSubtypeGroupsForBuild = async (staticGroups, label = "build") => {
 };
 
 module.exports = {
+  extractVisibleStaticSourceNames,
   fetchCatalog,
   isRequiredCatalogBuild,
   projectSubtypeGroupsForBuild,
+  selectBuildSourceNames,
 };

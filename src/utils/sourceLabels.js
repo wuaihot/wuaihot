@@ -1,6 +1,12 @@
 import { normalizeLocale } from "@/utils/locale";
 
 const SOURCE_LABEL_OVERRIDES = {
+  "ai-bluesky-updates": {"zh-CN":"AI 人物 · Bluesky","zh-TW":"AI 人物 · Bluesky",en:"AI People · Bluesky"},
+  "ai-x-updates": {"zh-CN":"AI 人物 · X","zh-TW":"AI 人物 · X",en:"AI People · X",ja:"AI 人物 · X",ko:"AI 인물 · X"},
+  "ai-official-intake": { "zh-CN": "AI 一手动态", "zh-TW": "AI 一手動態", en: "AI Primary Updates", ja: "AI 一次情報", ko: "AI 원문 업데이트" },
+  "ai-model-board": { "zh-CN": "全球 AI 模型榜", "zh-TW": "全球 AI 模型榜", en: "Global AI Models", ja: "世界 AI モデル", ko: "글로벌 AI 모델" },
+  livebench: { "zh-CN": "LiveBench", "zh-TW": "LiveBench", en: "LiveBench", ja: "LiveBench", ko: "LiveBench" },
+  "lolesports-news": { "zh-CN": "LoL 电竞", "zh-TW": "LoL 電競", en: "LoL Esports", ja: "LoL Esports", ko: "LoL Esports" },
   weibo: { en: "Weibo Hot Search" },
   cls: { en: "CLS Telegraph" },
   "eastmoney-flash": { en: "Eastmoney Flash" },
@@ -25,6 +31,7 @@ const SOURCE_LABEL_OVERRIDES = {
   bilibili: { en: "Bilibili Trending" },
   toutiao: { en: "Toutiao Hot List" },
   baidu: { en: "Baidu Hot Search" },
+  "bing-hot": { en: "Bing Trending Searches" },
   kuaishou: { en: "Kuaishou Trending" },
   "36kr": { en: "36Kr Trending" },
   "qq-news": { en: "Tencent News Trending" },
@@ -38,6 +45,7 @@ const SOURCE_LABEL_OVERRIDES = {
   nytimes: { en: "The New York Times" },
   "douban-group": { en: "Douban Groups" },
   "douban-movie": { en: "Douban Movies & TV" },
+  "maoyan-movie": { en: "Maoyan Movies" },
   weread: { en: "WeRead Trending" },
   csdn: { en: "CSDN Trending" },
   juejin: { en: "Juejin Trending" },
@@ -75,6 +83,9 @@ const SOURCE_LABEL_OVERRIDES = {
   "skills-rank": { en: "Skills Rank" },
   openai: { en: "OpenAI" },
   "openai-news": { en: "OpenAI" },
+  "openai-devs-x": { en: "OpenAI Developers · X" },
+  "openai-x": { en: "OpenAI · X" },
+  "anthropic-x": { en: "Anthropic · X" },
   "openai-research": { en: "OpenAI" },
   "anthropic-news": { en: "Anthropic" },
   "deepmind-blog": { en: "DeepMind" },
@@ -116,6 +127,13 @@ const SOURCE_LABEL_LOCALIZATIONS = {
     en: "Baidu Hot Search",
     ja: "Baidu急上昇検索",
     ko: "Baidu 인기 검색어",
+  },
+  "bing-hot": {
+    "zh-CN": "必应热搜",
+    "zh-TW": "Bing 熱搜",
+    en: "Bing Trending Searches",
+    ja: "Bingトレンド検索",
+    ko: "Bing 인기 검색어",
   },
   kuaishou: {
     "zh-CN": "快手热榜",
@@ -340,6 +358,13 @@ const SOURCE_LABEL_LOCALIZATIONS = {
     en: "Douban Movies & TV",
     ja: "Douban映画・ドラマ",
     ko: "Douban 영화·TV",
+  },
+  "maoyan-movie": {
+    "zh-CN": "猫眼电影",
+    "zh-TW": "貓眼電影",
+    en: "Maoyan Movies",
+    ja: "Maoyan映画",
+    ko: "Maoyan 영화",
   },
   weread: {
     "zh-CN": "微信读书热榜",
@@ -5389,7 +5414,7 @@ export const getSubtypeLabel = (item, locale = "zh-CN") => {
   const rawLabel = normalizeLookupLabel(item?.label || "");
   const fallbackKey = normalizeLookupLabel(item?.value || rawLabel);
   const override =
-    SUBTYPE_LABEL_OVERRIDES[fallbackKey] || SUBTYPE_LABEL_OVERRIDES[rawLabel];
+    (item?.contentOnly ? null : SUBTYPE_LABEL_OVERRIDES[fallbackKey]) || SUBTYPE_LABEL_OVERRIDES[rawLabel];
   if (override?.[normalizedLocale]) {
     return override[normalizedLocale];
   }

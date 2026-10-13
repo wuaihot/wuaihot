@@ -106,8 +106,13 @@ const contextToolbarSource = fs.readFileSync(
 );
 assert.match(
   contextToolbarSource,
-  /<h1 class="context-breadcrumb__section context-breadcrumb__page-title">[\s\S]{0,120}\{\{ copy\.homeHeading \}\}/,
-  "homepage must expose a visible semantic H1 inside the existing breadcrumb row",
+  /<h1 v-if="routeKind === 'home'" class="sr-only">[\s\S]{0,120}\{\{ copy\.homeHeading \}\}/,
+  "homepage must retain a semantic H1 without rendering a redundant breadcrumb",
+);
+assert.match(
+  contextToolbarSource,
+  /\["category", "list"\]\.includes\(routeKind\.value\)/,
+  "context toolbar remains on category and ranking routes but does not occupy topic pages",
 );
 assert.match(
   contextToolbarSource,

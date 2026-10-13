@@ -92,7 +92,7 @@ const routes = [
         url: canonical,
       }),
     },
-    component: () => import("@/views/EventHub.vue"),
+    component: () => import("@/views/EventPage.vue"),
   },
   {
     path: `/${localePattern}/event/:eventSlug`,
@@ -111,7 +111,7 @@ const routes = [
         url: canonical,
       }),
     },
-    component: () => import("@/views/EventHub.vue"),
+    component: () => import("@/views/EventPage.vue"),
   },
   {
     path: "/topic/chigua",

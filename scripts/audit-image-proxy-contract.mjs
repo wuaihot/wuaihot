@@ -42,6 +42,11 @@ assert.ok(
 );
 assert.match(serverSource, /target\.protocol !== "https:"/);
 assert.match(serverSource, /return `\$\{target\.origin\}\/`/);
+assert.match(
+  serverSource,
+  /vercel-cdn-cache-control[\s\S]{0,180}max-age=604800[\s\S]{0,120}stale-while-revalidate=2592000/,
+  "proxied ranking covers must be reusable from the CDN instead of refetching origin media on repeated previews",
+);
 
 const testableClientSource = clientSource.replace(
   "import.meta.env.PROD",
@@ -62,6 +67,7 @@ assert.equal(
 );
 
 const weiboCover = "https://wx3.sinaimg.cn/large/example.jpg";
+const weiboFullPreviewCover = "https://wx3.sinaimg.cn/mw1024/example.jpg";
 const weiboMediumCover = "https://wx3.sinaimg.cn/mw690/example.jpg";
 const weiboCompactCover = "https://wx3.sinaimg.cn/orj360/example.jpg";
 assert.equal(
@@ -74,7 +80,7 @@ assert.equal(
 );
 assert.equal(
   clientModule.getCoverFullSrc(weiboCompactCover),
-  `/api/image-proxy?url=${encodeURIComponent(weiboCover)}`,
+  `/api/image-proxy?url=${encodeURIComponent(weiboFullPreviewCover)}`,
 );
 assert.equal(
   clientModule.getCoverDisplaySrc(weiboCompactCover),

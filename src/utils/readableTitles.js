@@ -1,5 +1,9 @@
+import { WORLDS_2026_NEWS_ZH } from "@/data/events/worlds-2026-primer.mjs";
 import { getLocaleMeta, normalizeLocale } from "@/utils/locale";
 import { getReadableTranslations } from "@/api";
+import {restoreReadableBrands,readableBackendBatch} from "@/utils/readableTranslationProtocol.mjs";
+import { preservesRankingTitle, restoreRankingEntityTitles } from './rankingEntityTitles.mjs';
+import { applyReviewedTranslation, reviewedTranslationFor } from './reviewedTranslation.js';
 import {
   protectTranslationTerms,
   translatePlainTexts,
@@ -9,6 +13,8 @@ const READABLE_TRANSLATION_LOCALES = new Set(["zh-CN", "en", "zh-TW", "ja", "ko"
 const CLIENT_FIRST_TRANSLATION_LOCALES = new Set(["zh-CN"]);
 const ALLOW_CLIENT_READABLE_TRANSLATION = !import.meta.env.PROD;
 const ENTITY_TITLE_SOURCE_NAMES = new Set([
+  "ai-model-board",
+  "livebench",
   "openrouter-rankings",
   "artificialanalysis",
   "arena-ai",
@@ -62,7 +68,7 @@ const mergeTranslatedMap = (target, source) => {
 const MODEL_NAME_MARKER_PATTERN =
   /\b(?:GPT|ChatGPT|Claude|Sonnet|Opus|Haiku|Fable|Mythos|Gemini|Gemma|DiffusionGemma|GLM|Llama|Grok|Qwen|DeepSeek|Mistral|Mixtral|Kimi|ERNIE|Hunyuan|Doubao|Phi|Command|Aya|DALL[·-]E|Sora)\b/i;
 const SENTENCE_SIGNAL_PATTERN =
-  /\b(?:a|an|the|to|for|with|without|in|on|from|by|and|or|how|why|what|new|updated|introducing|launching|using|improving|securing|unlocking|building|expanding|investing|powering|measuring|statement|research|program|community|grant|family|future|analytics|controls|safety|agents?|generation|translation|voice|natural|faster|multimodal|encoder|robotics|learning|impact)\b/i;
+  /\b(?:a|an|the|to|for|with|without|in|on|from|by|and|or|how|why|what|new|updated|introducing|launching|using|improving|securing|unlocking|building|expanding|investing|powering|measuring|statement|research|program|community|grant|family|future|analytics|controls|safety|agents?|generation|translation|voice|natural|faster|multimodal|encoder|robotics|learning|impact|academy|scales|discovers|verification|evaluation|efforts)\b/i;
 const ANTHROPIC_LABEL_PATTERN =
   "(?:Announcements|Announcement|Product|Research|Company|Policy|News|Engineering|Events|Event)";
 const MONTH_NAME_PATTERN =
@@ -138,6 +144,8 @@ const normalizeAnthropicItem = (item = {}) => {
 };
 
 export const normalizeReadableSourceResult = (result, sourceName = "") => {
+  result = restoreRankingEntityTitles(result, sourceName);
+  if(Array.isArray(result?.data))result={...result,data:result.data.map(item=>item.originalTitle?{...item,title:restoreReadableBrands(item.originalTitle,item.title),...(item.originalDesc?{desc:restoreReadableBrands(item.originalDesc,item.desc)}:{})}:item)};
   if (!SOURCE_TEXT_NORMALIZER_NAMES.has(sourceName)) return result;
   if (!Array.isArray(result?.data) || !result.data.length) return result;
   let changed = false;
@@ -154,7 +162,7 @@ const getClientTranslatedMap = async (texts = [], locale) => {
   return toTranslatedMap([...clientMap.entries()]);
 };
 
-const getBackendTranslatedMap = async (texts = [], locale) => {
+const getBackendTranslatedMap = async (texts = [], locale, options={}) => {
   const backendMap = new Map();
   const titleChunks = chunkTitles(texts);
   let cursor = 0;
@@ -163,27 +171,7 @@ const getBackendTranslatedMap = async (texts = [], locale) => {
     while (cursor < titleChunks.length) {
       const titleChunk = titleChunks[cursor++];
       try {
-        const protectedItems = titleChunk.map((text) => protectTranslationTerms(text));
-        const response = await getReadableTranslations(
-          protectedItems.map((item) => item.protectedText),
-          locale
-        );
-        const data = Array.isArray(response?.data?.data)
-          ? response.data.data
-          : Array.isArray(response?.data)
-            ? response.data
-            : [];
-        const chunkMap = toTranslatedMap(
-          data.map((item, index) => {
-            const original = titleChunk[index] || item.original;
-            const protectedItem =
-              protectedItems[index] || protectTranslationTerms(original);
-            const translated = protectedItem
-              .restore(String(item.translated || "").trim())
-              .trim();
-            return [original, translated];
-          })
-        );
+        const chunkMap = await readableBackendBatch(titleChunk,locale,getReadableTranslations,options);
         mergeTranslatedMap(backendMap, chunkMap);
       } catch (error) {
         console.warn("readable title backend translation failed", error);
@@ -249,7 +237,7 @@ const hasLatinSentence = (text = "") => {
   return text.length >= 18 || wordCount >= 2;
 };
 
-const looksTranslatableSentence = (text = "", locale = "zh-CN") => {
+export const looksTranslatableSentence = (text = "", locale = "zh-CN") => {
   const normalizedLocale = normalizeLocale(locale);
   const value = String(text || "").trim();
   if (!value) return false;
@@ -290,8 +278,14 @@ export const shouldUseReadableTitleTranslation = (sourceName, locale, subtype) =
 export const shouldProtectEntityTitleTranslation = (sourceName, subtype) =>
   isEntityTitleSource(sourceName, subtype);
 
-export const translateReadableTitles = async (titles = [], locale, { priority = 0 } = {}) => {
+export const translateReadableTitles = async (
+  titles = [],
+  locale,
+  { priority = 0, allowClientFallback = false, allowRawFallback = false } = {},
+) => {
   const normalizedLocale = normalizeLocale(locale);
+  const clientTranslationAllowed =
+    ALLOW_CLIENT_READABLE_TRANSLATION || Boolean(allowClientFallback);
   const filtered = Array.from(
     new Set(
       titles
@@ -308,7 +302,7 @@ export const translateReadableTitles = async (titles = [], locale, { priority = 
   filtered.forEach((title) => {
     const key = cacheKey(normalizedLocale, title);
     if (translationCache.has(key)) {
-      ready[title] = translationCache.get(key);
+      ready[title] = restoreReadableBrands(title,translationCache.get(key));
       return;
     }
     missing.push(title);
@@ -316,7 +310,7 @@ export const translateReadableTitles = async (titles = [], locale, { priority = 
 
   if (!missing.length) return ready;
 
-  const batchKey = `${normalizedLocale}::${missing.join("\n")}`;
+  const batchKey = `${normalizedLocale}::client:${clientTranslationAllowed ? 1 : 0}::raw:${allowRawFallback?1:0}::${missing.join("\n")}`;
   if (!pendingCache.has(batchKey)) {
     pendingCache.set(
       batchKey,
@@ -331,7 +325,7 @@ export const translateReadableTitles = async (titles = [], locale, { priority = 
         return await enqueueLocaleRequest(normalizedLocale, async () => {
           const translatedMap = new Map();
           const preferClient =
-            ALLOW_CLIENT_READABLE_TRANSLATION &&
+            clientTranslationAllowed &&
             CLIENT_FIRST_TRANSLATION_LOCALES.has(normalizedLocale);
 
           if (preferClient) {
@@ -341,13 +335,13 @@ export const translateReadableTitles = async (titles = [], locale, { priority = 
 
           let unresolved = missing.filter((title) => !translatedMap.has(title));
           if (unresolved.length) {
-            const backendMap = await getBackendTranslatedMap(unresolved, normalizedLocale);
+            const backendMap = await getBackendTranslatedMap(unresolved, normalizedLocale, {allowRawFallback});
             mergeTranslatedMap(translatedMap, backendMap);
           }
 
           unresolved = missing.filter((title) => !translatedMap.has(title));
           if (
-            ALLOW_CLIENT_READABLE_TRANSLATION &&
+            clientTranslationAllowed &&
             !preferClient &&
             unresolved.length
           ) {
@@ -368,7 +362,7 @@ export const translateReadableTitles = async (titles = [], locale, { priority = 
 
   const translated = await pendingCache.get(batchKey);
   missing.forEach((title) => {
-    const value = translated.map.get(title) || "";
+    const value = restoreReadableBrands(title,translated.map.get(title) || "");
     if (translated.success && value) {
       translationCache.set(cacheKey(normalizedLocale, title), value);
     }
@@ -386,8 +380,11 @@ export const enhanceReadableResultTitles = async (
   { includeDescriptions = true, offset = 0, limit = 20, sourceName = "", priority = 0 } = {}
 ) => {
   const normalizedLocale = normalizeLocale(locale);
-  if (!shouldUseReadableTitleTranslation(sourceName, normalizedLocale)) return result;
-  const normalizedResult = normalizeReadableSourceResult(result, sourceName);
+  const normalized = normalizeReadableSourceResult(result, sourceName);
+  const normalizedResult = Array.isArray(normalized?.data)
+    ? { ...normalized, data: normalized.data.map(item => applyReviewedTranslation(item, normalizedLocale)) }
+    : normalized;
+  if (!shouldUseReadableTitleTranslation(sourceName, normalizedLocale)) return normalizedResult;
   if (!Array.isArray(normalizedResult?.data) || !normalizedResult.data.length) {
     return normalizedResult;
   }
@@ -399,8 +396,10 @@ export const enhanceReadableResultTitles = async (
   );
   const scopedItems = normalizedResult.data.slice(start, end);
   const sourceTexts = scopedItems.flatMap((item) => {
-    const texts = [String(item?.originalTitle || item?.title || "").trim()];
-    if (includeDescriptions) {
+    if(preservesRankingTitle(item,sourceName)||item?.extra?.socialPost?.eventGroup?.kind==='verified-day-reset')return [];
+    const reviewed = reviewedTranslationFor(item, normalizedLocale);
+    const texts = reviewed?.title ? [] : [String(item?.originalTitle || item?.title || "").trim()];
+    if (includeDescriptions && !reviewed?.desc) {
       texts.push(String(item?.originalDesc || item?.desc || "").trim());
     }
     return texts;
@@ -408,12 +407,23 @@ export const enhanceReadableResultTitles = async (
 
   if (!sourceTexts.length) return normalizedResult;
 
-  const translatedMap = await translateReadableTitles(sourceTexts, normalizedLocale, { priority });
+  const translatedMap = await translateReadableTitles(sourceTexts, normalizedLocale, {
+    priority,
+    // Fixed public esports news needs the raw fallback after term protection.
+    allowClientFallback: sourceName === "lolesports-news",
+    allowRawFallback: sourceName === "lolesports-news",
+  });
+  if (sourceName === "lolesports-news" && normalizedLocale === "zh-CN") {
+    for (const text of sourceTexts) {
+      if (WORLDS_2026_NEWS_ZH[text]) translatedMap[text] = WORLDS_2026_NEWS_ZH[text];
+    }
+  }
   if (!Object.keys(translatedMap).length) return normalizedResult;
 
   let changed = false;
   const nextData = normalizedResult.data.slice();
   scopedItems.forEach((item, index) => {
+    if(preservesRankingTitle(item,sourceName)||item?.extra?.socialPost?.eventGroup?.kind==='verified-day-reset')return;
     const sourceTitle = String(item?.originalTitle || item?.title || "").trim();
     const sourceDesc = String(item?.originalDesc || item?.desc || "").trim();
     const translatedTitle = String(translatedMap[sourceTitle] || "").trim();
@@ -423,13 +433,14 @@ export const enhanceReadableResultTitles = async (
     };
     let itemChanged = false;
 
-    if (translatedTitle && translatedTitle !== item?.title) {
+    const reviewed = reviewedTranslationFor(item, normalizedLocale);
+    if (!reviewed?.title && translatedTitle && translatedTitle !== item?.title) {
       nextItem.originalTitle = item?.originalTitle || item?.title || sourceTitle;
       nextItem.title = translatedTitle;
       itemChanged = true;
     }
 
-    if (translatedDesc && translatedDesc !== item?.desc) {
+    if (!reviewed?.desc && translatedDesc && translatedDesc !== item?.desc) {
       nextItem.originalDesc = item?.originalDesc || item?.desc || sourceDesc;
       nextItem.desc = translatedDesc;
       itemChanged = true;

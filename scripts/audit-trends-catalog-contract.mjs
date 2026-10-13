@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { mergeDirectoryAndReadCatalogs } from "../src/utils/trendsCatalogSurfaceMerge.mjs";
+import {
+  catalogMatchesSurfaceStatus,
+  mergedCatalogSurfaceMatchesStatus,
+  mergeDirectoryAndReadCatalogs,
+} from "../src/utils/trendsCatalogSurfaceMerge.mjs";
 import {
   applyTrendsSourceCatalog,
   buildSourceSubtypeParams,
@@ -20,10 +24,17 @@ import {
   hasTrendsPublicCatalogSource,
   getSourceSubtypeControlGroups,
   getSourceVariantOption,
+  getSourceVariantOptions,
   resolveLegacySourceProjection,
   resolveTrendsCatalogVariant,
   subscribeTrendsSourceCatalog,
 } from "../src/utils/sourceSubtypes.js";
+
+// The live catalogue is optional during initial render: a cold-cache
+// network stall must not keep the entire Vue app unmounted.
+const mainEntry = fs.readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+assert.match(mainEntry, /void preloadTrendsSourceCatalog\(\);/);
+assert.doesNotMatch(mainEntry, /await preloadTrendsSourceCatalog\(\);/);
 
 const recentTrendsFrontendSources = [
   "apple-app-store",
@@ -184,14 +195,19 @@ const catalog = {
 };
 
 const revisionBeforeInitialCatalog = getTrendsSourceCatalogRevision();
-assert.equal(applyTrendsSourceCatalog(catalog), 5);
+const initialProjectedSourceCount = applyTrendsSourceCatalog(catalog);
+assert.equal(
+  initialProjectedSourceCount,
+  catalog.sources.filter((source) => source.key !== "bilibili").length,
+  "every non-local Catalog source must project, including selector-disabled and variantless sources",
+);
 assert.equal(
   getTrendsSourceCatalogRevision(),
   revisionBeforeInitialCatalog + 1,
   "a changed remote Catalog must advance the global revision exactly once",
 );
 const revisionAfterInitialCatalog = getTrendsSourceCatalogRevision();
-assert.equal(applyTrendsSourceCatalog(catalog), 5);
+assert.equal(applyTrendsSourceCatalog(catalog), initialProjectedSourceCount);
 assert.equal(
   getTrendsSourceCatalogRevision(),
   revisionAfterInitialCatalog,
@@ -263,6 +279,142 @@ assert.equal(resolveTrendsCatalogVariant("xiaohongshu", { type: "hot" }), "hot")
 assert.equal(resolveTrendsCatalogVariant("xiaohongshu", { type: "read-3d" }), null);
 assert.equal(canFallbackTrendsCatalogVariant("xiaohongshu", "hot"), true);
 assert.equal(canFallbackTrendsCatalogVariant("xiaohongshu", "read-3d"), false);
+
+const zeroOverlapCatalog = {
+  version: 1,
+  sources: [
+    {
+      key: "acfun",
+      name: "AcFun",
+      defaultVariant: "all-day",
+      variantSelectorEnabled: true,
+      variantGroups: [
+        {
+          key: "ranking",
+          label: "榜单",
+          options: [
+            { key: "all-day", label: "综合日榜" },
+            { key: "all-week", label: "综合周榜" },
+            { key: "anime-day", label: "番剧日榜" },
+          ],
+        },
+      ],
+      displayAvailable: true,
+    },
+  ],
+};
+applyTrendsSourceCatalog(zeroOverlapCatalog);
+assert.deepEqual(
+  getSourceVariantOptions("acfun").map((item) => item.value),
+  ["all-day", "all-week", "anime-day"],
+  "remote Catalog variants must replace a fully disjoint legacy static variant namespace",
+);
+assert.deepEqual(
+  getSourceSubtypeGroups("acfun").flatMap((group) => group.items.map((item) => item.value)),
+  ["all-day", "all-week", "anime-day"],
+  "remote selector controls must remain authoritative even when legacy values have zero overlap",
+);
+assert.equal(getDefaultSourceSubtype("acfun"), "all-day");
+
+const implicitDefaultCatalog = {
+  version: 1,
+  sources: [
+    {
+      key: "qq-news",
+      name: "腾讯新闻",
+      rankingLabel: "热点榜",
+      defaultVariant: "hot",
+      variantSelectorEnabled: false,
+      variantGroups: [],
+      publicAvailable: true,
+    },
+  ],
+};
+applyTrendsSourceCatalog(implicitDefaultCatalog);
+assert.deepEqual(
+  getSourceVariantOptions("qq-news").map((item) => item.value),
+  ["hot"],
+  "a non-empty remote defaultVariant must remain as the implicit single readable variant",
+);
+assert.deepEqual(
+  getSourceSubtypeGroups("qq-news"),
+  [],
+  "an implicit single variant must not create a selector control",
+);
+assert.equal(getDefaultSourceSubtype("qq-news"), "hot");
+assert.equal(resolveTrendsCatalogVariant("qq-news", {}), "hot");
+assert.equal(
+  resolveTrendsCatalogVariant("qq-news", { type: "entertainment" }),
+  null,
+  "unadvertised static variants must not leak through an implicit single-variant Catalog contract",
+);
+
+const variantlessCatalog = {
+  version: 1,
+  sources: [
+    {
+      key: "aicpb-rankings",
+      name: "AICPB",
+      defaultVariant: "",
+      variantSelectorEnabled: false,
+      variantGroups: [],
+      displayAvailable: true,
+    },
+  ],
+};
+applyTrendsSourceCatalog(variantlessCatalog);
+assert.deepEqual(
+  getSourceVariantOptions("aicpb-rankings"),
+  [],
+  "a variantless remote Catalog source must clear stale static variants",
+);
+assert.deepEqual(
+  getSourceSubtypeGroups("aicpb-rankings"),
+  [],
+  "a selector-disabled variantless source must not leak historical controls",
+);
+assert.equal(getDefaultSourceSubtype("aicpb-rankings"), null);
+assert.equal(
+  resolveTrendsCatalogVariant("aicpb-rankings", { type: "global-web" }),
+  null,
+  "stale historical variants must fail closed once the remote Catalog removes them",
+);
+
+const transportMetadataCatalog = {
+  version: 1,
+  sources: [
+    {
+      key: "miyoushe",
+      name: "米游社",
+      defaultVariant: "genshin-news",
+      variantSelectorEnabled: true,
+      variantGroups: [
+        {
+          key: "game",
+          label: "游戏动态",
+          options: [
+            { key: "genshin-news", label: "原神 · 资讯" },
+            { key: "starrail-news", label: "星穹铁道 · 资讯" },
+          ],
+        },
+      ],
+      displayAvailable: true,
+    },
+  ],
+};
+applyTrendsSourceCatalog(transportMetadataCatalog);
+assert.deepEqual(
+  buildSourceSubtypeParams("miyoushe", "genshin-news"),
+  { game: "2", type: "3" },
+  "Catalog-owned visibility must preserve matching legacy transport metadata",
+);
+assert.deepEqual(
+  buildSourceSubtypeParams("miyoushe", "starrail-news"),
+  { game: "6", type: "3" },
+  "transport metadata must survive remote projection for every matching visible variant",
+);
+
+applyTrendsSourceCatalog(catalog);
 assert.deepEqual(resolveLegacySourceProjection("douban-wool", "buy"), {
   sourceName: "douban-group",
   variant: "buy",
@@ -377,6 +529,34 @@ assert.deepEqual(
   mergedSteam.variantGroups.flatMap((group) => group.options.map((option) => option.key)),
   ["topselling", "mostplayed", "steamdeck"],
   "Display variant subset must replace Directory full variants on the active read surface",
+);
+assert.equal(
+  catalogMatchesSurfaceStatus(steamDisplayCatalog, { sources: 1, variants: 3 }),
+  true,
+  "a Display catalog that matches live surface counts must be accepted",
+);
+assert.equal(
+  catalogMatchesSurfaceStatus(steamDisplayCatalog, { sources: 46, variants: 314 }),
+  false,
+  "an HTTP-200 Display catalog with stale/shrunken counts must be rejected against live status",
+);
+assert.equal(
+  mergedCatalogSurfaceMatchesStatus(
+    surfaceMergedCatalog,
+    { sources: 1, variants: 3 },
+    "displayAvailable",
+  ),
+  true,
+  "a coherent cached merged Display surface may be reused during a transient fetch failure",
+);
+assert.equal(
+  mergedCatalogSurfaceMatchesStatus(
+    surfaceMergedCatalog,
+    { sources: 46, variants: 314 },
+    "displayAvailable",
+  ),
+  false,
+  "a cached merged Display surface from another generation must not override live status",
 );
 applyTrendsSourceCatalog(surfaceMergedCatalog);
 assert.deepEqual(
@@ -743,13 +923,57 @@ assert.match(
 );
 assert.match(
   apiSource,
-  /const useLocalRankingAdapter = LOCAL_RANKING_ADAPTER_SOURCES\.has\(type\)[\s\S]{0,420}catalogReadSurface \|\| \(TRENDS_READ_SOURCES\.has\(type\) \? "public" : null\)/,
+  /const useLocalRankingAdapter = LOCAL_RANKING_ADAPTER_SOURCES\.has\(type\)[\s\S]{0,420}catalogReadSurface \|\| \(!hasIndependentRankingAdapter\(type\) && TRENDS_READ_SOURCES\.has\(type\) \? "public" : null\)/,
   "catalog-declared read surfaces must outrank the legacy Public Feed allowlist, while local adapters bypass both",
 );
 assert.match(apiSource, /getTrendsCatalogReadSurface\(type\)/, "catalog-managed sources must resolve an explicit readable surface");
-assert.match(apiSource, /readSurface === "display"/, "Display-only reads must fail closed instead of falling back to legacy full-data endpoints");
+assert.match(
+  apiSource,
+  /const TRENDS_DISPLAY_LEGACY_FALLBACK_VARIANTS = new Map\(\[[\s\S]{0,180}"openrouter-rankings"[\s\S]{0,80}"models-week"/,
+  "OpenRouter models-week may use the same-origin legacy adapter only as a bounded Display migration fallback",
+);
+assert.match(
+  apiSource,
+  /readSurface === "display"[\s\S]{0,120}canUseDisplayLegacyFallback\(type, params\)[\s\S]{0,220}!allowDisplayLegacyFallback[\s\S]{0,120}readSurface === "display"/,
+  "Display-only reads must stay fail-closed except the explicit source/variant migration allowlist",
+);
+assert.doesNotMatch(
+  apiSource,
+  /TRENDS_DISPLAY_LEGACY_FALLBACK_VARIANTS[\s\S]{0,220}"market-share"/,
+  "OpenRouter legacy fallback must not silently bless unimplemented catalog variants",
+);
 assert.match(apiSource, /TRENDS_DISPLAY_API/, "frontend ranking transport must support the bounded Public Display API");
 const catalogLoaderSource = fs.readFileSync(new URL("../src/api/trendsCatalog.js", import.meta.url).pathname, "utf8");
+assert.match(
+  catalogLoaderSource,
+  /dailyhot:trends-source-catalog:v4/,
+  "frontend catalog cache version must invalidate pre-recovery browser snapshots",
+);
+assert.match(
+  catalogLoaderSource,
+  /const catalogRefreshUrl = \(url, force = false\) =>[\s\S]{0,360}Math\.floor\(Date\.now\(\) \/ REVALIDATE_MS\)/,
+  "catalog revalidation must use a bounded revision bucket instead of reusing a one-hour browser-cached URL",
+);
+assert.match(
+  catalogLoaderSource,
+  /fetch\(catalogReadUrl\(url, force\),/,
+  "all remote catalog surfaces must use the cache-busted revalidation URL",
+);
+assert.match(
+  catalogLoaderSource,
+  /STATUS_API[\s\S]{0,1200}cache: "no-store"/,
+  "catalog loader must compare cached/catalog responses with the live no-store Trends status surface",
+);
+assert.match(
+  catalogLoaderSource,
+  /First-party Display Catalog does not match live status; forcing a fresh catalog read/,
+  "an HTTP-200 but stale/shrunken Display catalog must trigger one forced fresh read",
+);
+assert.match(
+  catalogLoaderSource,
+  /mergedCatalogSurfaceMatchesStatus\([\s\S]{0,260}"displayAvailable"/,
+  "a cached Display surface may be reused only when its counts match the live service status",
+);
 assert.match(catalogLoaderSource, /DIRECTORY_API/, "frontend catalog loader must consume the full Trends directory");
 const listViewSource = fs.readFileSync(new URL("../src/views/List.vue", import.meta.url).pathname, "utf8");
 assert.match(listViewSource, /const ensureRouteSourceExists = \(\) =>/, "rank pages must guard removed catalog-managed source routes");

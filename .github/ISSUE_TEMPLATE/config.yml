@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 社区交流与使用求助 · Discussions
+    url: https://github.com/wuaihot/wuaihot/discussions
+    about: 一般交流、使用疑问、想法讨论、使用心得请在 Discussions 中发布。可执行的错误和功能请求请使用上方 Issue 表单。
+  - name: 安全漏洞 · 私密报告指引
+    url: https://github.com/wuaihot/wuaihot/security/policy
+    about: 不要公开提交密钥、漏洞复现利用细节及个人敏感信息。请按公开仓库 SECURITY.md 指引私密报告。

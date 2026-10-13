@@ -1,4 +1,6 @@
+import {normalizeRankingMetric} from './rankingMetricSemantics.js';
 import { formatCompactMetric } from "./compactMetric.js";
+import {calendarPublicationDate,formatCalendarPublicationDate} from './publicationDates.js';
 
 const LABELS = {
   "zh-CN": { author: "作者", published: "发布", hot: "热度", views: "阅读", likes: "点赞", comments: "评论", collects: "收藏" },
@@ -13,6 +15,14 @@ const PRIMARY_METRIC_PREFIXES = [
   ["like-", "likes"],
   ["collect-", "collects"],
 ];
+
+const HEAT_LABELS = new Set([
+  "热度",
+  "熱度",
+  "heat",
+  "注目度",
+  "인기도",
+]);
 
 const normalizeLocale = (locale = "zh-CN") => {
   const value = String(locale || "").toLowerCase();
@@ -63,10 +73,12 @@ export const getRankingItemTimestamp = (item = {}, updateTime = "") =>
   Date.parse(updateTime || "") ||
   Date.now();
 export const formatRankingPublishedAt = (value, locale = "zh-CN") => {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !calendarPublicationDate(value)) return "";
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   const normalized = normalizeLocale(locale);
+  if (calendarPublicationDate(value)) return formatCalendarPublicationDate(value,normalized,{month:'short',day:'numeric',...(date.getUTCFullYear() !== new Date().getFullYear() ? {year:'numeric'} : {})});
   const options = {
     month: "short",
     day: "numeric",
@@ -82,6 +94,7 @@ export const formatRankingPublishedAt = (value, locale = "zh-CN") => {
 };
 
 export const getRankingItemMeta = (item = {}, locale = "zh-CN", context = {}) => {
+  item=normalizeRankingMetric(item,context.sourceName);
   const normalized = normalizeLocale(locale);
   const labels = LABELS[normalized];
   const metadataContext = [];
@@ -96,10 +109,16 @@ export const getRankingItemMeta = (item = {}, locale = "zh-CN", context = {}) =>
   const requestedPrimaryMetricKey = promotePrimary
     ? getRankingPrimaryMetricKey(context?.variant)
     : null;
-  const displayMetricKind = String(item?.metric?.kind || "").trim().toLowerCase();
+  const displayMetricKind = String((item?.displayMetric || item?.metric)?.kind || "").trim().toLowerCase();
+  const displayMetricLabel = String((item?.displayMetric || item?.metric)?.label || "").trim().toLowerCase();
   const displayMetricNumeric = normalizeMetric(item?.metric?.value);
+  const displayMetricIsHeat =
+    displayMetricNumeric !== null &&
+    (displayMetricKind === "heat" ||
+      (displayMetricKind === "value" && HEAT_LABELS.has(displayMetricLabel)));
   const displayMetricMatches = (key) =>
-    displayMetricNumeric !== null && displayMetricKind === key;
+    displayMetricNumeric !== null &&
+    (key === "hot" ? displayMetricIsHeat : displayMetricKind === key);
   const primaryNumeric =
     requestedPrimaryMetricKey === null
       ? null
@@ -109,9 +128,6 @@ export const getRankingItemMeta = (item = {}, locale = "zh-CN", context = {}) =>
             : item?.metrics?.[requestedPrimaryMetricKey],
         ) ??
         (displayMetricMatches(requestedPrimaryMetricKey)
-          ? displayMetricNumeric
-          : null) ??
-        (requestedPrimaryMetricKey === "hot" && displayMetricMatches("heat")
           ? displayMetricNumeric
           : null);
   const fallbackNumeric =
@@ -132,7 +148,8 @@ export const getRankingItemMeta = (item = {}, locale = "zh-CN", context = {}) =>
       : null;
   const genericDisplayMetric =
     displayMetricNumeric !== null &&
-    !["heat", ...metricOrder].includes(displayMetricKind)
+    !displayMetricIsHeat &&
+    !metricOrder.includes(displayMetricKind)
       ? buildDisplayMetric(item.metric, normalized, promotePrimary)
       : null;
   const primaryMetric = promotePrimary

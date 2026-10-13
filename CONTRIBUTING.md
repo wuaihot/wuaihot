@@ -7,7 +7,9 @@
 - Bug、兼容问题与代码缺陷：使用 GitHub Bug 模板。
 - 新功能与架构建议：使用 Feature 模板，先说明真实场景和问题。
 - 新数据源：使用 Source Request 模板，并提供来源、榜单页面/API、许可或平台条款证据。
-- 安全问题不要提交公开 Issue，请按 SECURITY.md 处理。
+- 普通疑问、使用交流和尚未形成清晰需求的想法：使用公开仓库的 [Discussions](https://github.com/wuaihot/wuaihot/discussions)。
+- 安全问题不要提交公开 Issue 或 Discussion，请按 [SECURITY.md](./SECURITY.md) 私密报告。
+- GitHub 社区为公开反馈真源；本项目不再要求向第三方自部署反馈系统重复提交。
 
 ## 本地开发
 

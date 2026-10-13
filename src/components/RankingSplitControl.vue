@@ -168,8 +168,8 @@
           :title="copy.splitMenu"
           :aria-label="copy.splitMenu"
           :aria-expanded="menuOpen ? 'true' : 'false'"
-          @mouseenter="handleTriggerEnter"
-          @mouseleave="handleTriggerLeave"
+          @pointerenter="handleTriggerEnter"
+          @pointerleave="handleTriggerLeave"
           @focus="handleTriggerFocus"
           @click.stop="handleTriggerClick"
           @keydown.esc.stop.prevent="closeMenu"
@@ -180,8 +180,8 @@
 
       <div
         class="ranking-split-control__menu"
-        @mouseenter="cancelMenuClose"
-        @mouseleave="scheduleMenuClose"
+        @pointerenter="cancelMenuClose"
+        @pointerleave="handleMenuLeave"
         @focusin="cancelMenuClose"
         @click.stop
       >
@@ -263,6 +263,8 @@ const hoverCapable = ref(false);
 const menuId = `ranking-split-control:${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
 let hoverMediaQuery;
 let closeTimer;
+let enterTimer;
+const cancelMenuEnter = () => { clearTimeout(enterTimer); enterTimer = undefined; };
 
 const COPY = {
   "zh-CN": {
@@ -419,16 +421,19 @@ const syncDraft = () => {
 };
 const updateHoverCapability = (event) => {
   hoverCapable.value = Boolean(event?.matches ?? hoverMediaQuery?.matches);
+  if (!hoverCapable.value) cancelMenuEnter();
 };
 const cancelMenuClose = () => {
   clearTimeout(closeTimer);
   closeTimer = undefined;
 };
 const closeMenu = () => {
+  cancelMenuEnter();
   cancelMenuClose();
   menuOpen.value = false;
 };
 const openMenu = () => {
+  cancelMenuEnter();
   cancelMenuClose();
   if (!menuOpen.value) syncDraft();
   menuOpen.value = true;
@@ -437,13 +442,22 @@ const openMenu = () => {
 const scheduleMenuClose = () => {
   if (!hoverCapable.value) return;
   cancelMenuClose();
-  closeTimer = setTimeout(closeMenu, 140);
+  closeTimer = setTimeout(closeMenu, 170);
 };
-const handleTriggerEnter = () => {
-  if (hoverCapable.value) openMenu();
+const handleTriggerEnter = (event) => {
+  if (!hoverCapable.value || event.pointerType !== 'mouse') return;
+  cancelMenuEnter();
+  cancelMenuClose();
+  if (!menuOpen.value) enterTimer = setTimeout(openMenu, 130);
 };
-const handleTriggerLeave = () => {
-  if (hoverCapable.value) scheduleMenuClose();
+const handleTriggerLeave = (event) => {
+  if (!hoverCapable.value || event.pointerType !== 'mouse') return;
+  cancelMenuEnter();
+  if (menuOpen.value) scheduleMenuClose();
+};
+const handleMenuLeave = (event) => {
+  if (!hoverCapable.value || event.pointerType !== 'mouse') return;
+  scheduleMenuClose();
 };
 const handleTriggerFocus = () => {
   if (hoverCapable.value) openMenu();
@@ -472,6 +486,7 @@ onMounted(() => {
   window.addEventListener(HOVER_MENU_OPEN_EVENT, handleForeignMenuOpen);
 });
 onBeforeUnmount(() => {
+  cancelMenuEnter();
   cancelMenuClose();
   hoverMediaQuery?.removeEventListener?.("change", updateHoverCapability);
   window.removeEventListener(HOVER_MENU_OPEN_EVENT, handleForeignMenuOpen);

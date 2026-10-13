@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const {
+  extractVisibleStaticSourceNames,
   projectSubtypeGroupsForBuild,
+  selectBuildSourceNames,
 } = require("./lib/trends-catalog-build.cjs");
 
 const ENV_KEYS = [
@@ -93,6 +95,62 @@ const run = async () => {
   assert.equal(retryCalls, 2);
   assert.equal(retrySuccess.projected, 0);
 
+  // The production catalogue must also retry a stalled HTTP connection,
+  // not only a synchronous fetch failure, without returning partial SEO data.
+  setTestDefaults();
+  process.env.VERCEL_ENV = "production";
+  let timeoutCalls = 0;
+  global.fetch = async (_url, options) => {
+    timeoutCalls += 1;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        reject(new DOMException("catalog request timed out", "AbortError"));
+      }, { once: true });
+    });
+  };
+  await assert.rejects(
+    () => projectSubtypeGroupsForBuild(staticGroups, "catalog-build-test-abort"),
+    /Trends catalog is required for production build: catalog request timed out/,
+  );
+  assert.equal(timeoutCalls, 2);
+
+  const visibleStaticSourceNames = extractVisibleStaticSourceNames(`
+const mockStore = {
+  defaultNewsArr: [
+    {
+      name: "visible-static",
+      show: true,
+    },
+    {
+      name: "hidden-static",
+      show: false,
+    },
+    {
+      name: "implicit-visible",
+    },
+  ],
+  newsArr: [],
+};
+`);
+  assert.deepEqual(
+    visibleStaticSourceNames,
+    ["visible-static", "implicit-visible"],
+    "static SEO sources must respect defaultNewsArr show:false while keeping visible and implicit-visible entries",
+  );
+  assert.deepEqual(
+    selectBuildSourceNames({
+      staticSourceNames: [...visibleStaticSourceNames, "legacy-static"],
+      catalogSources: [
+        { key: "visible-static", priorityTier: "C" },
+        { key: "dynamic-a", priorityTier: "A" },
+        { key: "dynamic-c", priorityTier: "C" },
+      ],
+      projectionSourceNames: ["visible-static", "dynamic-a"],
+    }),
+    ["visible-static", "implicit-visible", "legacy-static", "dynamic-a"],
+    "SEO source selection must keep visible local sources, add A/B Catalog sources, dedupe projections and exclude hidden static sources",
+  );
+
   setTestDefaults();
   process.env.VERCEL_ENV = "production";
   process.env.TRENDS_CATALOG_URL = "";
@@ -110,7 +168,7 @@ const run = async () => {
   );
 
   console.log(
-    "[trends-catalog-build] preview fallback, production fail-closed, retry recovery and missing-url guard verified",
+    "[trends-catalog-build] preview fallback, production fail-closed, retry recovery, visible static SEO sources and missing-url guard verified",
   );
 };
 

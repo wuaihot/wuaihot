@@ -33,7 +33,11 @@ const registerAppServiceWorker = () => {
 
 (async () => {
   await ensureCacheVersion();
-  await preloadTrendsSourceCatalog();
+  // Local/static source definitions are ready synchronously. A slow or
+  // unreachable Trends catalogue must not block the shell and routed views.
+  // Cached catalogue entries are applied synchronously; the async refresh
+  // still updates existing subscribers after the application mounts.
+  void preloadTrendsSourceCatalog();
 
   const app = createApp(App);
   const initialLocale = resolveInitialLocale(
@@ -52,7 +56,7 @@ const registerAppServiceWorker = () => {
   const store = mainStore();
   store.ensureNewsList();
   subscribeTrendsSourceCatalog(() => {
-    if (store.syncTrendsCatalogSources() > 0) store.checkNewsUpdate();
+    store.checkNewsUpdate();
   });
 
   app.use(router);

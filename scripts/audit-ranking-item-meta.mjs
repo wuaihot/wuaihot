@@ -45,6 +45,16 @@ assert.equal(
   "an author already rendered beside the ranking title must not repeat in metadata",
 );
 assert.equal(formatRankingPublishedAt("invalid", "zh-CN"), "");
+assert.equal(formatRankingPublishedAt('2026-02-31','zh-CN'),'');
+const originalZone=process.env.TZ;
+try {
+  for (const zone of ['UTC','America/Los_Angeles','Asia/Shanghai']) {
+    process.env.TZ=zone;
+    assert.equal(formatRankingPublishedAt('2026-08-13','zh-CN'),'8月13日','calendar dates must not gain a clock or move across zones');
+    assert.equal(formatRankingPublishedAt('2026-08-13','en'),'Aug 13');
+    assert.match(formatRankingPublishedAt(publishedAt,'zh-CN'),/\d{2}:\d{2}/,'real timestamps retain clock precision');
+  }
+} finally { if(originalZone===undefined)delete process.env.TZ;else process.env.TZ=originalZone; }
 
 const completeSample = {
   hot: 900,
@@ -116,6 +126,23 @@ const displayHeat = getRankingItemMeta(
 );
 assert.equal(displayHeat.primaryMetric?.key, "hot", "Display heat must map onto the canonical hot metric");
 assert.equal(displayHeat.primaryMetric?.numeric, 0, "Display heat must preserve a real zero value");
+
+const legacyDisplayHeat = getRankingItemMeta(
+  { metric: { label: "热度", kind: "value", value: 6722012 } },
+  "zh-CN",
+  { variant: "hot" },
+);
+assert.equal(
+  legacyDisplayHeat.primaryMetric?.key,
+  "hot",
+  "legacy Display value metrics labelled 热度 must normalize to canonical hot",
+);
+assert.equal(legacyDisplayHeat.primaryMetric?.numeric, 6722012);
+assert.equal(
+  legacyDisplayHeat.metrics.some(({ key }) => key === "display:value"),
+  false,
+  "heat-labelled Display values must not leak back as a generic metric pill",
+);
 
 const displayViews = getRankingItemMeta(
   { metric: { label: "阅读", kind: "views", value: 1234 } },

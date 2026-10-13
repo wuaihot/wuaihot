@@ -70,19 +70,8 @@
         </div>
       </div>
     </n-card>
-    <n-card v-if="showsDisplay" class="set-item full layout-width-setting">
-      <div class="top">
-        <div class="name">
-          <n-text class="text">{{ t("settings.focusContainerWidth") }}</n-text>
-          <n-text class="tip" :depth="3">{{ t("settings.focusContainerWidthTip") }}</n-text>
-        </div>
-        <div class="layout-width-control">
-          <n-slider v-model:value="focusContainerWidth" :min="1080" :max="1600" :step="40" :tooltip="false" />
-          <n-input-number v-model:value="focusContainerWidth" :min="1080" :max="1600" :step="40" size="small" />
-          <span>px</span>
-        </div>
-      </div>
-    </n-card>
+    <n-card v-if="showsDisplay" class="set-item full"><PageWidthControl scope="ranking" /></n-card>
+    <n-card v-if="showsDisplay" class="set-item full"><PageWidthControl scope="topic" /></n-card>
 
 
     <n-card v-if="showsDisplay" class="set-item full view-memory-setting">
@@ -295,6 +284,7 @@
 </template>
 
 <script setup>
+import PageWidthControl from "./PageWidthControl.vue";
 import { storeToRefs } from "pinia";
 import { mainStore } from "@/store";
 import { clearAppCaches, getCacheVersion } from "@/utils/cache";
@@ -328,7 +318,6 @@ const {
   linkOpenType,
   headerFixed,
   siteContainerWidth,
-  focusContainerWidth,
   categoryViewMode,
   listFontSize,
   compactListFontSize,
@@ -351,6 +340,8 @@ const persistedKeys = [
   "homeCompactColumns",
   "siteContainerWidth",
   "focusContainerWidth",
+  "rankingContainerWidth",
+  "topicContainerWidth",
   "showPinnedRankings",
   "categoryViewMode",
   "categoryViewPerCategory",

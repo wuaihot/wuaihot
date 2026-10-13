@@ -1,34 +1,6 @@
 <template>
-  <template v-if="directSplitOnly">
-    <button
-      type="button"
-      class="ranking-card-operations__trigger no-card-drag"
-      :class="{ 'is-active': splitVariantsNormalized.length }"
-      :title="directSplitLabel"
-      :aria-label="directSplitLabel"
-      data-no-card-drag
-      @click.stop="runDirectSplitAction"
-      @pointerdown.stop
-    >
-      {{ directSplitLabel }}
-    </button>
-
-    <button
-      v-if="isProjection && showMergeAll"
-      type="button"
-      class="ranking-card-operations__trigger is-secondary no-card-drag"
-      :title="t('hotList.mergeAllRankings')"
-      :aria-label="t('hotList.mergeAllRankings')"
-      data-no-card-drag
-      @click.stop="mergeAll"
-      @pointerdown.stop
-    >
-      {{ t("hotList.mergeAllRankings") }}
-    </button>
-  </template>
-
   <n-popover
-    v-else-if="visible"
+    v-if="visible"
     :trigger="triggerMode"
     placement="bottom-end"
     :show="menuOpen"
@@ -44,9 +16,10 @@
         :title="triggerTitle"
         :aria-label="triggerTitle"
         aria-haspopup="menu"
+        :aria-expanded="menuOpen"
         data-no-card-drag
-        @mouseenter="handleTriggerEnter"
-        @mouseleave="handleTriggerLeave"
+        @pointerenter="handleTriggerEnter"
+        @pointerleave="handleTriggerLeave"
         @focus="handleTriggerFocus"
         @click.stop="handleTriggerClick"
         @keydown.esc.stop.prevent="closeMenu"
@@ -54,12 +27,12 @@
       >
         <span>{{ triggerLabel }}</span>
         <span
-          v-if="splitMenuOnly && splitVariantsNormalized.length"
+          v-if="splitVariantsNormalized.length"
           class="ranking-card-operations__count"
         >
           {{ splitVariantsNormalized.length }}/{{ normalizedVariants.length }}
         </span>
-        <span class="ranking-card-operations__chevron" aria-hidden="true"></span>
+        <svg class="ranking-card-operations__chevron" :class="{ 'is-open': menuOpen }" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4" /></svg>
       </button>
     </template>
 
@@ -74,6 +47,7 @@
       @click.stop
       @pointerdown.stop
     >
+      <section class="ranking-card-operations__section"><RankingTimeFilter :source-name="sourceName" :active-variant="activeVariant" @change="$emit('change-period', $event)" /></section>
       <section v-if="hasSortOperations" class="ranking-card-operations__section">
         <MarketRankDirectionControl
           v-if="showNativeOrderControl"
@@ -179,15 +153,18 @@ import { useI18n } from "vue-i18n";
 import { mainStore } from "@/store";
 import MarketListSortControl from "@/components/MarketListSortControl.vue";
 import MarketRankDirectionControl from "@/components/MarketRankDirectionControl.vue";
-import { getSourceVariantOptions } from "@/utils/sourceSubtypes";
+import RankingTimeFilter from "./RankingTimeFilter.vue";
+import { rankingPeriodLabel } from "@/utils/rankingPeriods.mjs";
+import { getSourcePeriodOptions, getSourceContentOptions as getSourceVariantOptions } from "@/utils/sourceSubtypes";
 import { getSubtypeLabel } from "@/utils/sourceLabels";
 import { normalizeLocale } from "@/utils/locale";
 import { HOVER_MENU_OPEN_EVENT, announceHoverMenuOpen } from "@/utils/hoverMenu";
 
-defineEmits(["change-direction"]);
+defineEmits(["change-direction", "change-period"]);
 
 const props = defineProps({
   sourceName: { type: String, required: true },
+  activeVariant: { type: String, default: "" },
   showNativeOrderControl: { type: Boolean, default: false },
   showMarketSortControl: { type: Boolean, default: false },
   marketRankDirection: { type: String, default: "normal" },
@@ -209,6 +186,8 @@ const hoverCapable = ref(false);
 const menuId = `ranking-card-operations:${getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2)}`;
 let hoverMediaQuery;
 let closeTimer;
+let enterTimer;
+const cancelMenuEnter = () => { clearTimeout(enterTimer); enterTimer = undefined; };
 
 const hasSortOperations = computed(
   () => props.showNativeOrderControl || props.showMarketSortControl,
@@ -238,43 +217,16 @@ const effectiveSplitControl = computed(
   () => props.showSplitControl && normalizedVariants.value.length > 1,
 );
 const visible = computed(
-  () =>
+  () => Boolean(props.sourceName) ||
     hasSortOperations.value ||
     effectiveSplitControl.value ||
     props.hasExtraOperations,
 );
-const directSplitOnly = computed(
-  () =>
-    effectiveSplitControl.value &&
-    (isProjection.value || normalizedVariants.value.length === 2) &&
-    !hasSortOperations.value &&
-    !props.hasExtraOperations,
-);
-const splitMenuOnly = computed(
-  () =>
-    effectiveSplitControl.value &&
-    !isProjection.value &&
-    normalizedVariants.value.length > 2 &&
-    !hasSortOperations.value &&
-    !props.hasExtraOperations,
-);
-const allSplit = computed(
-  () =>
-    normalizedVariants.value.length > 0 &&
-    splitVariantsNormalized.value.length === normalizedVariants.value.length,
-);
-const directSplitLabel = computed(() => {
-  if (isProjection.value) return t("hotList.mergeRanking");
-  return allSplit.value
-    ? t("hotList.mergeAllRankings")
-    : t("hotList.splitRankings");
+const triggerTitle = computed(() => t("hotList.rankOperations"));
+const triggerLabel = computed(() => {
+  const period = getSourcePeriodOptions(props.sourceName,props.activeVariant).find(o=>o.value===props.activeVariant)?.period;
+  return period ? rankingPeriodLabel(period,locale.value) : triggerTitle.value;
 });
-const triggerTitle = computed(() =>
-  splitMenuOnly.value
-    ? t("hotList.splitRankings")
-    : t("hotList.rankOperations"),
-);
-const triggerLabel = computed(() => triggerTitle.value);
 const canMergeAll = computed(
   () =>
     effectiveSplitControl.value &&
@@ -315,16 +267,19 @@ const syncDraft = () => {
 };
 const updateHoverCapability = (event) => {
   hoverCapable.value = Boolean(event?.matches ?? hoverMediaQuery?.matches);
+  if (!hoverCapable.value) cancelMenuEnter();
 };
 const cancelMenuClose = () => {
   clearTimeout(closeTimer);
   closeTimer = undefined;
 };
 const closeMenu = () => {
+  cancelMenuEnter();
   cancelMenuClose();
   menuOpen.value = false;
 };
 const openMenu = () => {
+  cancelMenuEnter();
   cancelMenuClose();
   if (!menuOpen.value) syncDraft();
   menuOpen.value = true;
@@ -333,13 +288,18 @@ const openMenu = () => {
 const scheduleMenuClose = () => {
   if (!hoverCapable.value) return;
   cancelMenuClose();
-  closeTimer = setTimeout(closeMenu, 140);
+  closeTimer = setTimeout(closeMenu, 170);
 };
-const handleTriggerEnter = () => {
-  if (hoverCapable.value) openMenu();
+const handleTriggerEnter = (event) => {
+  if (!hoverCapable.value || event.pointerType !== 'mouse') return;
+  cancelMenuClose();
+  cancelMenuEnter();
+  if (!menuOpen.value) enterTimer = setTimeout(openMenu, 130);
 };
-const handleTriggerLeave = () => {
-  if (hoverCapable.value) scheduleMenuClose();
+const handleTriggerLeave = (event) => {
+  if (!hoverCapable.value || event.pointerType !== 'mouse') return;
+  cancelMenuEnter();
+  if (menuOpen.value) scheduleMenuClose();
 };
 const handleTriggerFocus = () => {
   if (hoverCapable.value) openMenu();
@@ -368,6 +328,7 @@ onMounted(() => {
   window.addEventListener(HOVER_MENU_OPEN_EVENT, handleForeignMenuOpen);
 });
 onBeforeUnmount(() => {
+  cancelMenuEnter();
   cancelMenuClose();
   hoverMediaQuery?.removeEventListener?.("change", updateHoverCapability);
   window.removeEventListener(HOVER_MENU_OPEN_EVENT, handleForeignMenuOpen);
@@ -409,11 +370,6 @@ const mergeAll = () => {
   menuOpen.value = false;
 };
 
-const runDirectSplitAction = () => {
-  if (isProjection.value) mergeCurrent();
-  else if (allSplit.value) mergeAll();
-  else splitAll();
-};
 
 watch(
   splitVariantsNormalized,
@@ -486,12 +442,22 @@ watch(
 }
 
 .ranking-card-operations__chevron {
-  width: 6px;
-  height: 6px;
-  margin-top: -2px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  align-self: center;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-origin: 50% 50%;
+  transition: transform .16s ease;
+}
+.ranking-card-operations__chevron.is-open { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .ranking-card-operations__chevron { transition: none; }
 }
 
 .ranking-card-operations__panel {

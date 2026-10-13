@@ -1,3 +1,10 @@
+import {handleAiSocial} from './_ai-social.js';
+import {handleAiOfficialPublications} from './_ai-official-publications.js';
+import { handleAiIntake } from './_ai-intake.js';
+import { handleAiModels } from './_ai-models.js';
+import { handleLolOfficial } from './_lol-official.js';
+import { handleAiIntelligence } from "./_ai-intelligence.js";
+import { handleTrendsCatalogProxy, handleTrendsRankingProxy } from "./_trends-catalog.js";
 import { resolveProxiedImageContentType } from "./_image-content-type.js";
 import { protectTranslationTerms } from "./_translation-terms.js";
 import {
@@ -28,8 +35,8 @@ const prepareReadableTranslationProxyBody = (body) => {
   try {
     const payload = JSON.parse(body);
     if (!Array.isArray(payload?.texts)) return null;
-    const protectedItems = payload.texts.map((text, index) =>
-      protectTranslationTerms(text, `DHTERM${index}N`)
+    const protectedItems = payload.texts.map((text) =>
+      protectTranslationTerms(text)
     );
     return {
       body: JSON.stringify({
@@ -82,8 +89,22 @@ const IMAGE_PROXY_ALLOWED_HOST_SUFFIXES = [
 ];
 const IMAGE_PROXY_MAX_BYTES = 8 * 1024 * 1024;
 const IMAGE_PROXY_TIMEOUT_MS = 15000;
+const READABLE_TRANSLATION_PROXY_TIMEOUT_MS = 12000;
 const PUBLIC_API_FALLBACK_BASE_URL = process.env.INTERNAL_API_FALLBACK_BASE_URL || "";
 const PUBLIC_API_FALLBACK_PATHS = new Set([
+  // Independently readable ranking adapters; kept explicit for the Node function bundle.
+  "sina-ai",
+  "coolapk",
+  "github",
+  "tianya",
+  "51cto",
+  "jianshu",
+  "arena-ai",
+  "designarena",
+  "paperswithcode",
+  "reddit-localllama",
+  "reddit-machinelearning",
+  "reddit-artificial",
   "readable-translate",
   "super-deals",
   "wool-topic",
@@ -154,6 +175,7 @@ const PUBLIC_API_FIRST_PATHS = new Set([
   "global-indexes",
 ]);
 const API_SUBTYPE_PATH_SOURCES = new Set([
+  "ai-model-board", "ai-official-intake", "livebench",
   "artificialanalysis",
   "bilibili",
   "clawhub",
@@ -2786,7 +2808,13 @@ const getProxyBaseUrlCandidates = (pathValue, baseUrl) => {
   return [...new Set(candidates.map((url) => url?.replace(/\/+$/, "")).filter(Boolean))];
 };
 
-const fetchProxyTarget = async ({ targetUrl, req, body, proxyToken }) => {
+const fetchProxyTarget = async ({
+  targetUrl,
+  req,
+  body,
+  proxyToken,
+  timeoutMs = 0,
+}) => {
   const response = await fetch(targetUrl, {
     method: req.method,
     headers: {
@@ -2797,6 +2825,7 @@ const fetchProxyTarget = async ({ targetUrl, req, body, proxyToken }) => {
       ...(proxyToken ? { "X-Internal-Proxy-Token": proxyToken } : {}),
     },
     body,
+    ...(timeoutMs > 0 ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
   });
   const contentType = response.headers.get("content-type") || "application/json";
   const text = await response.text();
@@ -2886,7 +2915,14 @@ const handleImageProxy = async (req, res) => {
 
     res.status(200);
     res.setHeader("content-type", contentType);
-    res.setHeader("cache-control", "public, max-age=86400, s-maxage=604800");
+    res.setHeader(
+      "cache-control",
+      "public, max-age=86400, stale-while-revalidate=604800",
+    );
+    res.setHeader(
+      "vercel-cdn-cache-control",
+      "public, max-age=604800, stale-while-revalidate=2592000",
+    );
     res.setHeader("access-control-allow-origin", "*");
     res.setHeader("content-length", String(imageBuffer.length));
     if (req.method === "HEAD") {
@@ -3012,10 +3048,18 @@ export default async function handler(req, res) {
     return;
   }
 
+  if (await handleLolOfficial({ req, res, pathValue })) return;
+  if (await handleAiSocial({ req, res, pathValue })) return;
+  if (await handleAiOfficialPublications({ req, res, pathValue })) return;
+  if (await handleAiIntake({ req, res, pathValue })) return;
+  if (await handleAiModels({ req, res, pathValue })) return;
+  if (await handleAiIntelligence({ req, res, pathValue })) return;
+  if (await handleTrendsCatalogProxy({ req, res, pathValue })) return;
+  if (await handleTrendsRankingProxy({ req, res, pathValue })) return;
 
   const body = await readBody(req);
   const readableTranslationProtection =
-    pathValue === "readable-translate"
+    pathValue === "readable-translate" && req.headers["x-readable-raw-fallback"] !== "1"
       ? prepareReadableTranslationProxyBody(body)
       : null;
   const proxyBody = readableTranslationProtection?.body ?? body;
@@ -3098,12 +3142,25 @@ export default async function handler(req, res) {
         req,
         body: proxyBody,
         proxyToken,
+        timeoutMs:
+          pathValue === "readable-translate"
+            ? READABLE_TRANSLATION_PROXY_TIMEOUT_MS
+            : 0,
       });
       const isJson = result.contentType.includes("application/json");
+      let readableTranslationUnavailable = false;
+      if (pathValue === "readable-translate" && isJson && result.response.ok) {
+        try {
+          readableTranslationUnavailable =
+            JSON.parse(result.text)?.success === false;
+        } catch {
+          readableTranslationUnavailable = true;
+        }
+      }
       const shouldTryNext =
         PUBLIC_API_FALLBACK_PATHS.has(pathValue) &&
         proxyBaseUrlCandidates[proxyBaseUrlCandidates.length - 1] !== candidateBaseUrl &&
-        (!isJson || !result.response.ok);
+        (!isJson || !result.response.ok || readableTranslationUnavailable);
 
       if (!shouldTryNext) {
         proxyResult = result;

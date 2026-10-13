@@ -1,9 +1,19 @@
 import { applyTrendsSourceCatalog } from "@/utils/sourceSubtypes";
-import { mergeDirectoryAndReadCatalogs } from "@/utils/trendsCatalogSurfaceMerge.mjs";
+import {
+  catalogMatchesSurfaceStatus,
+  mergedCatalogSurfaceMatchesStatus,
+  mergeDirectoryAndReadCatalogs,
+} from "@/utils/trendsCatalogSurfaceMerge.mjs";
 
-const CACHE_KEY = "dailyhot:trends-source-catalog:v3";
+const CACHE_KEY = "dailyhot:trends-source-catalog:v4";
 const STALE_MS = 24 * 60 * 60 * 1000;
 const REVALIDATE_MS = 5 * 60 * 1000;
+const catalogRefreshUrl = (url, force = false) => {
+  if (!url) return "";
+  const separator = url.includes("?") ? "&" : "?";
+  const revision = force ? Date.now() : Math.floor(Date.now() / REVALIDATE_MS);
+  return `${url}${separator}_catalog=${revision}`;
+};
 const DIRECTORY_API = String(
   import.meta.env.VITE_TRENDS_DIRECTORY_API || "",
 ).replace(/\/$/, "");
@@ -20,7 +30,15 @@ const DISPLAY_API = String(
   import.meta.env.VITE_TRENDS_DISPLAY_API ||
     deriveDisplayApi(PUBLIC_API, DIRECTORY_API),
 ).replace(/\/$/, "");
+const STATUS_API = DISPLAY_API ? DISPLAY_API + "/status" : "";
 
+const catalogReadUrl = (url, force = false) => {
+  if (!import.meta.env.PROD) return catalogRefreshUrl(url, force);
+  const surface = url === DIRECTORY_API + "/catalog.json" ? "directory"
+    : url === PUBLIC_API + "/catalog" ? "public"
+    : url === DISPLAY_API + "/catalog" ? "display" : "status";
+  return "/api/trends-catalog?surface=" + surface + (force ? "&force=1" : "") + "&revision=" + (force ? Date.now() : Math.floor(Date.now() / REVALIDATE_MS));
+};
 let loadingPromise = null;
 
 const cachedCatalog = () => {
@@ -43,14 +61,15 @@ const persistCatalog = (catalog) => {
   }
 };
 
-const fetchJsonCatalog = async (url) => {
+const fetchJsonCatalog = async (url, { force = false } = {}) => {
   if (!url) return null;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2200);
+  const timer = setTimeout(() => controller.abort(), import.meta.env.PROD ? 4500 : 2200);
   try {
-    const response = await fetch(url, {
+    const response = await fetch(catalogReadUrl(url, force), {
       headers: { Accept: "application/json" },
-      credentials: "omit",
+      credentials: import.meta.env.PROD ? "same-origin" : "omit",
+      ...(force ? { cache: "no-store" } : {}),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error("trends_catalog_http_" + response.status);
@@ -62,24 +81,87 @@ const fetchJsonCatalog = async (url) => {
   }
 };
 
+const fetchSurfaceStatus = async () => {
+  if (!STATUS_API) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), import.meta.env.PROD ? 4000 : 1800);
+  try {
+    const separator = STATUS_API.includes("?") ? "&" : "?";
+    const response = await fetch(import.meta.env.PROD ? catalogReadUrl(STATUS_API, true) : `${STATUS_API}${separator}_status=${Date.now()}`, {
+      headers: { Accept: "application/json" },
+      credentials: import.meta.env.PROD ? "same-origin" : "omit",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const firstPartyDisplay = payload?.data || payload;
+    return firstPartyDisplay ? { firstPartyDisplay } : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const fetchCatalog = async () => {
   if (!PUBLIC_API && !DISPLAY_API && !DIRECTORY_API) return null;
-  const [directoryResult, publicResult, displayResult] = await Promise.allSettled([
-    fetchJsonCatalog(DIRECTORY_API ? DIRECTORY_API + "/catalog.json" : ""),
-    fetchJsonCatalog(PUBLIC_API ? PUBLIC_API + "/catalog" : ""),
-    fetchJsonCatalog(DISPLAY_API ? DISPLAY_API + "/catalog" : ""),
-  ]);
+  const [directoryResult, publicResult, displayResult, statusResult] =
+    await Promise.allSettled([
+      fetchJsonCatalog(DIRECTORY_API ? DIRECTORY_API + "/catalog.json" : ""),
+      fetchJsonCatalog(PUBLIC_API ? PUBLIC_API + "/catalog" : ""),
+      fetchJsonCatalog(DISPLAY_API ? DISPLAY_API + "/catalog" : ""),
+      fetchSurfaceStatus(),
+    ]);
   const directoryCatalog =
     directoryResult.status === "fulfilled" ? directoryResult.value : null;
   const publicCatalog =
     publicResult.status === "fulfilled" ? publicResult.value : null;
-  const displayCatalog =
+  let displayCatalog =
     displayResult.status === "fulfilled" ? displayResult.value : null;
+  const surfaceStatus =
+    statusResult.status === "fulfilled" ? statusResult.value : null;
+  const displayStatus = surfaceStatus?.firstPartyDisplay || null;
+
+  if (
+    displayCatalog &&
+    displayStatus &&
+    !catalogMatchesSurfaceStatus(displayCatalog, displayStatus)
+  ) {
+    console.warn(
+      "First-party Display Catalog does not match live status; forcing a fresh catalog read.",
+    );
+    try {
+      const forcedDisplayCatalog = await fetchJsonCatalog(
+        DISPLAY_API ? DISPLAY_API + "/catalog" : "",
+        { force: true },
+      );
+      displayCatalog = catalogMatchesSurfaceStatus(
+        forcedDisplayCatalog,
+        displayStatus,
+      )
+        ? forcedDisplayCatalog
+        : null;
+    } catch {
+      displayCatalog = null;
+    }
+  }
+
+  const cachedSnapshot = cachedCatalog()?.catalog || null;
+  const coherentCachedCatalog =
+    !displayStatus ||
+    mergedCatalogSurfaceMatchesStatus(
+      cachedSnapshot,
+      displayStatus,
+      "displayAvailable",
+    )
+      ? cachedSnapshot
+      : null;
   const catalog = mergeDirectoryAndReadCatalogs({
     directoryCatalog,
     publicCatalog,
     displayCatalog,
-    cachedCatalog: cachedCatalog()?.catalog || null,
+    cachedCatalog: coherentCachedCatalog,
   });
   if (!catalog) {
     throw (

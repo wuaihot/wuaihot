@@ -7,19 +7,18 @@
     class="hot-list"
     :class="{ 'is-compact': store.compactMode }"
     hoverable
-    @click="toList"
   >
     <template #header>
       <div class="header-block">
         <div class="title">
-          <div class="name">
+          <router-link class="name ranking-card-link" :to="detailLocation" @click.stop>
             <n-avatar
               class="ico"
               :src="logoSrc(hotData.name)"
               :fallback-src="errorLogoUrl"
             />
             <n-text class="name-text">{{ sourceLabel }}</n-text>
-          </div>
+          </router-link>
           <GlobalIndexControls
             v-if="isIndexOverviewSource && hotListData?.data?.length"
             class="header-index-controls"
@@ -30,6 +29,7 @@
           />
           <div
             v-else-if="
+              hotData.name ||
               subtypeGroups.length ||
               showNativeOrderControl ||
               showMarketSortControl ||
@@ -47,13 +47,11 @@
               @click.stop
             />
             <RankingCardOperations
-              v-if="
-                showNativeOrderControl ||
-                showMarketSortControl ||
-                hasCategorySplitControl
-              "
+              v-if="hotData.name"
               class="header-ranking-operations"
               :source-name="hotData.name"
+              :active-variant="activeSubType"
+              @change-period="changeSubType"
               :show-native-order-control="showNativeOrderControl"
               :show-market-sort-control="showMarketSortControl"
               :market-rank-direction="marketRankDirection"
@@ -144,7 +142,7 @@
                   'is-pinned': item.isPinned,
                 }"
                 :depth="2"
-                :title="item.isPinned ? '置顶' : undefined"
+                :title="cardNativeTitle(item, item.isPinned ? '置顶' : undefined)"
                 :aria-label="item.isPinned ? '置顶' : `第 ${item.displayRank} 名`"
               >
                 <UiGlyph
@@ -166,7 +164,7 @@
                 "
                 type="button"
                 class="item-thumb"
-                :title="previewImageLabel(item)"
+                :title="cardNativeTitle(item, previewImageLabel(item))"
                 :aria-label="previewImageLabel(item)"
                 @click.stop="openFullImagePreview(item.cover)"
               >
@@ -226,7 +224,7 @@
                 :href="getItemLink(item)"
                 :target="linkTarget"
                 rel="noopener noreferrer nofollow"
-                :title="item.originalTitle || undefined"
+                :title="cardNativeTitle(item, item.originalTitle)"
                 @click.stop
               >
                 <div class="fund-metric-copy">
@@ -261,52 +259,65 @@
                 :href="getItemLink(item)"
                 :target="linkTarget"
                 rel="noopener noreferrer nofollow"
-                :title="item.originalTitle || undefined"
+                :title="cardNativeTitle(item, item.originalTitle)"
                 @click.stop
               >
                 <RankingBadgeGroup
                   v-if="item.inlinePrefixBadges.length"
                   class="is-prefix"
                   :badges="item.inlinePrefixBadges"
+                  :native-titles="!canShowItemPreview(item)"
                 />
                 <span class="item-copy">
+                  <span class="item-title-row">
+                    <span
+                      class="title-text"
+                      :class="{
+                        'no-auto-translate': item.hasReadableTranslation,
+                        notranslate: item.hasReadableTranslation,
+                      }"
+                      :translate="item.hasReadableTranslation ? 'no' : undefined"
+                    >
+                      {{ item.displayTitle }}
+                    </span>
+                    <span
+                      v-if="item.inlineMetric?.kind === 'score'"
+                      class="item-inline-metric is-score"
+                      :title="cardNativeTitle(item, `${item.inlineMetric.label} ${item.inlineMetric.value}`)"
+                    >
+                      <strong>{{ item.inlineMetric.value }}</strong>
+                    </span>
+                  </span>
                   <span
-                    class="title-text"
-                    :class="{
-                      'no-auto-translate': item.hasReadableTranslation,
-                      notranslate: item.hasReadableTranslation,
-                    }"
-                    :translate="item.hasReadableTranslation ? 'no' : undefined"
+                    v-if="item.displayAuthor"
+                    class="item-author notranslate"
+                    translate="no"
+                    :title="cardNativeTitle(item, item.displayAuthor)"
                   >
-                    {{ item.displayTitle }}
+                    <span class="item-author__name">{{ item.displayAuthor }}</span>
                   </span>
                   <span
                     v-if="shouldShowCardSecondaryMeta(item)"
                     class="item-secondary-meta"
-                    :title="item.cardSecondaryMeta"
+                    :title="cardNativeTitle(item, item.cardSecondaryMeta)"
                   >
                     {{ item.cardSecondaryMeta }}
                   </span>
                 </span>
-                <span
-                  v-if="item.displayAuthor"
-                  class="item-author notranslate"
-                  translate="no"
-                  :title="item.displayAuthor"
-                >
-                  <span class="item-author__mark" aria-hidden="true">♪</span>
-                  <span class="item-author__name">{{ item.displayAuthor }}</span>
-                </span>
                 <RankingBadgeGroup
                   v-if="item.suffixBadges.length"
                   :badges="item.suffixBadges"
+                  :native-titles="!canShowItemPreview(item)"
                 />
                 <span
-                  v-if="item.inlineMetric"
+                  v-if="item.inlineMetric && item.inlineMetric.kind !== 'score'"
                   class="item-inline-metric"
-                  :title="`${item.inlineMetric.label} ${item.inlineMetric.value}`"
+                  :class="`is-${item.inlineMetric.kind || 'value'}`"
+                  :title="cardNativeTitle(item, `${item.inlineMetric.label} ${item.inlineMetric.value}`)"
                 >
-                  <span class="item-inline-metric__label">{{ item.inlineMetric.label }}</span>
+                  <span class="item-inline-metric__label">
+                    {{ item.inlineMetric.label }}
+                  </span>
                   <strong>{{ item.inlineMetric.value }}</strong>
                 </span>
               </n-a>
@@ -322,6 +333,7 @@
             <div class="loading">
               <n-skeleton text round />
             </div>
+            <button type="button" class="ranking-quick-trigger no-card-drag" :aria-label="previewLabel" @click.stop="toList">{{ previewCopy }}</button>
             <n-popover v-if="!isProjectionInstance">
               <template #trigger>
                 <span
@@ -343,27 +355,13 @@
           <div class="message">
             <n-text class="time" :depth="3" v-if="updateTime">
               {{ updateTime }}
+              <span v-if="hotListData?.refreshFallback" :title="locale.startsWith('zh') ? '刷新暂未成功，保留上次数据' : 'Refresh unavailable; showing previous data'"> · {{ locale.startsWith('zh') ? '上次数据' : 'Previous data' }}</span>
             </n-text>
             <n-text class="time" :depth="3" v-else>
               {{ t("hotList.updateFailed") }}
             </n-text>
             <n-space class="controls">
-              <n-popover v-if="hotListData.data.length">
-                <template #trigger>
-                  <n-button
-                    size="tiny"
-                    secondary
-                    strong
-                    round
-                    @click.stop="toList"
-                  >
-                    <template #icon>
-                      <n-icon :component="More" />
-                    </template>
-                  </n-button>
-                </template>
-                {{ t("hotList.viewMore") }}
-              </n-popover>
+              <button type="button" class="ranking-quick-trigger no-card-drag" :aria-label="previewLabel" @click.stop="toList">{{ previewCopy }}</button>
               <n-popover v-if="!isProjectionInstance">
                 <template #trigger>
                   <span
@@ -424,6 +422,9 @@
           v-if="previewItem.displayDesc || previewItem.rankingMeta?.hasContent"
           class="preview-copy"
         >
+          <div v-if="previewOriginalTitle(previewItem)" class="preview-original notranslate" translate="no">
+            {{ previewOriginalTitle(previewItem) }}
+          </div>
           <div v-if="previewItem.displayDesc" class="preview-desc">
             {{ previewItem.displayDesc }}
           </div>
@@ -498,8 +499,10 @@
 </template>
 
 <script setup>
-import { Drag, Fire, More, Refresh } from "@icon-park/vue-next";
-import { getSharedRanking } from "@/utils/rankingCollection";
+import {localizedPublicationUrl,publicationCover} from "@/utils/sourcePublicationPresentation.js";
+import { preservesRankingTitle } from '@/utils/rankingEntityTitles.mjs';
+import { Drag, Fire, Refresh } from "@icon-park/vue-next";
+import { getSharedRanking, isRankingAdmissionFailure } from "@/utils/rankingCollection";
 import { formatTime } from "@/utils/getTime";
 import {
   COVER_REFERRER_POLICY,
@@ -511,6 +514,7 @@ import { resolveCoverPreviewLayout } from "@/utils/coverPreviewGeometry";
 import {
   COVER_PRESENTATION_MODES,
   inferCoverPresentationMode,
+  normalizeCardCoverPresentationMode,
   resolveCoverPresentationMode,
 } from "@/utils/coverPresentation";
 import {
@@ -524,13 +528,20 @@ import RankingBadgeGroup from "@/components/RankingBadgeGroup.vue";
 import RankingCardOperations from "@/components/RankingCardOperations.vue";
 import { mainStore } from "@/store";
 import { useRouter } from "vue-router";
+import { useRankingQuickPreview } from "@/composables/useRankingQuickPreview";
+import { useRankingNavigation } from "@/composables/useRankingNavigation";
 import { useI18n } from "vue-i18n";
 import SubtypeBar from "@/components/SubtypeBar.vue";
 import GlobalIndexControls from "@/components/GlobalIndexControls.vue";
 import {
   buildSourceSubtypeParams,
   getDefaultSourceSubtype,
-  getSourceSubtypeControlGroups,
+  getSourceContentControlGroups,
+  getSourceContentOptions,
+  expandSourceContentVariants,
+  getSourceContentVariant,
+  readSourceContentPeriod,
+  persistSourceContentPeriod,
   getSourceVariantOption,
   getSourceVariantOptions,
   persistSourceSubtype,
@@ -552,6 +563,7 @@ import { DATA_REFRESH_EVENT } from "@/utils/dataRefresh";
 import { formatCompactMetric } from "@/utils/compactMetric";
 import { getRankingItemMeta } from "@/utils/rankingItemMeta";
 import {
+  canShowRankingPreview,
   resolveRankingPreviewGovernance,
   resolveRankingPreviewMode,
 } from "@/utils/rankingPreviewGovernance.mjs";
@@ -580,6 +592,8 @@ import {
 } from "@/utils/readableTitles";
 
 const router = useRouter();
+const quickPreview = useRankingQuickPreview();
+const rankingNavigation = useRankingNavigation();
 const store = mainStore();
 const { locale, t } = useI18n({ useScope: "global" });
 const isClient = typeof window !== "undefined";
@@ -689,12 +703,17 @@ const shouldReloadForLocaleChange = (name = "") =>
 const READABLE_TRANSLATION_FALLBACK_MS = 3000;
 const subtypeCatalogRevision = useTrendsCatalogRevision();
 const sourceLabel = computed(() => {
+  subtypeCatalogRevision.value;
   const base = getSourceDisplayLabel(
     props.hotData.name,
     locale.value,
     props.hotData.label,
   );
-  const projectionLabel = String(props.hotData?.projectionLabel || "").trim();
+  const contentVariant = getSourceContentVariant(props.hotData.name, props.hotData.projectionVariant);
+  const contentOption = getSourceContentOptions(props.hotData.name).find(option=>option.value===contentVariant);
+  const projectionLabel = contentOption?.contentOnly
+    ? getSubtypeLabel(contentOption,locale.value)
+    : String(props.hotData?.projectionLabel || "").trim();
   return isProjectionInstance.value && projectionLabel
     ? `${base} · ${projectionLabel}`
     : base;
@@ -806,9 +825,10 @@ const visibleItems = computed(() => {
   const decoratedItems = visibleSourceItems.map((item) => {
     const originalTitle = String(item?.originalTitle || "");
     const originalDesc = String(item?.originalDesc || "");
+    item={...item,cover:publicationCover(item)};
     const displayTitle = isMarketQuoteSource(props.hotData.name)
       ? getMarketEntityDisplayTitle(item, props.hotData.name, locale.value)
-      : item?.title || originalTitle;
+      : preservesRankingTitle(item,props.hotData.name) ? originalTitle || item?.title : item?.title || originalTitle;
     const rawDisplayDesc = item?.desc || originalDesc;
     const marketQuote = isMarketQuoteSource(props.hotData.name)
       ? getMarketQuoteView(item, locale.value)
@@ -842,6 +862,7 @@ const visibleItems = computed(() => {
       Boolean(displayAuthor),
     );
     const rawRankingMeta = getRankingItemMeta(item, locale.value, {
+      sourceName: props.hotData.name,
       variant: hotListData.value?.variant || activeSubType.value,
       promotePrimary: false,
     });
@@ -919,8 +940,9 @@ const syncReadableTitleDom = (items = []) => {
       const titleNode = titles[index];
       if (!linkNode || !titleNode) return;
       titleNode.textContent = item.displayTitle || item.originalTitle || "";
-      if (item.originalTitle && !isIndexOverviewSource.value) {
-        linkNode.setAttribute("title", item.originalTitle);
+      const nativeTitle = cardNativeTitle(item, item.originalTitle);
+      if (nativeTitle && !isIndexOverviewSource.value) {
+        linkNode.setAttribute("title", nativeTitle);
       } else {
         linkNode.removeAttribute("title");
       }
@@ -963,12 +985,12 @@ const subtypeOptions = computed(() => {
   subtypeCatalogRevision.value;
   const options = getSourceVariantOptions(props.hotData.name);
   if (!categoryProjectionVariants.value.length) return options;
-  const allowed = new Set(categoryProjectionVariants.value);
-  return options.filter((item) => allowed.has(String(item?.value || "")));
+  return expandSourceContentVariants(props.hotData.name, categoryProjectionVariants.value);
 });
 const resolveActiveSubtype = (preferred = readSourceSubtype(props.hotData.name)) => {
   if (isProjectionInstance.value && projectionVariant.value) {
-    return projectionVariant.value;
+    const remembered = readSourceContentPeriod(props.hotData.name, projectionVariant.value);
+    return remembered || (subtypeOptions.value.some(o=>o.value===preferred) ? preferred : projectionVariant.value);
   }
   return subtypeOptions.value.length
     ? resolveSourceSubtype(subtypeOptions.value, preferred)
@@ -995,11 +1017,15 @@ const cardCoverPresentationSampleKey = computed(() => {
 });
 const cardCoverPresentationMode = computed(() => {
   const configured = configuredCardCoverPresentationMode.value;
-  if (configured !== COVER_PRESENTATION_MODES.AUTO) return configured;
+  if (configured !== COVER_PRESENTATION_MODES.AUTO) {
+    return normalizeCardCoverPresentationMode(configured);
+  }
   const key = cardCoverPresentationSampleKey.value;
-  if (!key) return COVER_PRESENTATION_MODES.AUTO;
-  return inferCoverPresentationMode(
-    Object.values(cardCoverPresentationSamples[key] || {}),
+  if (!key) return COVER_PRESENTATION_MODES.MIXED;
+  return normalizeCardCoverPresentationMode(
+    inferCoverPresentationMode(
+      Object.values(cardCoverPresentationSamples[key] || {}),
+    ),
   );
 });
 const shouldShowCardSecondaryMeta = (item) =>
@@ -1037,13 +1063,13 @@ const subtypeGroups = computed(() => {
     ? new Set(categoryProjectionVariants.value)
     : null;
   const groups = localizeSubtypeGroups(
-    getSourceSubtypeControlGroups(props.hotData.name, activeSubType.value),
+    getSourceContentControlGroups(props.hotData.name, activeSubType.value),
     locale.value,
   )
     .map((group) => ({
       ...group,
       items: (group.items || []).filter(
-        (item) => !allowed || allowed.has(String(item?.value || "")),
+        (item) => !allowed || allowed.has(getSourceContentVariant(props.hotData.name, String(item?.value || ""))),
       ),
     }))
     .filter((group) => (group.items || []).length);
@@ -1271,11 +1297,11 @@ const getHotListsData = async (name, isNew = false, variant = activeSubType.valu
         status: "failed",
       };
       store.markUnavailable(item.name);
-      if (variant === activeSubType.value) loadingError.value = true;
+      if (variant === activeSubType.value) { loadingError.value = !hotListData.value?.data?.length; listLoading.value = false; }
       $message.error(result.title + result.message);
     }
   } catch (error) {
-    if (item && requestId === hotListRequestId) {
+    if (item && requestId === hotListRequestId && !isRankingAdmissionFailure(error)) {
       try {
         const retryResponse = await requestHotListResult(item, true, shouldTranslate, useApi2, variant);
         if (requestId !== hotListRequestId) return;
@@ -1293,15 +1319,24 @@ const getHotListsData = async (name, isNew = false, variant = activeSubType.valu
           store.markAvailable(item.name);
           return;
         }
-      } catch {}
+      } catch (retryError) { error = retryError; }
     }
     if (requestId !== hotListRequestId) return;
+    const admissionFailure = isRankingAdmissionFailure(error);
+    const previous = variantRuntime[key]?.result;
+    const retained = !admissionFailure && previous?.data?.length;
     variantRuntime[key] = {
-      ...(variantRuntime[key] || {}),
-      status: "failed",
+      status: retained ? "loaded" : "failed",
+      result: retained ? {...previous, refreshFallback:true} : null,
+      updateTime: retained ? previous.updateTime : null,
     };
-    store.markUnavailable(name);
-    if (variant === activeSubType.value) loadingError.value = true;
+    if (!retained) store.markUnavailable(name);
+    if (variant === activeSubType.value) {
+      hotListData.value = variantRuntime[key].result;
+      if (!retained) updateTime.value = null;
+      loadingError.value = !retained;
+      listLoading.value = false;
+    }
     $message.error(t("hotList.loadFailedMessage"));
   }
 };
@@ -1312,7 +1347,7 @@ const getNewData = () => {
   const now = Date.now();
   if (now - lastClickTime.value > 60000) {
     // 点击事件
-    listLoading.value = true;
+    listLoading.value = !hotListData.value?.data?.length;
     getHotListsData(props.hotData.name, true);
     // 更新最后一次点击时间
     lastClickTime.value = now;
@@ -1325,12 +1360,7 @@ const getNewData = () => {
   }
 };
 
-const getItemLink = (data) => {
-  if (!data?.url && !data?.mobileUrl) return "";
-  if (!data?.url) return data.mobileUrl;
-  if (!data?.mobileUrl) return data.url;
-  return isDesktop.value ? data.url : data.mobileUrl;
-};
+const getItemLink = data => localizedPublicationUrl(isDesktop.value ? data?.url || data?.mobileUrl : data?.mobileUrl || data?.url,locale.value);
 
 const getPreviewMediaLayout = (cover) => {
   if (previewMediaCache.has(cover)) return previewMediaCache.get(cover);
@@ -1380,18 +1410,19 @@ const openFullImagePreview = (cover) => {
   nextTick(() => imagePreviewRef.value?.click?.());
 };
 
-const hasPreviewContent = (item) => {
-  const hasCover =
-    showPreviewImages.value &&
-    item?.cover &&
-    !coverErrorMap[item.cover];
-  return (
-    resolveRankingPreviewMode({
-      hasCover: Boolean(hasCover),
-      description: item?.displayDesc,
-      rankingMeta: item?.rankingMeta,
-    }) !== "hidden"
-  );
+const canShowItemPreview = (item) => isClient && canShowRankingPreview({
+  desktop: isDesktop.value,
+  marketQuote: Boolean(item?.marketQuote),
+  fundMetric: Boolean(item?.fundMetric),
+  indexOverview: isIndexOverviewSource.value,
+  hasCover: Boolean(showPreviewImages.value && item?.cover && !coverErrorMap[item.cover]),
+  description: item?.displayDesc,
+  rankingMeta: item?.rankingMeta,
+});
+const cardNativeTitle = (item, title) => canShowItemPreview(item) ? undefined : title || undefined;
+const previewOriginalTitle = (item) => {
+  const original = String(item?.originalTitle || "").trim();
+  return original && original !== String(item?.displayTitle || "").trim() ? original : "";
 };
 
 const getPreviewDimensions = (item, mediaLayout) => {
@@ -1417,6 +1448,8 @@ const getPreviewDimensions = (item, mediaLayout) => {
   else if (item?.previewHeat !== null && item?.previewHeat !== undefined) {
     textHeight += (textHeight ? 8 : 0) + 18;
   }
+  const originalTitle = previewOriginalTitle(item);
+  if (originalTitle) textHeight += Math.min(4, Math.ceil(originalTitle.length / 36)) * 18 + 8;
   const detailMedia = mediaLayout?.detail;
   const compactWidth =
     mode === "compact-detail" && detailMedia
@@ -1571,9 +1604,7 @@ const openPreview = async (item, target, requestId) => {
 };
 
 const showPreview = (item, event) => {
-  if ((item?.marketQuote && !isIndexOverviewSource.value) || item?.fundMetric) return;
-  if (!isClient || !isDesktop.value || !event?.currentTarget) return;
-  if (!hasPreviewContent(item)) return;
+  if (!canShowItemPreview(item) || !event?.currentTarget) return;
   cancelPreviewClose();
   if (previewOpenTimer) window.clearTimeout(previewOpenTimer);
   const target = event.currentTarget;
@@ -1683,6 +1714,7 @@ const changeSubType = (subtype) => {
   });
   activeSubType.value = nextSubtype;
   persistSourceSubtype(props.hotData.name, nextSubtype);
+  persistSourceContentPeriod(props.hotData.name, nextSubtype);
   hidePreview();
   const cached = variantRuntimeEntry(nextSubtype);
   if (cached?.status === "loaded" && cached.result) {
@@ -1699,20 +1731,20 @@ const changeSubType = (subtype) => {
 };
 
 // 前往全部列表
-const toList = () => {
-  if (props.hotData.name) {
-    trackEvent({
-      event: "rank_click",
-      source: props.hotData.name,
-      subtype: activeSubType.value,
-      category: props.hotData.category,
-    });
-    router.push(
-      buildRankPath(locale.value, props.hotData.name, activeSubType.value)
-    );
-  } else {
-    $message.error(t("hotList.loadFailedMessage"));
-  }
+const detailLocation = computed(() => ({
+  path: buildRankPath(locale.value, props.hotData.name, activeSubType.value || ""),
+  query: { scope: rankingNavigation.scope.value },
+}));
+const previewCopy = computed(() => ({ "zh-CN":"预览", "zh-TW":"預覽", en:"Preview", ja:"プレビュー", ko:"미리보기" })[locale.value] || "Preview");
+const previewLabel = computed(() => previewCopy.value + " " + sourceLabel.value);
+const toList = event => {
+  if (!props.hotData.name) { $message.error(t("hotList.loadFailedMessage")); return; }
+  hidePreview();
+  trackEvent({ event: "rank_preview", source: props.hotData.name, subtype: activeSubType.value, category: props.hotData.category });
+  const element = event?.currentTarget;
+  const trigger = element?.matches?.(".ranking-quick-trigger") ? element : element?.querySelector?.(".ranking-quick-trigger");
+  if (quickPreview) quickPreview.open(detailLocation.value, trigger);
+  else router.push(detailLocation.value);
 };
 
 const consumePendingDataRefresh = () => {
@@ -1907,6 +1939,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" scoped>
+.ranking-card-link { color:inherit; text-decoration:none; }
+.ranking-card-link:focus-visible { outline:2px solid var(--n-primary-color); outline-offset:3px; border-radius:4px; }
+.ranking-quick-trigger { border:0; border-radius:4px; height:24px; padding:0 7px; font:inherit; font-size:12px; color:var(--n-text-color-2); background:var(--n-action-color); cursor:pointer; }
+.ranking-quick-trigger:hover, .ranking-quick-trigger:focus-visible { color:var(--n-primary-color); }
+@media(max-width:680px) { .ranking-quick-trigger { position:relative; } .ranking-quick-trigger::before { content:""; position:absolute; inset:-10px 0; } }
 .hot-list {
   border-radius: 12px;
   transition: all 0.3s;
@@ -2183,14 +2220,6 @@ onBeforeUnmount(() => {
         }
       }
 
-      .line[data-cover-presentation="landscape-uniform"] .item-thumb {
-        background: transparent;
-
-        img {
-          object-fit: contain;
-        }
-      }
-
       &.is-market-quote,
       &.is-fund-metric {
         min-height: 42px;
@@ -2280,6 +2309,13 @@ onBeforeUnmount(() => {
           gap: 2px;
         }
 
+        .item-title-row {
+          display: flex;
+          align-items: baseline;
+          gap: 5px;
+          min-width: 0;
+        }
+
         .title-text {
           display: -webkit-box;
           min-width: 0;
@@ -2318,25 +2354,20 @@ onBeforeUnmount(() => {
         &.has-item-author {
           .item-author {
             display: inline-flex;
-            flex: 0 1 38%;
             align-items: baseline;
-            gap: 4px;
+            align-self: flex-start;
+            max-width: 100%;
             min-width: 0;
-            max-width: 38%;
             overflow: hidden;
+            margin-top: 1px;
             color: var(--n-text-color-3);
-            font-size: 0.92em;
-            font-weight: 560;
-            line-height: 1.35;
+            font-size: 0.82em;
+            font-weight: 450;
+            line-height: 1.25;
+            opacity: 0.62;
             white-space: nowrap;
           }
 
-          .item-author__mark {
-            flex: 0 0 auto;
-            color: var(--n-primary-color);
-            font-size: 0.9em;
-            font-weight: 750;
-          }
 
           .item-author__name {
             min-width: 0;
@@ -2361,6 +2392,17 @@ onBeforeUnmount(() => {
             color: var(--n-text-color-2);
             font-weight: 600;
             font-variant-numeric: tabular-nums;
+          }
+
+          &.is-score {
+            margin-left: 0;
+            color: var(--n-warning-color, #f0a020);
+            font-size: 1em;
+
+            strong {
+              color: inherit;
+              font-weight: 720;
+            }
           }
         }
 
@@ -2600,6 +2642,16 @@ onBeforeUnmount(() => {
 
   .preview-copy {
     min-width: 0;
+  }
+
+  .preview-original {
+    max-height: 72px;
+    overflow: auto;
+    margin-bottom: 8px;
+    color: var(--preview-muted-color);
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
   }
 
   .preview-desc {

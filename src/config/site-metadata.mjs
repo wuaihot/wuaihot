@@ -1142,41 +1142,41 @@ export const GAME_DEALS_TOPIC_METADATA = {
 
 export const AI_TOPIC_METADATA = {
   "zh-CN": {
-    title: "AI 热点与趋势雷达",
+    title: "AI 热点雷达",
     description:
-      "聚合 OpenAI、Anthropic、Google DeepMind、Hugging Face、量子位等中外 AI 信号，并结合 GitHub Trending、Hacker News 与 LocalLLaMA，优先呈现今日焦点、模型与产品动态、开发者快速升温项目及独立多源确认。",
+      "监控全网一手AI动态，结合来源证据、实时快照与热门讨论，快速掌握新发布与重要变化。",
     feedTitle: "AI 实时雷达",
     empty: "当前筛选暂无 AI 事件",
     degraded: "部分 AI 来源暂时不可用，当前仍展示其余来源的最新事件。",
-    seoTitle: "AI 热点专题 - 大模型发布、AI重大事件与爆火项目 | 吾爱热榜",
+    seoTitle: "AI 热点雷达 - 全网一手AI信息源监控大屏实时刷新 | 吾爱热榜",
     seoDescription:
-      "实时聚合 OpenAI、Anthropic、Google DeepMind、Meta AI、Hugging Face、Hacker News、Reddit、Product Hunt 与 GitHub Trending，追踪 AI 重大事件、大模型发布、开发者爆火项目和多源共振趋势。",
+      "快速浏览 OpenAI、Anthropic 等官方模型发布、Codex 额度动态、热门开源项目与社区讨论。对照全球模型排行榜，按来源筛选，查看原文与译文。",
     seoKeywords:
       "AI热点,AI重大事件,大模型发布,AI新闻,OpenAI,Anthropic,Claude,Gemini,DeepSeek,GitHub AI Trending,LocalLLaMA,Hugging Face,AI爆火项目,AI趋势",
   },
   en: {
-    title: "AI Trends & Signal Radar",
+    title: "AI Hotspot Radar",
     description:
-      "Track official AI releases, specialist media, GitHub Trending, Hacker News, LocalLLaMA and other high-signal sources, prioritizing today’s focus, model and product moves, developer momentum and independently confirmed events.",
+      "AI dashboard · First-hand sources across the web, in one view",
     feedTitle: "Live AI Radar",
     empty: "No AI events match this filter.",
     degraded:
       "Some AI sources are temporarily unavailable. Events from the remaining sources are still shown.",
     seoTitle:
-      "AI Trends - Major Model Releases, AI Events & Breakout Projects | wuaihot",
+      "AI Hotspot Radar - First-Hand AI Sources in One Dashboard | wuaihot",
     seoDescription:
       "Track major AI events, model releases, developer breakouts and cross-source signals across OpenAI, Anthropic, DeepMind, Meta AI, Hugging Face, Hacker News, Reddit, Product Hunt and GitHub Trending.",
     seoKeywords:
       "AI trends,AI news,major AI events,model releases,OpenAI,Anthropic,Claude,Gemini,DeepSeek,GitHub AI Trending,LocalLLaMA,Hugging Face,AI projects,wuaihot",
   },
   "zh-TW": {
-    title: "AI 熱點與趨勢雷達",
+    title: "AI 熱點雷達",
     description:
-      "彙整官方 AI 發布、專業媒體、GitHub Trending、Hacker News、LocalLLaMA 等高訊號來源，優先呈現今日焦點、模型與產品動態、開發者熱度與獨立多源確認。",
+      "AI聚合看板 一屏看盡全網一手資訊來源",
     feedTitle: "AI 即時雷達",
     empty: "目前篩選沒有 AI 事件",
     degraded: "部分 AI 來源暫時無法使用，目前仍顯示其他來源的最新事件。",
-    seoTitle: "AI 熱點專題 - 大模型發布、重大事件與爆紅專案 | 吾愛熱榜",
+    seoTitle: "AI 熱點雷達 - AI聚合看板 一屏看盡全網一手資訊來源 | 吾愛熱榜",
     seoDescription:
       "即時追蹤 AI 重大事件、大模型發布、開發者爆紅專案與多源共振趨勢。",
     seoKeywords:
@@ -1185,13 +1185,13 @@ export const AI_TOPIC_METADATA = {
   ja: {
     title: "AIトレンド・シグナルレーダー",
     description:
-      "AI公式発表、専門メディア、GitHub Trending、Hacker News、LocalLLaMA などの高シグナル情報源を横断し、今日の注目、モデル・製品動向、開発者の熱量、独立した複数ソース確認を優先します。",
+      "AIダッシュボード · 世界の一次情報をひと目で",
     feedTitle: "AIリアルタイムレーダー",
     empty: "条件に一致するAIイベントはありません",
     degraded:
       "一部のAI情報源が一時利用できません。利用可能な情報源の最新イベントを表示しています。",
     seoTitle:
-      "AIトレンド - 主要モデル公開・重大イベント・急上昇プロジェクト | wuaihot",
+      "AI動向 - 世界の一次情報をひと目で | wuaihot",
     seoDescription:
       "主要AIイベント、モデル公開、開発者コミュニティで急上昇するプロジェクト、複数ソースの共振を追跡します。",
     seoKeywords:
@@ -1200,12 +1200,12 @@ export const AI_TOPIC_METADATA = {
   ko: {
     title: "AI 트렌드·시그널 레이더",
     description:
-      "AI 공식 발표, 전문 미디어, GitHub Trending, Hacker News, LocalLLaMA 등 신호가 강한 출처를 모아 오늘의 핵심 이슈, 모델·제품 동향, 개발자 열기와 독립 다중 출처 확인을 우선합니다.",
+      "AI 대시보드 · 전 세계 1차 정보를 한눈에",
     feedTitle: "AI 실시간 레이더",
     empty: "현재 조건에 맞는 AI 이벤트가 없습니다",
     degraded:
       "일부 AI 출처를 일시적으로 사용할 수 없습니다. 나머지 출처의 최신 이벤트를 표시합니다.",
-    seoTitle: "AI 트렌드 - 주요 모델 출시·AI 사건·급상승 프로젝트 | wuaihot",
+    seoTitle: "AI 동향 - 전 세계 1차 정보를 한눈에 | wuaihot",
     seoDescription:
       "주요 AI 사건, 모델 출시, 개발자 급상승 프로젝트, 독립 다중 출처 신호를 실시간으로 추적합니다.",
     seoKeywords:
@@ -1215,6 +1215,47 @@ export const AI_TOPIC_METADATA = {
 
 
 export const EVENT_HUB_METADATA = [
+  {
+  "id": "worlds-2025",
+  "path": "/event/worlds-2025",
+  "locales": {
+    "zh-CN": {
+      "title": "2025 英雄联盟全球总决赛",
+      "description": "查看2025英雄联盟全球总决赛全部41场官方赛果、17支战队、入围赛、五轮瑞士轮和淘汰赛，含北京时间、BO制与官方视频入口。",
+      "seoTitle": "2025 英雄联盟全球总决赛 · 历史赛事 · 已结束 | 吾爱热榜",
+      "seoDescription": "查看2025英雄联盟全球总决赛全部41场官方赛果、17支战队、入围赛、五轮瑞士轮和淘汰赛，含北京时间、BO制与官方视频入口。",
+      "seoKeywords": "Worlds2025,S15,League of Legends,2025全球总决赛,瑞士轮,赛果,T1,KT,wuaihot"
+    },
+    "en": {
+      "title": "League of Legends Worlds 2025",
+      "description": "Browse all 41 official Worlds 2025 match results across the play-in, five Swiss rounds and knockout stage, with teams, China-local times, BO formats and official video links.",
+      "seoTitle": "League of Legends Worlds 2025 · Archive · Completed | wuaihot",
+      "seoDescription": "Browse all 41 official Worlds 2025 match results across the play-in, five Swiss rounds and knockout stage, with teams, China-local times, BO formats and official video links.",
+      "seoKeywords": "Worlds2025,S15,League of Legends,2025全球总决赛,瑞士轮,赛果,T1,KT,wuaihot"
+    },
+    "zh-TW": {
+      "title": "2025 英雄聯盟全球總決賽",
+      "description": "查看2025英雄聯盟全球總決賽全部41場官方賽果、17支戰隊、入圍賽、五輪瑞士輪與淘汰賽，含北京時間、BO制及官方影片入口。",
+      "seoTitle": "2025 英雄聯盟全球總決賽 · 歷史賽事 · 已結束 | wuaihot",
+      "seoDescription": "查看2025英雄聯盟全球總決賽全部41場官方賽果、17支戰隊、入圍賽、五輪瑞士輪與淘汰賽，含北京時間、BO制及官方影片入口。",
+      "seoKeywords": "Worlds2025,S15,League of Legends,2025全球总决赛,瑞士轮,赛果,T1,KT,wuaihot"
+    },
+    "ja": {
+      "title": "League of Legends Worlds 2025",
+      "description": "Worlds2025の全41試合、17チーム、プレイイン、スイス5ラウンド、ノックアウトの公式結果、日時、BO形式と公式動画を確認できます。",
+      "seoTitle": "League of Legends Worlds 2025 · 過去の大会 · 終了 | wuaihot",
+      "seoDescription": "Worlds2025の全41試合、17チーム、プレイイン、スイス5ラウンド、ノックアウトの公式結果、日時、BO形式と公式動画を確認できます。",
+      "seoKeywords": "Worlds2025,S15,League of Legends,2025全球总决赛,瑞士轮,赛果,T1,KT,wuaihot"
+    },
+    "ko": {
+      "title": "League of Legends Worlds 2025",
+      "description": "Worlds2025의 전체41경기 및17팀, 플레이인, 스위스5라운드와 녹아웃 공식 결과, 시간, BO형식 및 공식 영상 링크를 확인하세요.",
+      "seoTitle": "League of Legends Worlds 2025 · 지난 대회 · 종료 | wuaihot",
+      "seoDescription": "Worlds2025의 전체41경기 및17팀, 플레이인, 스위스5라운드와 녹아웃 공식 결과, 시간, BO형식 및 공식 영상 링크를 확인하세요.",
+      "seoKeywords": "Worlds2025,S15,League of Legends,2025全球总决赛,瑞士轮,赛果,T1,KT,wuaihot"
+    }
+  }
+},
   {
     id: "aichi-nagoya-2026",
     path: "/event/aichi-nagoya-2026",
@@ -1268,6 +1309,62 @@ export const EVENT_HUB_METADATA = [
           "아이치·나고야 2026 아시안게임의 공식 메달 순위, 당일 경기 일정, 진행 상태, 결과와 공식 뉴스를 실시간으로 확인합니다.",
         seoKeywords:
           "아이치 나고야 2026,아시안게임,메달 순위,아시안게임 일정,아시안게임 결과,Asian Games 2026,wuaihot",
+      },
+    },
+  },
+  {
+    id: "demacia-cup-2026",
+    path: "/event/demacia-cup-2026",
+    locales: {
+      "zh-CN": {
+        title: "2026 德玛西亚杯国际邀请赛",
+        description:
+          "追踪 2026 德玛西亚杯国际邀请赛 12 支参赛战队、线上瑞士轮、北京线下淘汰赛、总决赛与赛事观看入口。",
+        seoTitle: "2026德玛西亚杯国际邀请赛 - 参赛战队、赛程与直播入口 | 吾爱热榜",
+        seoDescription:
+          "查看2026德玛西亚杯国际邀请赛12支参赛战队、10月3日至17日赛程阶段、北京线下淘汰赛、总决赛与赛事直播导航。",
+        seoKeywords:
+          "2026德玛西亚杯,德杯国际邀请赛,德玛西亚杯赛程,德杯直播,英雄联盟赛事,LPL,LCK,LEC,LCS,LCP,CBLOL,吾爱热榜",
+      },
+      en: {
+        title: "2026 Demacia Cup Global Invitational",
+        description:
+          "Follow the 12 invited teams, online Swiss stage, Beijing offline knockout bracket, final and viewing links for the 2026 Demacia Cup Global Invitational.",
+        seoTitle: "2026 Demacia Cup Global Invitational - Teams, Schedule & Streams | wuaihot",
+        seoDescription:
+          "Follow all 12 teams, the October 3–17 tournament stages, Beijing offline knockout bracket, grand final and viewing links for the 2026 Demacia Cup Global Invitational.",
+        seoKeywords:
+          "Demacia Cup 2026,Demacia Cup Global Invitational,League of Legends,LoL esports,LPL,LCK,LEC,LCS,LCP,CBLOL,wuaihot",
+      },
+      "zh-TW": {
+        title: "2026 德瑪西亞盃國際邀請賽",
+        description:
+          "追蹤2026德瑪西亞盃國際邀請賽12支參賽戰隊、線上瑞士輪、北京線下淘汰賽、總決賽與賽事觀看入口。",
+        seoTitle: "2026德瑪西亞盃國際邀請賽 - 參賽戰隊、賽程與直播入口 | 吾愛熱榜",
+        seoDescription:
+          "查看2026德瑪西亞盃國際邀請賽12支參賽戰隊、10月3日至17日賽程階段、北京線下淘汰賽、總決賽與直播導航。",
+        seoKeywords:
+          "2026德瑪西亞盃,德盃國際邀請賽,英雄聯盟賽事,德盃賽程,德盃直播,LPL,LCK,LEC,LCS,LCP,CBLOL,吾愛熱榜",
+      },
+      ja: {
+        title: "2026 Demacia Cup Global Invitational",
+        description:
+          "2026 Demacia Cup Global Invitational の12チーム、オンライン Swiss、北京オフライン決勝トーナメント、決勝と視聴リンクをまとめて確認できます。",
+        seoTitle: "2026 Demacia Cup Global Invitational - チーム・日程・配信 | wuaihot",
+        seoDescription:
+          "10月3日から17日まで行われる2026 Demacia Cup Global Invitationalの参加チーム、大会フェーズ、北京オフライン戦、決勝と配信入口を確認できます。",
+        seoKeywords:
+          "Demacia Cup 2026,League of Legends,LoL esports,德玛西亚杯,LPL,LCK,LEC,LCS,LCP,CBLOL,wuaihot",
+      },
+      ko: {
+        title: "2026 Demacia Cup Global Invitational",
+        description:
+          "2026 Demacia Cup Global Invitational의 12개 참가 팀, 온라인 스위스, 베이징 오프라인 녹아웃, 결승과 시청 링크를 확인합니다.",
+        seoTitle: "2026 Demacia Cup Global Invitational - 참가 팀·일정·중계 | wuaihot",
+        seoDescription:
+          "10월 3일부터 17일까지 열리는 2026 Demacia Cup Global Invitational의 참가 팀, 대회 단계, 베이징 오프라인 토너먼트와 결승을 확인합니다.",
+        seoKeywords:
+          "Demacia Cup 2026,League of Legends,LoL esports,LPL,LCK,LEC,LCS,LCP,CBLOL,wuaihot",
       },
     },
   },

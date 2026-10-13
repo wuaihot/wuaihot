@@ -4,6 +4,7 @@ import { applySeoMeta } from "@/utils/seo";
 import { mainStore } from "@/store";
 import {
   buildCategoryPath,
+  buildHomePath,
   buildRankPath,
   getCanonicalCategorySlug,
   getCategoryNameBySlug,
@@ -26,19 +27,9 @@ const router = createRouter({
 
 // 路由守卫
 router.beforeEach((to) => {
-  const store = mainStore();
   const locale = getLocaleFromRoute(to);
   setDocumentLanguage(locale);
   savePreferredLocale(locale);
-  if (
-    store?.setActiveCategory &&
-    ["home", "home-locale", "category", "category-locale"].includes(
-      String(to.name || ""),
-    )
-  ) {
-    const categoryName = getCategoryNameBySlug(to.params?.categorySlug);
-    store.setActiveCategory(categoryName || "全部");
-  }
   if (typeof window !== "undefined" && window.$loadingBar) {
     window.$loadingBar.start();
   }
@@ -106,9 +97,15 @@ router.beforeEach((to) => {
       };
     }
   }
+  if (to.query?.scope === "entertainment-pop") {
+    return { path: to.path, query: { ...to.query, scope: "entertainment" }, hash: to.hash, replace: true };
+  }
   const rawCategorySlug = Array.isArray(to.params?.categorySlug)
     ? to.params.categorySlug[0]
     : to.params?.categorySlug;
+  if (rawCategorySlug === "general") {
+    return { path: buildHomePath(locale), query: to.query, hash: to.hash, replace: true };
+  }
   const canonicalCategorySlug = getCanonicalCategorySlug(rawCategorySlug || "");
   if (rawCategorySlug && canonicalCategorySlug !== rawCategorySlug) {
     return {
@@ -118,8 +115,8 @@ router.beforeEach((to) => {
       replace: true,
     };
   }
-  const categoryName = getCategoryNameBySlug(canonicalCategorySlug);
   const store = mainStore();
+  const categoryName = getCategoryNameBySlug(canonicalCategorySlug, store.categories);
   if (
     store?.setActiveCategory &&
     ["home", "home-locale", "category", "category-locale"].includes(

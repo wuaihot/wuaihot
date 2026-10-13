@@ -26,26 +26,14 @@
     <!-- <n-alert type="info" :show-icon="false" style="margin-bottom: 20px">
       站点未完工
     </n-alert> -->
-    <CategorySourceRail
-      v-if="supportsViewMode && categoryView === 'stream'"
-      :sources="scopedNews"
-      @reorder="saveStreamOrder"
-    />
     <div
-      v-else-if="showAllSplitDirectory"
+      v-if="showAllSplitDirectory"
       class="all-split-layout"
     >
-      <nav class="all-category-toc" :aria-label="allPageCopy.categoryDirectory">
-        <button
-          v-for="section in allCategorySections"
-          :key="section.id"
-          type="button"
-          :class="{ 'is-active': activeAllCategoryId === section.id }"
-          @click="scrollToAllCategory(section.id)"
-        >
-          <span>{{ section.label }}</span>
-          <em>{{ section.items.length }}</em>
-        </button>
+
+      <nav v-if="allCategorySections.length > 1" class="catalog-toc" :aria-label="allPageCopy.categoryDirectory">
+        <strong>{{ allPageCopy.categoryDirectory }}</strong>
+        <a v-for="section in allCategorySections" :key="section.id" :href="'#all-ranking-category-' + section.id" @click.prevent="jumpToSection(section.id)">{{ section.label }}</a>
       </nav>
       <div class="all-category-groups">
         <section
@@ -69,10 +57,10 @@
               :key="item.cardKey"
               class="news-card"
               :class="{ 'with-entrance': enableCardEntrance }"
-              :style="{ animationDelay: index / 10 + 0.1 + 's' }"
+              :style="{ animationDelay: Math.min(index, 8) / 20 + 0.1 + 's' }"
             >
               <DirectorySourceCard v-if="item.directoryOnly" :source="item" />
-              <HotList v-else :hotData="item" />
+              <CatalogCardViewport v-else :compact="store.compactMode" :label="getSourceDisplayLabel(item.name, locale, item.label || item.name)"><HotList :hotData="item" /></CatalogCardViewport>
             </div>
           </div>
         </section>
@@ -103,10 +91,10 @@
           class="news-card"
           :class="{ 'with-entrance': enableCardEntrance }"
           :key="`${store.activeCategory}-${item.cardKey}`"
-          :style="{ animationDelay: index / 10 + 0.2 + 's' }"
+          :style="{ animationDelay: Math.min(index, 8) / 20 + 0.2 + 's' }"
         >
           <DirectorySourceCard v-if="item.directoryOnly" :source="item" />
-          <HotList v-else :hotData="item" />
+          <CatalogCardViewport v-else :compact="store.compactMode" :label="getSourceDisplayLabel(item.name, locale, item.label || item.name)"><HotList :hotData="item" /></CatalogCardViewport>
         </div>
       </template>
     </draggable>
@@ -136,8 +124,8 @@
 <script setup>
 import { mainStore } from "@/store";
 import HotList from "@/components/HotList.vue";
+import CatalogCardViewport from "@/components/CatalogCardViewport.vue";
 import DirectorySourceCard from "@/components/DirectorySourceCard.vue";
-import CategorySourceRail from "@/components/CategorySourceRail.vue";
 import draggable from "vuedraggable";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
@@ -158,10 +146,10 @@ import {
   sourceBelongsToCategory,
 } from "@/utils/categoryTree";
 import { getSourceDisplayLabel } from "@/utils/sourceLabels";
-import { getSourceVariantOptions } from "@/utils/sourceSubtypes";
+import { getSourceVariantOptions, getSourceContentOptions, getSourceContentVariant } from "@/utils/sourceSubtypes";
 import { resolveResponsiveCardColumns } from "@/utils/responsiveColumns";
 import { useTrendsCatalogRevision } from "@/composables/useTrendsCatalogRevision";
-import { getCategoryScopedVariantOptions } from "@/utils/categoryVariantScope";
+import { getCategoryScopedContentOptions } from "@/utils/categoryVariantScope";
 
 const store = mainStore();
 const { t } = useI18n({ useScope: "global" });
@@ -172,6 +160,7 @@ const isCardDragging = ref(false);
 const isSubtypeInteracting = ref(false);
 const sortableNews = ref([]);
 const homeRef = ref(null);
+const jumpToSection = id => homeRef.value?.querySelector(`[data-all-category="${CSS.escape(String(id))}"]`)?.scrollIntoView({ block: "start", behavior: "auto" });
 const homeWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1400);
 let homeResizeObserver = null;
 const clampDesktopColumns = (value, fallback) => Math.min(5, Math.max(3, Math.round(Number(value) || fallback)));
@@ -235,24 +224,23 @@ const isCategoryRoute = computed(() =>
 const supportsViewMode = computed(
   () => isHomeRoute.value || isCategoryRoute.value,
 );
-const categoryView = computed(() =>
-  store.resolveCategoryViewMode(
-    isCategoryRoute.value ? forcedCategoryName.value || null : null,
-  ),
-);
+const categoryView = computed(() => "card");
 const locale = computed(() => normalizeLocale(getLocaleFromRoute(route)));
 const ALL_PAGE_COPY = {
   "zh-CN": {
+    popular: "热门平台",
     categoryDirectory: "榜单分类目录",
     rankingCount: "{count} 个榜单",
     other: "其他",
   },
   "zh-TW": {
+    popular: "熱門平台",
     categoryDirectory: "榜單分類目錄",
     rankingCount: "{count} 個榜單",
     other: "其他",
   },
   en: {
+    popular: "Popular platforms",
     categoryDirectory: "Ranking categories",
     rankingCount: "{count} rankings",
     other: "Other",
@@ -343,7 +331,7 @@ const allSplitTargets = computed(() => {
     )
     .map((item) => {
       const variants = normalizeVariantValues(
-        getSourceVariantOptions(item.name),
+        getSourceContentOptions(item.name),
       );
       return variants.length > 1
         ? { sourceName: item.name, variants }
@@ -357,8 +345,9 @@ const splitSelectionFor = (scopeRef, sourceName, variants = []) => {
   const allowed = new Set(normalizedVariants);
   const configured = store
     .getCategorySplitVariants(scopeRef, sourceName)
+    .map(value => getSourceContentVariant(sourceName, String(value)))
     .filter((value) => allowed.has(String(value)));
-  if (configured.length) return configured;
+  if (configured.length) return [...new Set(configured)];
   return store.isCategorySourceSplit(scopeRef, sourceName)
     ? normalizedVariants
     : [];
@@ -376,7 +365,7 @@ const allScopeNews = computed(() => {
       scoped.push(base);
       continue;
     }
-    const options = getSourceVariantOptions(base.name)
+    const options = getSourceContentOptions(base.name)
       .map((option) => ({
         value: String(option?.value || "").trim(),
         label: String(option?.label || option?.value || "").trim(),
@@ -464,13 +453,13 @@ const scopedNews = computed(() => {
       }
       continue;
     }
-    const allOptions = getSourceVariantOptions(base.name)
+    const allOptions = getSourceContentOptions(base.name)
       .map((option) => ({
         value: String(option?.value || "").trim(),
         label: String(option?.label || option?.value || "").trim(),
       }))
       .filter((option) => option.value);
-    const scopedOptions = getCategoryScopedVariantOptions(
+    const scopedOptions = getCategoryScopedContentOptions(
       base,
       targetCategory,
       store.categories,
@@ -654,7 +643,9 @@ const allCategorySections = computed(() => {
       groups.set(id, {
         id,
         category,
-        label: category
+        label: category?.id === "general"
+          ? allPageCopy.value.popular
+          : category
           ? category.builtin
             ? getCategoryLabel(category.name, locale.value)
             : category.name
@@ -674,48 +665,6 @@ const allCategorySections = computed(() => {
     }))
     .sort((left, right) => left.order - right.order);
 });
-
-const activeAllCategoryId = ref("");
-const scrollToAllCategory = (categoryId) => {
-  if (typeof document === "undefined") return;
-  activeAllCategoryId.value = categoryId;
-  document
-    .getElementById(`all-ranking-category-${categoryId}`)
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-};
-const syncActiveAllCategoryFromScroll = () => {
-  if (typeof document === "undefined" || !showAllSplitDirectory.value) return;
-  const sections = allCategorySections.value
-    .map((section) => ({
-      id: section.id,
-      el: document.getElementById(`all-ranking-category-${section.id}`),
-    }))
-    .filter((item) => item.el);
-  if (!sections.length) return;
-  let active = sections[0].id;
-  const anchor = 128;
-  for (const section of sections) {
-    if (section.el.getBoundingClientRect().top <= anchor) active = section.id;
-    else break;
-  }
-  activeAllCategoryId.value = active;
-};
-
-watch(
-  () => allCategorySections.value.map((section) => section.id).join("|"),
-  () => {
-    const first = allCategorySections.value[0]?.id || "";
-    if (
-      !allCategorySections.value.some(
-        (section) => section.id === activeAllCategoryId.value,
-      )
-    ) {
-      activeAllCategoryId.value = first;
-    }
-    nextTick(syncActiveAllCategoryFromScroll);
-  },
-  { immediate: true },
-);
 
 const syncSortableNews = () => {
   sortableNews.value = filteredNews.value.slice();
@@ -750,10 +699,6 @@ onMounted(() => {
     "dailyhot:subtype-interaction",
     handleSubtypeInteraction,
   );
-  window.addEventListener("scroll", syncActiveAllCategoryFromScroll, {
-    passive: true,
-  });
-  nextTick(syncActiveAllCategoryFromScroll);
 });
 
 onBeforeUnmount(() => {
@@ -763,7 +708,6 @@ onBeforeUnmount(() => {
     "dailyhot:subtype-interaction",
     handleSubtypeInteraction,
   );
-  window.removeEventListener("scroll", syncActiveAllCategoryFromScroll);
   if (subtypeInteractionTimer) clearTimeout(subtypeInteractionTimer);
 });
 
@@ -800,16 +744,6 @@ const saveCardOrder = () => {
   store.reorderVisibleNews(orderedBaseNames, scopedBaseNames);
   isCardDragging.value = false;
   syncSortableNews();
-};
-
-const saveStreamOrder = (orderedKeys = []) => {
-  const baseNames = orderedKeys
-    .filter((key) => String(key).startsWith("source:"))
-    .map((key) => String(key).slice("source:".length));
-  const scopedBaseNames = scopedNews.value
-    .filter((item) => !item.projectionInstanceId)
-    .map((item) => item.name);
-  store.reorderVisibleNews(baseNames, scopedBaseNames);
 };
 
 // 重置
@@ -935,7 +869,7 @@ const reset = () => {
   }
 
   .all-category-section {
-    scroll-margin-top: 92px;
+    scroll-margin-top: calc(var(--navigation-sticky-top, 112px) + 12px);
 
     & + & {
       margin-top: 28px;
@@ -1038,4 +972,12 @@ const reset = () => {
   }
 }
 
+
+.home .all-split-layout { grid-template-columns: minmax(0, 1fr); }
+.catalog-toc { display:flex; flex-direction:column; align-items:stretch; gap:4px; position:sticky; top:var(--navigation-sticky-top); font-size:13px; }
+.catalog-toc strong { font-size:12px; font-weight:500; color:var(--n-text-color-3); padding:8px; }
+.catalog-toc a { padding:8px; color:inherit; text-decoration:none; border-radius:5px; }
+.catalog-toc a:hover, .catalog-toc a:focus-visible { color:var(--n-primary-color); background:var(--n-action-color); }
+.home .all-split-layout:has(.catalog-toc) { display:grid; grid-template-columns:150px minmax(0,1fr); gap:20px; align-items:start; }
+@media(max-width:900px) { .home .all-split-layout:has(.catalog-toc) { display:block; } .catalog-toc { flex-direction:row; flex-wrap:wrap; position:static; margin-bottom:12px; gap:3px; } .catalog-toc a { min-height:44px; box-sizing:border-box; } }
 </style>

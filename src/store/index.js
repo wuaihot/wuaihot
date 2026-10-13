@@ -45,6 +45,12 @@ const TRENDS_SOURCE_PRESENTATION = {
     coverPresentationMode: "portrait-uniform",
     order: 16.1,
   },
+  "maoyan-movie": {
+    category: "电影",
+    categoryIds: ["entertainment-video-movie"],
+    coverPresentationMode: "portrait-uniform",
+    order: 16.15,
+  },
   "iqiyi-rank": {
     category: "影视",
     categoryIds: ["entertainment-video"],
@@ -241,6 +247,7 @@ const LEGACY_BUILTIN_CATEGORY_ALIASES = {
   wool: "life-deals",
   "羊毛": "life-deals",
   media: "entertainment",
+  "entertainment-pop": "entertainment",
   "影音娱乐": "entertainment",
   "media-music": "entertainment-music",
   "music-audio": "entertainment-music",
@@ -273,6 +280,7 @@ const FINANCE_TAXONOMY_SOURCE_IDS = [
 ];
 
 const AI_TAXONOMY_SOURCE_IDS = [
+  "ai-x-updates", "ai-bluesky-updates", "ai-official-intake", "ai-model-board", "livebench",
   "openrouter-rankings",
   "artificialanalysis",
   "arena-ai",
@@ -303,6 +311,7 @@ const AI_TAXONOMY_SOURCE_IDS = [
 
 const ENTERTAINMENT_TAXONOMY_SOURCE_IDS = [
   "china-film-boxoffice",
+  "maoyan-movie",
   "iqiyi-rank",
   "youku-rank",
   "hongguo-rank",
@@ -389,6 +398,7 @@ export const mainStore = defineStore("mainData", {
         {
           label: "微博",
           name: "weibo",
+          coverPresentationMode: "mixed",
           order: 3,
           show: true,
           category: "综合",
@@ -714,6 +724,15 @@ export const mainStore = defineStore("mainData", {
           categoryIds: ["games"],
         },
         {
+          label: "LoL 电竞",
+          name: "lolesports-news",
+          order: 31,
+          show: true,
+          category: "游戏",
+          categoryIds: ["games-esports"],
+          subtype: "官方动态",
+        },
+        {
           label: "LOL",
           name: "lol",
           order: 32,
@@ -955,6 +974,11 @@ export const mainStore = defineStore("mainData", {
           show: true,
           category: "生活",
         },
+        { label: "AI 人物 · X", name: "ai-x-updates", order: 56.05, show: true, category: "AI", categoryIds: ["ai-research-community"], subtype: "全部动态" },
+        { label: "AI 人物 · Bluesky", name: "ai-bluesky-updates", order: 85.5, show: true, category: "AI", categoryIds: ["ai-research-community"], subtype: "全部动态" },
+        { label: "AI 一手动态", name: "ai-official-intake", order: 56.1, show: true, category: "AI", categoryIds: ["ai-official"], subtype: "一手动态" },
+        { label: "全球 AI 模型榜", name: "ai-model-board", order: 56.2, show: true, category: "AI", categoryIds: ["ai-models"], subtype: "跨榜综合" },
+        { label: "LiveBench", name: "livebench", order: 56.3, show: true, category: "AI", categoryIds: ["ai-models"], subtype: "模型能力测试" },
         {
           label: "OpenRouter",
           name: "openrouter-rankings",
@@ -1148,7 +1172,7 @@ export const mainStore = defineStore("mainData", {
           label: "Reddit /r/LocalLLaMA",
           name: "reddit-localllama",
           order: 80,
-          show: false,
+          show: true,
           category: "AI",
           categoryIds: ["ai-research-community"],
           subtype: "社区热议",
@@ -1157,7 +1181,7 @@ export const mainStore = defineStore("mainData", {
           label: "Reddit /r/MachineLearning",
           name: "reddit-machinelearning",
           order: 81,
-          show: false,
+          show: true,
           category: "AI",
           categoryIds: ["ai-research-community"],
           subtype: "社区热议",
@@ -1166,7 +1190,7 @@ export const mainStore = defineStore("mainData", {
           label: "Reddit /r/artificial",
           name: "reddit-artificial",
           order: 82,
-          show: false,
+          show: true,
           category: "AI",
           categoryIds: ["ai-research-community"],
           subtype: "社区热议",
@@ -1487,6 +1511,11 @@ export const mainStore = defineStore("mainData", {
         },
       ],
       newsArr: [],
+      unavailableNewsPreferences: {},
+      // null = 旧版本尚未判定；true = 用户显式拖拽过默认榜单顺序。
+      newsOrderCustomized: null,
+      // 显式拖拽后的 source -> order 快照。Catalog 临时下线来源时仍保留其自定义位置。
+      newsOrderOverrides: {},
       // 用户提升为独立卡片/列表的 source + variant 投影实例。
       promotedRankings: [],
       // 链接跳转方式
@@ -1501,6 +1530,9 @@ export const mainStore = defineStore("mainData", {
       // 普通页面与聚焦页面的内容容器宽度
       siteContainerWidth: 1400,
       focusContainerWidth: 1360,
+      // Null inherits the legacy preference until each scope is adjusted.
+      rankingContainerWidth: null,
+      topicContainerWidth: null,
       // 是否显示榜单置顶条目
       showPinnedRankings: true,
       // 自动刷新
@@ -1685,8 +1717,24 @@ export const mainStore = defineStore("mainData", {
         );
       });
     },
+    inferNewsOrderCustomized(list = []) {
+      const ordered = (Array.isArray(list) ? list : [])
+        .filter((item) => Number.isFinite(Number(item?.order)))
+        .slice()
+        .sort((left, right) => Number(left.order) - Number(right.order));
+      if (ordered.length < 10) return false;
+      return ordered.every(
+        (item, index) =>
+          Number.isInteger(Number(item.order)) &&
+          Number(item.order) === index,
+      );
+    },
     mergeNewsWithDefaults(list) {
       list = this.normalizeLegacySources(list);
+      if (this.newsOrderCustomized === null) {
+        this.newsOrderCustomized = this.inferNewsOrderCustomized(list);
+      }
+      const preserveUserOrder = this.newsOrderCustomized === true;
       const defaultByName = new Map(
         this.defaultNewsArr.map((item) => [item.name, item]),
       );
@@ -1750,6 +1798,10 @@ export const mainStore = defineStore("mainData", {
               ]),
             ];
           }
+        }
+        const defaultOrder = Number(defaults.order);
+        if (!preserveUserOrder && Number.isFinite(defaultOrder)) {
+          merged.order = defaultOrder;
         }
         const orderMigration = BUILTIN_ORDER_MIGRATIONS[item.name];
         if (
@@ -2190,6 +2242,7 @@ export const mainStore = defineStore("mainData", {
         .filter(Boolean);
       if (!scopedSet.size || !orderedItems.length) return;
 
+      this.newsOrderCustomized = true;
       let scopedIndex = 0;
       this.newsArr = this.newsArr
         .slice()
@@ -2201,6 +2254,9 @@ export const mainStore = defineStore("mainData", {
           ...item,
           order: index,
         }));
+      this.newsOrderOverrides = Object.fromEntries(
+        this.newsArr.map((item) => [item.name, Number(item.order)]),
+      );
     },
     setAnalyticsConsent(value) {
       this.analyticsConsent = value;
@@ -2257,6 +2313,18 @@ export const mainStore = defineStore("mainData", {
       const catalogByKey = new Map(
         catalogSources.map((source) => [String(source?.key || ""), source]),
       );
+      if (
+        this.newsOrderCustomized === true &&
+        !Object.keys(this.newsOrderOverrides || {}).length &&
+        Array.isArray(this.newsArr) &&
+        this.newsArr.length
+      ) {
+        this.newsOrderOverrides = Object.fromEntries(
+          this.newsArr
+            .filter((item) => item?.name && Number.isFinite(Number(item.order)))
+            .map((item) => [item.name, Number(item.order)]),
+        );
+      }
       const adoptCatalogAuthority = (items = []) =>
         items.map((item) => {
           const legacyProjection = resolveLegacySourceProjection(
@@ -2277,12 +2345,17 @@ export const mainStore = defineStore("mainData", {
               isDirectoryOnlySourceKey(sourceKey) && !publicAvailable && !displayAvailable,
           };
         });
-      this.defaultNewsArr = filterReadableTrendsCatalogManagedSources(
-        adoptCatalogAuthority(this.defaultNewsArr),
-      );
-      this.newsArr = filterReadableTrendsCatalogManagedSources(
-        adoptCatalogAuthority(this.newsArr),
-      );
+      // defaultNewsArr 是排序/展示元数据的 canonical registry，不能因 Catalog
+      // 临时缩减而破坏性删项；否则来源恢复时只能按“新来源”追加，污染持久化 order。
+      this.defaultNewsArr = adoptCatalogAuthority(this.defaultNewsArr);
+      const adopted = adoptCatalogAuthority(this.newsArr);
+      const readable = filterReadableTrendsCatalogManagedSources(adopted);
+      const readableNames = new Set(readable.map((item) => item.name));
+      this.unavailableNewsPreferences ||= {};
+      for (const item of adopted) {
+        if (!readableNames.has(item.name)) this.unavailableNewsPreferences[item.name] = { ...item };
+      }
+      this.newsArr = readable;
       const candidates = catalogSources.filter(
         (source) =>
           (source.publicAvailable ||
@@ -2310,8 +2383,15 @@ export const mainStore = defineStore("mainData", {
       this.ensureBuiltinCategories();
       this.syncTrendsCatalogSources();
       this.defaultNewsArr = this.ensureCategoriesForNews(this.defaultNewsArr);
+      const readableDefaults = filterReadableTrendsCatalogManagedSources(
+        this.defaultNewsArr,
+      );
       if (!this.newsArr || this.newsArr.length === 0) {
-        this.newsArr = this.defaultNewsArr;
+        this.newsArr = readableDefaults.map((item) => {
+          const saved = this.unavailableNewsPreferences?.[item.name];
+          if (saved) delete this.unavailableNewsPreferences[item.name];
+          return saved ? { ...item, ...saved, publicAvailable: item.publicAvailable, displayAvailable: item.displayAvailable, directoryOnly: item.directoryOnly } : { ...item };
+        });
       } else {
         this.newsArr = this.dedupeNewsList(this.newsArr);
       }
@@ -2322,6 +2402,9 @@ export const mainStore = defineStore("mainData", {
       this.syncTrendsCatalogSources();
       this.defaultNewsArr = this.ensureCategoriesForNews(this.defaultNewsArr);
       this.newsArr = this.dedupeNewsList(this.newsArr);
+      const readableDefaults = filterReadableTrendsCatalogManagedSources(
+        this.defaultNewsArr,
+      );
       if (typeof localStorage === "undefined") {
         this.ensureNewsList();
         return 0;
@@ -2329,20 +2412,31 @@ export const mainStore = defineStore("mainData", {
       const mainData = localStorage.getItem("mainData");
       let updatedNum = 0;
       if (!mainData) return 0;
-      // 执行比较并迁移
-      if (this.newsArr.length > 0) {
-        for (const newItem of this.defaultNewsArr) {
+      // 执行比较并迁移；恢复任意已注册可读通道，并保留来源暂时下线前的偏好。
+      // 始终从 canonical defaults
+      // 取回原始 order，避免临时下线/恢复后被当成新来源追加到末尾。
+      {
+        for (const newItem of readableDefaults) {
           const exists = this.newsArr.some(
             (news) => newItem.name === news.name,
           );
           if (!exists) {
+            const saved = this.unavailableNewsPreferences?.[newItem.name];
+            const restoredItem = saved ? { ...newItem, ...saved, publicAvailable: newItem.publicAvailable, displayAvailable: newItem.displayAvailable, directoryOnly: newItem.directoryOnly } : newItem;
+            if (saved) delete this.unavailableNewsPreferences[newItem.name];
             updatedNum++;
-            this.newsArr.push(newItem);
+            const configuredOrder = Number(
+              this.newsOrderOverrides?.[newItem.name],
+            );
+            this.newsArr.push(
+              this.newsOrderCustomized === true &&
+                Number.isFinite(configuredOrder)
+                ? { ...restoredItem, order: configuredOrder }
+                : restoredItem,
+            );
           }
         }
         this.newsArr = this.dedupeNewsList(this.newsArr);
-      } else {
-        this.newsArr = this.defaultNewsArr;
       }
       return updatedNum;
     },
@@ -2354,6 +2448,9 @@ export const mainStore = defineStore("mainData", {
         "siteTheme",
         "siteThemeAuto",
         "newsArr",
+        "newsOrderCustomized",
+        "newsOrderOverrides",
+        "unavailableNewsPreferences",
         "promotedRankings",
         "linkOpenType",
         "headerFixed",
@@ -2362,6 +2459,8 @@ export const mainStore = defineStore("mainData", {
         "homeCompactColumns",
         "siteContainerWidth",
         "focusContainerWidth",
+        "rankingContainerWidth",
+        "topicContainerWidth",
         "showPinnedRankings",
         "autoRefreshEnabled",
         "autoRefreshPaused",

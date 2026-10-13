@@ -8,27 +8,44 @@
       :class="[
         store.headerFixed ? 'fixed' : null,
         store.compactMode ? 'compact' : null,
+        navigation.isList.value ? 'is-ranking-page' : null,
+        isTopicRoute ? 'is-topic-page' : null,
+        isSplitTopicRoute ? 'is-split-topic-page' : null,
         headerExpanded ? 'header-expanded' : 'header-collapsed',
       ]"
     >
-      <FloatingActions />
+      <FloatingActions v-show="!quickPreview.show.value" />
       <Header
+        ref="headerRef"
+        :navigation-open="navigationOpen"
+        :show-ranking-navigation="navigation.isList.value"
         :class="[{ expanded: headerExpanded, collapsed: !headerExpanded }]"
         @open-settings="settingsOpen = true"
+        @open-navigation="toggleNavigation"
+        @open-hotboard-manager="openHotboardManager"
       />
-      <main>
-        <ContextToolbar @open-hotboard-manager="openHotboardManager" />
+      <div class="reading-shell" :class="{ 'has-navigation': navigation.isList.value && !isNarrow && !navigation.preferences.collapsed }">
+        <aside v-if="navigation.isList.value && !isNarrow && !navigation.preferences.collapsed" id="ranking-navigation-panel" class="global-ranking-sidebar">
+          <RankingNavigation />
+        </aside>
+      <main id="ranking-content" tabindex="-1">
+        <ContextToolbar />
         <router-view v-slot="{ Component }">
-          <keep-alive>
-            <transition name="scale" mode="out-in">
+          <keep-alive include="List" :max="1">
               <component
                 :is="Component"
                 :key="routeViewKey"
               />
-            </transition>
           </keep-alive>
         </router-view>
       </main>
+      </div>
+      <n-drawer v-if="navigation.isList.value" v-model:show="navigation.drawerOpen.value" :width="Math.min(viewportWidth - 24, 340)" placement="left" :auto-focus="false" :trap-focus="true" :close-on-esc="true">
+        <n-drawer-content :body-content-style="{ padding: 0, height: '100%' }" closable>
+          <div id="ranking-navigation-panel" class="navigation-drawer-body"><RankingNavigation drawer /></div>
+        </n-drawer-content>
+      </n-drawer>
+      <RankingQuickPreview v-if="quickPreview.target.value" :controller="quickPreview" :viewport-width="viewportWidth" />
       <Footer class="site-footer" />
       <AnalyticsConsent />
       <HotboardManager
@@ -47,18 +64,52 @@
 <script setup>
 import { mainStore } from "@/store";
 import Provider from "@/components/Provider.vue";
+import { resolveReadingWidth } from "@/utils/readingWidth";
 import Header from "@/components/Header.vue";
 import Footer from "@/components/Footer.vue";
 import FloatingActions from "@/components/FloatingActions.vue";
 import AnalyticsConsent from "@/components/AnalyticsConsent.vue";
 import ContextToolbar from "@/components/ContextToolbar.vue";
-import { defineAsyncComponent } from "vue";
+import { defineAsyncComponent, provide } from "vue";
+import RankingNavigation from "@/components/RankingNavigation.vue";
+import { RANKING_QUICK_PREVIEW, createRankingQuickPreview } from "@/composables/useRankingQuickPreview";
+import { RANKING_NAVIGATION_KEY, useRankingNavigation } from "@/composables/useRankingNavigation";
 import { SpeedInsights } from "@vercel/speed-insights/vue";
 import { useRouter } from "vue-router";
 import { DATA_REFRESH_EVENT, requestDataRefresh } from "@/utils/dataRefresh";
 
 const store = mainStore();
 const router = useRouter();
+const navigation = useRankingNavigation();
+provide(RANKING_NAVIGATION_KEY, navigation);
+const quickPreview = createRankingQuickPreview();
+provide(RANKING_QUICK_PREVIEW, quickPreview);
+const RankingQuickPreview = defineAsyncComponent(() => import("@/components/RankingQuickPreview.vue"));
+watch(() => router.currentRoute.value.fullPath, () => quickPreview.close());
+const headerRef = ref(null);
+const headerHeight = ref(96);
+const viewportWidth = ref(typeof window === "undefined" ? 1440 : window.innerWidth);
+const isNarrow = computed(() => viewportWidth.value < 1100);
+const navigationOpen = computed(() => navigation.isList.value && (isNarrow.value ? navigation.drawerOpen.value : !navigation.preferences.collapsed));
+const toggleNavigation = () => {
+  if (isNarrow.value) navigation.drawerOpen.value = !navigation.drawerOpen.value;
+  else navigation.preferences.collapsed = !navigation.preferences.collapsed;
+};
+const updateViewport = () => {
+  viewportWidth.value = window.innerWidth;
+  if (!isNarrow.value) navigation.drawerOpen.value = false;
+};
+let headerObserver;
+const scrollPositions = new Map();
+let removeScrollBeforeGuard;
+let removeScrollAfterGuard;
+let restoreScrollTimer;
+const pageScrollElement = () => document.querySelector('.app-layout > .n-scrollbar > .n-scrollbar-container');
+const scrollKey = route => {
+  const query = { ...route.query };
+  delete query.view;
+  return `${route.path}:${JSON.stringify(Object.entries(query).sort(([a], [b]) => a.localeCompare(b)))}`;
+};
 const HotboardManager = defineAsyncComponent(
   () => import("@/components/HotboardManager.vue"),
 );
@@ -84,6 +135,7 @@ const cancelSettingsWarmup = () => {
   settingsWarmHandle = null;
 };
 const openHotboardManager = (categoryId = null) => {
+  navigation.drawerOpen.value = false;
   hotboardManagerCategoryId.value = categoryId || null;
   hotboardManagerOpen.value = true;
 };
@@ -100,7 +152,13 @@ const softQueryRouteNames = new Set([
 ]);
 const routeViewKey = computed(() => {
   const currentRoute = router.currentRoute.value;
-  if (!softQueryRouteNames.has(String(currentRoute?.name || ""))) {
+  const routeName = String(currentRoute?.name || "");
+  if (["list", "list-locale", "list-legacy"].includes(routeName)) return `ranking-reader:${currentRoute.params.locale || 'zh-CN'}`;
+  if (/^(chigua|ai|wool|game-deals)-topic(?:-locale)?$/.test(routeName)) return currentRoute?.path || "/";
+  if (routeName === "event" || routeName === "event-locale") {
+    return currentRoute?.path || "/";
+  }
+  if (!softQueryRouteNames.has(routeName)) {
     return currentRoute?.fullPath || currentRoute?.path || "/";
   }
   const query = { ...(currentRoute?.query || {}) };
@@ -117,13 +175,19 @@ const showSpeedInsights =
     (window.location.hostname !== "127.0.0.1" &&
       window.location.hostname !== "localhost"));
 
+const isTopicRoute = computed(() => /^(chigua|ai|wool|game-deals)-topic(?:-locale)?$/.test(String(router.currentRoute.value.name || "")));
+const isSplitTopicRoute = computed(() => /^(chigua|ai)-topic(?:-locale)?$/.test(String(router.currentRoute.value.name || "")));
 const headerExpanded = computed(() => !store.compactMode);
 const clampLayoutWidth = (value, fallback, min, max) => {
   const numeric = Number(value);
   return Math.min(max, Math.max(min, Number.isFinite(numeric) ? numeric : fallback));
 };
 const layoutStyle = computed(() => ({
+  "--site-header-height": `${headerHeight.value}px`,
+  "--navigation-sticky-top": store.headerFixed ? `${headerHeight.value + 12}px` : "12px",
   "--site-container-width": `${clampLayoutWidth(store.siteContainerWidth, 1400, 1120, 1800)}px`,
+  "--site-ranking-container-width": `${resolveReadingWidth(store, "ranking")}px`,
+  "--site-topic-container-width": `${resolveReadingWidth(store, "topic")}px`,
   "--site-focus-container-width": `${clampLayoutWidth(store.focusContainerWidth, 1360, 1080, 1600)}px`,
   "--site-gutter": store.compactMode
     ? "clamp(12px, 1.5vw, 24px)"
@@ -453,6 +517,27 @@ watch(
 );
 
 onMounted(() => {
+  updateViewport();
+  window.addEventListener("resize", updateViewport);
+  headerObserver = new ResizeObserver(([entry]) => { headerHeight.value = Math.ceil(entry.target.getBoundingClientRect().height); });
+  if (headerRef.value?.$el) headerObserver.observe(headerRef.value.$el);
+  removeScrollBeforeGuard = router.beforeEach((_to, from) => {
+    navigation.rememberPage();
+    scrollPositions.set(scrollKey(from), pageScrollElement()?.scrollTop || 0);
+    if (scrollPositions.size > 60) scrollPositions.delete(scrollPositions.keys().next().value);
+  });
+  removeScrollAfterGuard = router.afterEach((to, from, failure) => {
+    if (failure || to.path === from.path) return;
+    clearTimeout(restoreScrollTimer);
+    const top = scrollPositions.get(scrollKey(to)) || 0;
+    nextTick(() => {
+      pageScrollElement()?.scrollTo({ top, behavior: "instant" });
+      // Restore again after cached ranking data paints, without an animated jump.
+      restoreScrollTimer = window.setTimeout(() => {
+        if (router.currentRoute.value.fullPath === to.fullPath) pageScrollElement()?.scrollTo({ top, behavior: "instant" });
+      }, 240);
+    });
+  });
   removeAutoRefreshRouteGuard = router.afterEach(() => {
     nextTick(reconcileAutoRefresh);
   });
@@ -491,6 +576,11 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  headerObserver?.disconnect();
+  window.removeEventListener("resize", updateViewport);
+  removeScrollBeforeGuard?.();
+  removeScrollAfterGuard?.();
+  clearTimeout(restoreScrollTimer);
   cancelSettingsWarmup();
   if (removeAutoRefreshRouteGuard) {
     removeAutoRefreshRouteGuard();
@@ -649,4 +739,47 @@ onBeforeUnmount(() => {
   opacity: 0;
   transform: scale(0.98);
 }
+
+.app-layout .reading-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  width: min(calc(100% - var(--site-gutter-total)), var(--reading-container-width, var(--site-container-width)));
+  margin: 0 auto;
+  padding-top: 16px;
+}
+.app-layout.is-ranking-page { --reading-container-width: var(--site-ranking-container-width); }
+.app-layout.is-ranking-page .reading-shell { container: ranking-reader / inline-size; }
+.app-layout.is-topic-page { --reading-container-width: var(--site-topic-container-width); }
+.app-layout.is-split-topic-page .reading-shell {
+  width: calc(100% - var(--site-gutter-total));
+}
+.app-layout.is-split-topic-page :deep(:is(.context-toolbar, .topic-overview)) {
+  box-sizing: border-box;
+  width: min(100%, var(--site-container-width));
+  margin-inline: auto;
+}
+.app-layout.is-split-topic-page :deep(.topic-reader) {
+  box-sizing: border-box;
+  width: min(100%, var(--site-topic-container-width));
+  margin-inline: auto;
+  container: topic-reader / inline-size;
+}
+.app-layout .reading-shell.has-navigation { grid-template-columns: 248px minmax(0, 1fr); }
+.app-layout .reading-shell main { width: 100%; min-width: 0; padding: 0; margin: 0; transition: none; }
+.app-layout.fixed .reading-shell { padding-top: calc(var(--site-header-height) + 16px); }
+.app-layout.fixed.header-expanded .reading-shell main,
+.app-layout.fixed.header-collapsed .reading-shell main { padding-top: 0; }
+.global-ranking-sidebar {
+  position: sticky;
+  top: var(--navigation-sticky-top);
+  height: calc(100dvh - var(--navigation-sticky-top) - 16px);
+  min-height: 360px;
+  overflow: hidden;
+  border-right: 1px solid var(--n-border-color);
+}
+.navigation-drawer-body { height: 100%; }
+@media (max-width: 1099px) { .app-layout .reading-shell { display: block; } }
+@media (prefers-reduced-motion: reduce) { .app-layout main { transition: none; } }
 </style>

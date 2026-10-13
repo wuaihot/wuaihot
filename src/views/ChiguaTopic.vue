@@ -1,6 +1,5 @@
 <template>
   <section
-    ref="chiguaTopicRef"
     class="chigua-topic"
     :class="{ 'is-compact': store.compactMode }"
     :style="{
@@ -8,6 +7,7 @@
       '--chigua-featured-columns': String(featuredLaneColumns),
     }"
   >
+    <div ref="chiguaTopicRef" class="topic-overview">
     <n-alert
       v-if="loadError"
       type="error"
@@ -291,7 +291,8 @@
       :img-props="{ referrerpolicy: COVER_REFERRER_POLICY }"
     />
 
-    <section class="topic-section topic-feed-section">
+    </div>
+    <section class="topic-section topic-feed-section topic-reader">
       <div class="topic-layout">
         <aside class="topic-category-rail" :aria-label="ui.categoryNav">
           <div class="topic-category-card">
@@ -333,18 +334,7 @@
                 <h2>{{ copy.feedTitle }}</h2>
                 <span>{{ formatUpdated(result?.updateTime) }}</span>
               </div>
-              <label class="topic-search">
-                <span class="sr-only">{{ ui.search }}</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" />
-                </svg>
-                <input
-                  v-model.trim="searchQuery"
-                  type="search"
-                  :placeholder="ui.searchPlaceholder"
-                  @keydown.esc="searchQuery = ''"
-                />
-              </label>
+
             </div>
           </div>
 
@@ -531,6 +521,8 @@
               <strong>{{ ui.browseSettings }}</strong>
               <span>{{ filteredData.length }}</span>
             </div>
+            <section class="topic-control-section topic-width-control"><PageWidthControl scope="topic" /></section>
+            <div class="topic-width-menu"><PageWidthMenu scope="topic" /></div>
             <section class="topic-control-section">
               <CompactFilter v-model="activeFocus" :label="ui.focus" :aria-label="ui.focus" :options="focusOptions" />
             </section>
@@ -581,6 +573,8 @@
 </template>
 
 <script setup>
+import PageWidthControl from "@/components/PageWidthControl.vue";
+import PageWidthMenu from "@/components/PageWidthMenu.vue";
 import CompactFilter from "@/components/CompactFilter.vue";
 import TopicLaneGrid from "@/components/TopicLaneGrid.vue";
 import RankingBadgeGroup from "@/components/RankingBadgeGroup.vue";
@@ -608,11 +602,13 @@ import {
   FLOATING_COVER_PREVIEW_OPEN_DELAY,
   resolveFloatingCoverPreviewPosition,
 } from "@/utils/floatingCoverPreview";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { useContextSearch } from "@/composables/useContextSearch";
 import { useI18n } from "vue-i18n";
 import { mainStore } from "@/store";
 
 const route = useRoute();
+const router = useRouter();
 const store = mainStore();
 const { t } = useI18n({ useScope: "global" });
 const result = ref(null);
@@ -622,9 +618,7 @@ let chiguaResizeObserver = null;
 const coverImageErrors = reactive({});
 const loading = ref(false);
 const loadError = ref("");
-const searchQuery = ref(
-  typeof route.query.q === "string" ? route.query.q.trim() : "",
-);
+const searchQuery = useContextSearch(route, router);
 const activeCategory = ref(
   typeof route.query.category === "string" ? route.query.category : "all",
 );
@@ -1694,7 +1688,8 @@ let querySyncTimer;
 const syncQuery = () => {
   clearTimeout(querySyncTimer);
   querySyncTimer = setTimeout(() => {
-    const query = {};
+    const query = { ...route.query };
+    for (const key of ["q","category","focus","source","sort","confirmed","page","size"]) delete query[key];
     if (searchQuery.value.trim()) query.q = searchQuery.value.trim();
     if (activeCategory.value !== "all") query.category = activeCategory.value;
     if (activeFocus.value !== "all") query.focus = activeFocus.value;
@@ -1703,13 +1698,7 @@ const syncQuery = () => {
     if (activeConfirmed.value) query.confirmed = "1";
     if (currentPage.value > 1) query.page = String(currentPage.value);
     if (pageSize.value !== 30) query.size = String(pageSize.value);
-    const params = new URLSearchParams(query);
-    const search = params.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${route.path}${search ? `?${search}` : ""}`,
-    );
+    void router.replace({ path: route.path, query, hash: route.hash });
   }, 180);
 };
 watch(
@@ -2273,9 +2262,10 @@ watch(locale, () => void loadTopic(false));
   font-variant-numeric: tabular-nums;
   transition: background-color .18s ease, color .18s ease;
 }
-.event-lane-rank.one { background: #ea444d; color: #fff; }
-.event-lane-rank.two { background: #ed702d; color: #fff; }
-.event-lane-rank.three { background: #eead3f; color: #fff; }
+.event-lane-rank:is(.one, .two, .three) { font-size: 14px; font-weight: 820; }
+.event-lane-rank.one { color: #ea444d; }
+.event-lane-rank.two { color: #ed702d; }
+.event-lane-rank.three { color: #eead3f; }
 .event-lane-copy {
   position: relative;
   min-width: 0;
@@ -2326,12 +2316,13 @@ watch(locale, () => void loadTopic(false));
   margin-left: auto;
 }
 .event-lane-meta {
+  --chigua-meta-color:#6b7076;
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
   margin-top: 1px;
-  color: var(--n-text-color-3);
+  color: var(--chigua-meta-color);
   font-size: 12px;
   line-height: 1.3;
 }
@@ -2389,7 +2380,8 @@ watch(locale, () => void loadTopic(false));
 }
 .event-lane-sticky .event-lane-copy { display: block; }
 .event-lane-sticky .event-lane-title { -webkit-line-clamp: 1; }
-.event-lane-sticky .event-lane-meta { margin-top: 1px; }
+.event-lane-sticky .event-lane-meta {
+  --chigua-meta-color:#6b7076; margin-top: 1px; }
 .event-lane-sticky__cover { pointer-events: auto; }
 .event-lane-sticky.is-serious {
   filter: grayscale(1);
@@ -3112,20 +3104,30 @@ a.event-evidence-title:hover { color: var(--n-primary-color); }
 }
 
 /* Chigua intelligence workspace */
+.topic-width-menu { display: none; }
+@media (max-width: 820px) {
+  .chigua-topic .topic-controls-card .topic-width-control { display: none; }
+  .topic-width-menu { display: inline-flex; flex: 0 0 auto; }
+}
 .chigua-topic {
-  width: min(100%, var(--site-container-width, 1400px));
+  width: 100%;
+}
+.topic-overview {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
 }
 .topic-section {
   padding: 16px 18px 18px;
 }
 .topic-feed-section {
   box-sizing: border-box;
-  width: min(100%, var(--site-focus-container-width, 1360px));
+  width: min(100%, var(--site-topic-container-width, 1360px));
   margin: 0 auto;
 }
 .topic-layout {
   display: grid;
-  grid-template-columns: 280px minmax(520px, 720px) 280px;
+  grid-template-columns: minmax(170px, 17%) minmax(0, 1fr) minmax(190px, 20%);
   align-items: start;
   justify-content: center;
   gap: 16px;
@@ -3463,15 +3465,9 @@ a.event-evidence-title:hover { color: var(--n-primary-color); }
   color: #6b7280;
 }
 
-@media (max-width: 1360px) {
+@container topic-reader (max-width: 1120px) and (min-width: 821px) {
   .topic-layout {
-    grid-template-columns: minmax(180px, 220px) minmax(0, 720px) minmax(180px, 220px);
-    gap: 16px;
-  }
-}
-@media (max-width: 1120px) and (min-width: 821px) {
-  .topic-layout {
-    grid-template-columns: minmax(170px, 190px) minmax(0, 720px);
+    grid-template-columns: minmax(170px, 17%) minmax(0, 1fr);
     gap: 14px;
   }
   .topic-category-rail { grid-column: 1; grid-row: 1; }
@@ -3606,4 +3602,8 @@ a.event-evidence-title:hover { color: var(--n-primary-color); }
   }
 }
 
+</style>
+
+<style scoped>
+:global(html[data-dailyhot-theme="dark"] .event-lane-meta){--chigua-meta-color:#9699a1}
 </style>

@@ -29,18 +29,7 @@
             <h2>{{ copy.feedTitle }}</h2>
             <span>{{ formatUpdated(result?.updateTime) }}</span>
           </div>
-          <label class="topic-search">
-            <span class="sr-only">{{ ui.search }}</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" />
-            </svg>
-            <input
-              v-model.trim="searchQuery"
-              type="search"
-              :placeholder="ui.searchPlaceholder"
-              @keydown.esc="searchQuery = ''"
-            />
-          </label>
+
           <div class="toolbar-filters" role="group" :aria-label="ui.filters">
             <CompactFilter v-model="activeTag" :label="ui.type" :aria-label="ui.type" :options="tagOptions" />
             <CompactFilter v-model="activeSource" :label="ui.source" :aria-label="ui.source" :options="sourceOptions" />
@@ -49,6 +38,7 @@
             <button v-if="hasFilters" type="button" class="reset-filter" @click="resetFilters">{{ ui.reset }}</button>
           </div>
           <div class="toolbar-actions">
+            <PageWidthMenu scope="topic" />
             <div class="result-count"><strong>{{ filteredData.length }}</strong><span>{{ ui.matches }}</span></div>
             <button
               v-if="dashboard?.multiSourceCount"
@@ -196,6 +186,7 @@
 </template>
 
 <script setup>
+import PageWidthMenu from "@/components/PageWidthMenu.vue";
 import CompactFilter from "@/components/CompactFilter.vue";
 import TopicLaneGrid from "@/components/TopicLaneGrid.vue";
 import { getHotListsWithFallback } from "@/api";
@@ -205,15 +196,15 @@ import { getLocaleFromRoute, normalizeLocale } from "@/utils/locale";
 import { getSourceLabel } from "@/utils/sourceLabels";
 import { getSourceLogo, getSourceLogoFallback } from "@/utils/sourceLogos";
 import { enhanceReadableResultTitles } from "@/utils/readableTitles";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { useContextSearch } from "@/composables/useContextSearch";
 
 const route = useRoute();
+const router = useRouter();
 const result = ref(null);
 const loading = ref(false);
 const loadError = ref("");
-const searchQuery = ref(
-  typeof route.query.q === "string" ? route.query.q.trim() : "",
-);
+const searchQuery = useContextSearch(route, router);
 const activeTag = ref(
   typeof route.query.type === "string" ? route.query.type : "all",
 );
@@ -851,7 +842,8 @@ let querySyncTimer;
 const syncQuery = () => {
   clearTimeout(querySyncTimer);
   querySyncTimer = setTimeout(() => {
-    const query = {};
+    const query = { ...route.query };
+    for (const key of ["q","type","source","sort","confirmed","ending","page","size"]) delete query[key];
     if (searchQuery.value.trim()) query.q = searchQuery.value.trim();
     if (activeTag.value !== "all") query.type = activeTag.value;
     if (activeSource.value !== "all") query.source = activeSource.value;
@@ -860,13 +852,7 @@ const syncQuery = () => {
     if (activeEnding.value) query.ending = "1";
     if (currentPage.value > 1) query.page = String(currentPage.value);
     if (pageSize.value !== 30) query.size = String(pageSize.value);
-    const params = new URLSearchParams(query);
-    const search = params.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${route.path}${search ? `?${search}` : ""}`,
-    );
+    void router.replace({ path: route.path, query, hash: route.hash });
   }, 180);
 };
 watch(
@@ -977,7 +963,7 @@ watch(locale, () => void loadTopic(false));
 .game-topic {
   display: grid;
   gap: 14px;
-  width: min(100%, 1240px);
+  width: 100%;
   margin: 0 auto;
 }
 .topic-section {

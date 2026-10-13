@@ -1,0 +1,920 @@
+{
+  "season": 2025,
+  "fetchedAt": "2026-10-05T23:34:03.142Z",
+  "officialUrl": "https://lpl.qq.com/es/worlds/2025/",
+  "timeZone": "Asia/Shanghai",
+  "stages": [
+    {
+      "key": "play-in",
+      "id": 28,
+      "url": "https://lpl.qq.com/web201612/data/LOL_MATCH2_GAME_PROCDATA_229_28_GAMETYPE_INFO_SP.js",
+      "sha256": "28e0147c146fb8bef3b2fc397a4770320b892c9be112d75370facb64c421fb18",
+      "rounds": [
+        {
+          "round": 1,
+          "matches": [
+            {
+              "id": "12839",
+              "slot": 0,
+              "teams": [
+                "2",
+                "692"
+              ],
+              "names": "IG vs T1",
+              "score": [
+                1,
+                3
+              ],
+              "winner": 2,
+              "bo": "BO5",
+              "start": "2025-10-14T16:00:00+08:00",
+              "vod": "72408",
+              "status": "3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "swiss",
+      "id": 77,
+      "url": "https://lpl.qq.com/web201612/data/LOL_MATCH2_GAME_PROCDATA_229_77_GAMETYPE_INFO_SP.js",
+      "sha256": "5502517def9d14b5549a37a0971f9b00ca01b3d2357d7e9a199e7a86986f505b",
+      "rounds": [
+        {
+          "round": 1,
+          "matches": [
+            {
+              "id": "12840",
+              "slot": 0,
+              "teams": [
+                "1168",
+                "1018"
+              ],
+              "names": "VKS vs TSW",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-15T13:00:00+08:00",
+              "vod": "72446",
+              "status": "3"
+            },
+            {
+              "id": "12841",
+              "slot": 1,
+              "teams": [
+                "901",
+                "17"
+              ],
+              "names": "CFO vs FNC",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-15T14:00:00+08:00",
+              "vod": "72447",
+              "status": "3"
+            },
+            {
+              "id": "12842",
+              "slot": 2,
+              "teams": [
+                "1167",
+                "21"
+              ],
+              "names": "MKOI vs KT",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-15T15:00:00+08:00",
+              "vod": "72448",
+              "status": "3"
+            },
+            {
+              "id": "12843",
+              "slot": 3,
+              "teams": [
+                "57",
+                "553"
+              ],
+              "names": "BLG vs 100T",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-15T16:00:00+08:00",
+              "vod": "72449",
+              "status": "3"
+            },
+            {
+              "id": "12844",
+              "slot": 4,
+              "teams": [
+                "695",
+                "692"
+              ],
+              "names": "FLY vs T1",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-15T17:00:00+08:00",
+              "vod": "72450",
+              "status": "3"
+            },
+            {
+              "id": "12845",
+              "slot": 5,
+              "teams": [
+                "20",
+                "422"
+              ],
+              "names": "HLE vs AL",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-15T18:00:00+08:00",
+              "vod": "72451",
+              "status": "3"
+            },
+            {
+              "id": "12846",
+              "slot": 6,
+              "teams": [
+                "117",
+                "42"
+              ],
+              "names": "G2 vs TES",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-15T19:00:00+08:00",
+              "vod": "72452",
+              "status": "3"
+            },
+            {
+              "id": "12847",
+              "slot": 7,
+              "teams": [
+                "137",
+                "702"
+              ],
+              "names": "GEN vs PSG",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-15T20:00:00+08:00",
+              "vod": "72453",
+              "status": "3"
+            }
+          ]
+        },
+        {
+          "round": 2,
+          "matches": [
+            {
+              "id": "12851",
+              "slot": 0,
+              "teams": [
+                "42",
+                "553"
+              ],
+              "names": "TES vs 100T",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-16T16:00:00+08:00",
+              "vod": "72535",
+              "status": "3"
+            },
+            {
+              "id": "12853",
+              "slot": 1,
+              "teams": [
+                "137",
+                "422"
+              ],
+              "names": "GEN vs AL",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-16T18:00:00+08:00",
+              "vod": "72537",
+              "status": "3"
+            },
+            {
+              "id": "12849",
+              "slot": 2,
+              "teams": [
+                "1018",
+                "21"
+              ],
+              "names": "TSW vs KT",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-16T14:00:00+08:00",
+              "vod": "72533",
+              "status": "3"
+            },
+            {
+              "id": "12852",
+              "slot": 3,
+              "teams": [
+                "901",
+                "692"
+              ],
+              "names": "CFO vs T1",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-16T17:00:00+08:00",
+              "vod": "72536",
+              "status": "3"
+            },
+            {
+              "id": "12854",
+              "slot": 4,
+              "teams": [
+                "57",
+                "17"
+              ],
+              "names": "BLG vs FNC",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-16T19:00:00+08:00",
+              "vod": "72538",
+              "status": "3"
+            },
+            {
+              "id": "12850",
+              "slot": 5,
+              "teams": [
+                "117",
+                "1167"
+              ],
+              "names": "G2 vs MKOI",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-16T15:00:00+08:00",
+              "vod": "72534",
+              "status": "3"
+            },
+            {
+              "id": "12855",
+              "slot": 6,
+              "teams": [
+                "20",
+                "702"
+              ],
+              "names": "HLE vs PSG",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-16T20:00:00+08:00",
+              "vod": "72539",
+              "status": "3"
+            },
+            {
+              "id": "12848",
+              "slot": 7,
+              "teams": [
+                "695",
+                "1168"
+              ],
+              "names": "FLY vs VKS",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-16T13:00:00+08:00",
+              "vod": "72532",
+              "status": "3"
+            }
+          ]
+        },
+        {
+          "round": 3,
+          "matches": [
+            {
+              "id": "12856",
+              "slot": 0,
+              "teams": [
+                "21",
+                "42"
+              ],
+              "names": "KT vs TES",
+              "score": [
+                2,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-17T16:00:00+08:00",
+              "vod": "72610",
+              "status": "3"
+            },
+            {
+              "id": "12857",
+              "slot": 1,
+              "teams": [
+                "901",
+                "422"
+              ],
+              "names": "CFO vs AL",
+              "score": [
+                1,
+                2
+              ],
+              "winner": 2,
+              "bo": "BO3",
+              "start": "2025-10-17T19:00:00+08:00",
+              "vod": "72638",
+              "status": "3"
+            },
+            {
+              "id": "12858",
+              "slot": 2,
+              "teams": [
+                "1018",
+                "695"
+              ],
+              "names": "TSW vs FLY",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-18T16:00:00+08:00",
+              "vod": "72660",
+              "status": "3"
+            },
+            {
+              "id": "12859",
+              "slot": 3,
+              "teams": [
+                "137",
+                "692"
+              ],
+              "names": "GEN vs T1",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-18T17:00:00+08:00",
+              "vod": "72661",
+              "status": "3"
+            },
+            {
+              "id": "12860",
+              "slot": 4,
+              "teams": [
+                "117",
+                "57"
+              ],
+              "names": "G2 vs BLG",
+              "score": [
+                1,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO1",
+              "start": "2025-10-18T18:00:00+08:00",
+              "vod": "72662",
+              "status": "3"
+            },
+            {
+              "id": "12861",
+              "slot": 5,
+              "teams": [
+                "553",
+                "20"
+              ],
+              "names": "100T vs HLE",
+              "score": [
+                0,
+                1
+              ],
+              "winner": 2,
+              "bo": "BO1",
+              "start": "2025-10-18T19:00:00+08:00",
+              "vod": "72663",
+              "status": "3"
+            },
+            {
+              "id": "12862",
+              "slot": 6,
+              "teams": [
+                "17",
+                "1167"
+              ],
+              "names": "FNC vs MKOI",
+              "score": [
+                1,
+                2
+              ],
+              "winner": 2,
+              "bo": "BO3",
+              "start": "2025-10-19T16:00:00+08:00",
+              "vod": "72697",
+              "status": "3"
+            },
+            {
+              "id": "12863",
+              "slot": 7,
+              "teams": [
+                "1168",
+                "702"
+              ],
+              "names": "VKS vs PSG",
+              "score": [
+                2,
+                1
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-19T19:00:00+08:00",
+              "vod": "72721",
+              "status": "3"
+            }
+          ]
+        },
+        {
+          "round": 4,
+          "matches": [
+            {
+              "id": "12865",
+              "slot": 0,
+              "teams": [
+                "117",
+                "695"
+              ],
+              "names": "G2 vs FLY",
+              "score": [
+                2,
+                1
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-22T19:00:00+08:00",
+              "vod": "72775",
+              "status": "3"
+            },
+            {
+              "id": "12867",
+              "slot": 1,
+              "teams": [
+                "137",
+                "42"
+              ],
+              "names": "GEN vs TES",
+              "score": [
+                2,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-23T19:00:00+08:00",
+              "vod": "72831",
+              "status": "3"
+            },
+            {
+              "id": "12864",
+              "slot": 2,
+              "teams": [
+                "901",
+                "20"
+              ],
+              "names": "CFO vs HLE",
+              "score": [
+                0,
+                2
+              ],
+              "winner": 2,
+              "bo": "BO3",
+              "start": "2025-10-22T16:00:00+08:00",
+              "vod": "72752",
+              "status": "3"
+            },
+            {
+              "id": "12868",
+              "slot": 3,
+              "teams": [
+                "57",
+                "1168"
+              ],
+              "names": "BLG vs VKS",
+              "score": [
+                2,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-24T16:00:00+08:00",
+              "vod": "72851",
+              "status": "3"
+            },
+            {
+              "id": "12866",
+              "slot": 4,
+              "teams": [
+                "1167",
+                "1018"
+              ],
+              "names": "MKOI vs TSW",
+              "score": [
+                2,
+                1
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-23T16:00:00+08:00",
+              "vod": "72802",
+              "status": "3"
+            },
+            {
+              "id": "12869",
+              "slot": 5,
+              "teams": [
+                "553",
+                "692"
+              ],
+              "names": "100T vs T1",
+              "score": [
+                0,
+                2
+              ],
+              "winner": 2,
+              "bo": "BO3",
+              "start": "2025-10-24T19:00:00+08:00",
+              "vod": "72872",
+              "status": "3"
+            }
+          ]
+        },
+        {
+          "round": 5,
+          "matches": [
+            {
+              "id": "12870",
+              "slot": 0,
+              "teams": [
+                "901",
+                "695"
+              ],
+              "names": "CFO vs FLY",
+              "score": [
+                2,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO3",
+              "start": "2025-10-25T13:00:00+08:00",
+              "vod": "72894",
+              "status": "3"
+            },
+            {
+              "id": "12871",
+              "slot": 1,
+              "teams": [
+                "57",
+                "42"
+              ],
+              "names": "BLG vs TES",
+              "score": [
+                1,
+                2
+              ],
+              "winner": 2,
+              "bo": "BO3",
+              "start": "2025-10-25T16:00:00+08:00",
+              "vod": "72919",
+              "status": "3"
+            },
+            {
+              "id": "12872",
+              "slot": 2,
+              "teams": [
+                "1167",
+                "692"
+              ],
+              "names": "MKOI vs T1",
+              "score": [
+                0,
+                2
+              ],
+              "winner": 2,
+              "bo": "BO3",
+              "start": "2025-10-25T19:00:00+08:00",
+              "vod": "72950",
+              "status": "3"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "knockout",
+      "id": 18,
+      "url": "https://lpl.qq.com/web201612/data/LOL_MATCH2_GAME_PROCDATA_229_18_GAMETYPE_INFO_SP.js",
+      "sha256": "66b74ab26a0504913a563462da7c5f40398ff6bb6fa64ab517f856f761c3638b",
+      "rounds": [
+        {
+          "round": 1,
+          "matches": [
+            {
+              "id": "12876",
+              "slot": 0,
+              "teams": [
+                "422",
+                "692"
+              ],
+              "names": "AL vs T1",
+              "score": [
+                2,
+                3
+              ],
+              "winner": 2,
+              "bo": "BO5",
+              "start": "2025-10-31T15:00:00+08:00",
+              "vod": "73077",
+              "status": "3"
+            },
+            {
+              "id": "12875",
+              "slot": 1,
+              "teams": [
+                "117",
+                "42"
+              ],
+              "names": "G2 vs TES",
+              "score": [
+                1,
+                3
+              ],
+              "winner": 2,
+              "bo": "BO5",
+              "start": "2025-10-30T15:00:00+08:00",
+              "vod": "73045",
+              "status": "3"
+            },
+            {
+              "id": "12873",
+              "slot": 2,
+              "teams": [
+                "20",
+                "137"
+              ],
+              "names": "HLE vs GEN",
+              "score": [
+                1,
+                3
+              ],
+              "winner": 2,
+              "bo": "BO5",
+              "start": "2025-10-28T15:00:00+08:00",
+              "vod": "72975",
+              "status": "3"
+            },
+            {
+              "id": "12874",
+              "slot": 3,
+              "teams": [
+                "21",
+                "901"
+              ],
+              "names": "KT vs CFO",
+              "score": [
+                3,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO5",
+              "start": "2025-10-29T15:00:00+08:00",
+              "vod": "73016",
+              "status": "3"
+            }
+          ]
+        },
+        {
+          "round": 2,
+          "matches": [
+            {
+              "id": "12877",
+              "slot": 0,
+              "teams": [
+                "692",
+                "42"
+              ],
+              "names": "T1 vs TES",
+              "score": [
+                3,
+                0
+              ],
+              "winner": 1,
+              "bo": "BO5",
+              "start": "2025-11-02T15:00:00+08:00",
+              "vod": "73166",
+              "status": "3"
+            },
+            {
+              "id": "12878",
+              "slot": 1,
+              "teams": [
+                "137",
+                "21"
+              ],
+              "names": "GEN vs KT",
+              "score": [
+                1,
+                3
+              ],
+              "winner": 2,
+              "bo": "BO5",
+              "start": "2025-11-01T15:00:00+08:00",
+              "vod": "73124",
+              "status": "3"
+            }
+          ]
+        },
+        {
+          "round": 3,
+          "matches": [
+            {
+              "id": "12879",
+              "slot": 0,
+              "teams": [
+                "692",
+                "21"
+              ],
+              "names": "T1 vs KT",
+              "score": [
+                3,
+                2
+              ],
+              "winner": 1,
+              "bo": "BO5",
+              "start": "2025-11-09T15:00:00+08:00",
+              "vod": "73195",
+              "status": "3"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "teams": {
+    "2": {
+      "id": "2",
+      "name": "IG",
+      "fullName": "InvictusGaming",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20230103152918/562affbb9f99b0e472644f93a19291e7/0"
+    },
+    "17": {
+      "id": "17",
+      "name": "FNC",
+      "fullName": "Fnatic",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20240920155645/fbec83b1d67134a4d40e53c9bc655e00/0"
+    },
+    "20": {
+      "id": "20",
+      "name": "HLE",
+      "fullName": "HanwhaLifeEsports",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20260616155358/f02db445598fb600c52482f71e5ec842/0"
+    },
+    "21": {
+      "id": "21",
+      "name": "KT",
+      "fullName": "KTRolster",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20230921143325/57ec5a9a5fbacf3d2bf132484e8426a6/0"
+    },
+    "42": {
+      "id": "42",
+      "name": "TES",
+      "fullName": "TOPESPORTS",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20240920155538/5beb948638f00bcda68fc4942e3f0a51/0"
+    },
+    "57": {
+      "id": "57",
+      "name": "BLG",
+      "fullName": "BILIBILIGAMING",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20250618144525/49342dadcecf162e8ac94fad6eb91540/0"
+    },
+    "117": {
+      "id": "117",
+      "name": "G2",
+      "fullName": "G2Esports",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20260616155410/e84fff0c6ffe4612378c54470bdd64ec/0"
+    },
+    "137": {
+      "id": "137",
+      "name": "GEN",
+      "fullName": "Gen.G",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20250618115826/f8c9046000eaa71e3f5743a9165067b8/0"
+    },
+    "422": {
+      "id": "422",
+      "name": "AL",
+      "fullName": "AnyonesLegend",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20250618145633/b8741548f37b60a6693cdb6f4949a7fd/0"
+    },
+    "553": {
+      "id": "553",
+      "name": "100T",
+      "fullName": "100Thieves",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20220914142315/9defa9b7574726dc041c5c25e88ed0d7/0"
+    },
+    "692": {
+      "id": "692",
+      "name": "T1",
+      "fullName": "T1",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20260616155344/cc25b6f6e0574daeb28d8f03a96b8e8f/0"
+    },
+    "695": {
+      "id": "695",
+      "name": "FLY",
+      "fullName": "FlyQuest",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20250618120228/aeaad1a2f8aa54e3bddc69f5a2c7ae29/0"
+    },
+    "702": {
+      "id": "702",
+      "name": "PSG",
+      "fullName": "PSG.TalonEsports",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20240918145707/b3a166af76b4dee448b8eca0309e783a/0"
+    },
+    "901": {
+      "id": "901",
+      "name": "CFO",
+      "fullName": "CFO",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20250618120200/14009fc922630e26db9294f16be9c156/0"
+    },
+    "1018": {
+      "id": "1018",
+      "name": "TSW",
+      "fullName": "TeamSecretWhales",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20260616155621/d5120c8e3bda96d0b6b70e22a47ec32b/0"
+    },
+    "1167": {
+      "id": "1167",
+      "name": "MKOI",
+      "fullName": "MovistarKOI",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20260714173644/dc9026dff0fa3d6ffb9715dd625f4010/0"
+    },
+    "1168": {
+      "id": "1168",
+      "name": "VKS",
+      "fullName": "VivoKeydStarsAcademy",
+      "logo": "https://img.crawler.qq.com/lolwebvideo/20260916191034/bb329e9c30ccc30297ba2e3cf21cae81/0"
+    }
+  },
+  "logoSource": "https://lpl.qq.com/web201612/data/LOL_MATCH2_TEAM_LIST.js"
+}
