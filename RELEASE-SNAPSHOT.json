@@ -1,11 +1,11 @@
 {
   "schema": "wuaihot-public-release/v1",
   "project": "wuaihot",
-  "version": "1.6.2",
-  "releaseTag": "v1.6.2",
+  "version": "1.6.3",
+  "releaseTag": "v1.6.3",
   "publicRepository": "https://github.com/wuaihot/wuaihot",
-  "exportedAt": "2026-10-13T15:45:24.663Z",
+  "exportedAt": "2026-10-14T00:51:04.772Z",
   "policyVersion": 1,
-  "fileCount": 628,
-  "treeSha256": "fc31d1aff10689e88d7644186f454a687b2abcd51f4278248850f108e5834103"
+  "fileCount": 629,
+  "treeSha256": "26463c84e13e561b6e32fa91a0306b11d02d85aae9d1989d81f93df22e5dd3c7"
 }

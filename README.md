@@ -23,7 +23,7 @@
 - 榜单拖拽排序、显示开关、分类管理
 - 自动刷新、刷新倒计时与 API 回退
 - 简体中文、繁體中文、English、日本語、한국어
-- SEO 友好路由、canonical、hreflang、sitemap 与预渲染能力
+- SEO 友好路由、canonical、hreflang、sitemap 与构建期静态 SEO 页面壳
 - 深色模式、紧凑模式、响应式布局与 PWA
 - 来源子榜自动发现、榜单元数据与状态提示
 - 可配置反馈入口，不在公开仓库内写入私有凭据
@@ -76,7 +76,7 @@ pnpm build
 - VITE_CLARITY_PROJECT_ID：可选 Microsoft Clarity 项目 ID
 - VITE_FEEDBACK_PROVIDER：off / github / url（仅安全外跳；旧内嵌反馈 SDK 已退役）
 - VITE_FEEDBACK_URL：反馈入口
-- PRERENDER：是否启用预渲染
+- PRERENDER：旧版可选预渲染开关已退役，设置为 `true` 会显式报错；默认使用 `postbuild` 生成 SEO 路由静态 HTML 页面壳
 
 公开仓库或浏览器端环境变量中不要放置 Token、Cookie、API Key、OAuth Secret、管理密钥或数据库凭据。
 

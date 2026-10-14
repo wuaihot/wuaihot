@@ -1,5 +1,6 @@
 overrides:
   fast-uri: 3.1.8
+  source-map-js: 1.2.2
   immutable: 4.3.9
   proxy-addr: 2.0.8
   postcss: 8.5.23

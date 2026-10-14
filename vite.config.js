@@ -6,7 +6,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
 import { VitePWA } from "vite-plugin-pwa";
-import prerender from "vite-plugin-prerender";
 import vue from "@vitejs/plugin-vue";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
@@ -144,44 +143,10 @@ function resolveBuildDate() {
   return dates[dates.length - 1] || formatBuildNumber();
 }
 
-function buildPrerenderRoutes(categorySlugs = []) {
-  const storePath = path.join(repoRoot, "src/store/index.js");
-  const subtypePath = path.join(repoRoot, "src/utils/sourceSubtypes.js");
-  const storeSource = fs.readFileSync(storePath, "utf8");
-  const subtypeSource = fs.readFileSync(subtypePath, "utf8");
-  const sourceNames = [
-    ...new Set([...storeSource.matchAll(/name:\s*"([^"]+)"/g)].map((match) => match[1])),
-  ];
-  const subtypeBlocks = [...subtypeSource.matchAll(/"([^"]+)":\s*\[(.*?)\n\s*\],/gs)];
-  const subtypeMap = new Map();
-
-  for (const [, sourceName, block] of subtypeBlocks) {
-    const values = [...block.matchAll(/value:\s*"([^"]+)"/g)].map((match) => match[1]);
-    subtypeMap.set(sourceName, values);
-  }
-
-  const routes = new Set(["/", "/list"]);
-  categorySlugs.forEach((slug) => {
-    if (slug) routes.add(`/category/${slug}`);
-  });
-  sourceNames.forEach((source) => {
-    routes.add(`/rank/${source}`);
-    (subtypeMap.get(source) || []).forEach((subtype) => {
-      routes.add(`/rank/${source}/${subtype}`);
-    });
-  });
-
-  return [...routes].sort();
-}
-
 export default defineConfig(async ({ mode }) => {
-  const enablePrerender = process.env.PRERENDER === "true";
-  const { BUILTIN_CATEGORIES } = await import(
-    new URL("./src/config/site-metadata.mjs", import.meta.url)
-  );
-  const prerenderRoutes = buildPrerenderRoutes(
-    BUILTIN_CATEGORIES.map((item) => item.slug).filter(Boolean)
-  );
+  if (process.env.PRERENDER === "true") {
+    throw new Error("PRERENDER=true is no longer supported: use the maintained SEO route-shell postbuild pipeline.");
+  }
   const productVersion = readPackageVersion();
   const publicAssetVersions = buildPublicAssetVersions();
   const versionPublicAsset = (assetPath) => {
@@ -333,22 +298,6 @@ export default defineConfig(async ({ mode }) => {
           ],
         },
       }),
-      // 预渲染首页、分类页与榜单详情页，提升抓取器对动态 title/meta 的首屏感知能力。
-      ...(enablePrerender
-        ? [
-            prerender({
-              staticDir: fileURLToPath(new URL("./dist", import.meta.url)),
-              routes: prerenderRoutes,
-              rendererOptions: {
-                headless: true,
-                renderAfterDocumentEvent: "prerender-ready",
-                inject: {
-                  prerender: true,
-                },
-              },
-            }),
-          ]
-        : []),
     ],
     resolve: {
       alias: {

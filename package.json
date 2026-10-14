@@ -13,11 +13,11 @@
   "bugs": {
     "url": "https://github.com/wuaihot/wuaihot/issues"
   },
-  "version": "1.6.2",
+  "version": "1.6.3",
   "private": true,
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm run audit:vercel-asset-cache && npm run audit:feedback && npm run audit:trends-catalog:contract && npm run audit:trends-catalog:build && npm run audit:source-logos && npm run audit:ranking-item-meta && npm run audit:ranking-meta-consumers && npm run audit:ranking-preview-governance && npm run audit:translation-terms && npm run audit:navigation && npm run audit:header-search && npm run audit:ranking-read-capacity && node scripts/audit-ranking-periods.mjs && node scripts/audit-ranking-refresh.mjs && npm run audit:ranking-quick-preview && npm run audit:stream-layout && npm run audit:event-hub && node scripts/audit-worlds-2025-archive.mjs && node scripts/audit-lol-official.mjs && node scripts/audit-ai-evidence.mjs && node scripts/audit-ai-publications.mjs && node scripts/audit-ai-workspace.mjs && node scripts/audit-ai-board.mjs && node scripts/audit-ai-curation.mjs && node scripts/audit-ai-radar-224.mjs && node scripts/audit-ai-radar-226.mjs && node scripts/audit-ai-radar-228.mjs && node scripts/audit-ai-news-editorial-234.mjs && node scripts/audit-ai-qwen-live.mjs && node scripts/audit-ai-editorial-room.mjs && node scripts/audit-ai-quality.mjs && node scripts/audit-ai-intelligence-models.mjs && node scripts/audit-ai-model-workspace.mjs && node scripts/audit-ai-model-paging.mjs && node scripts/audit-ai-model-paging-endpoint.mjs && node scripts/audit-ai-model-deferred.mjs && node scripts/audit-ai-social-monitor.mjs && node scripts/audit-tibo-day8-completion.mjs && node scripts/audit-ai-social-surface-parity.mjs && node scripts/audit-ai-reading-semantics.mjs && node scripts/audit-ai-ranked-topic-merge.mjs && node scripts/audit-ai-reading-presentation.mjs && node scripts/audit-ai-topic-loading.mjs && node scripts/audit-ai-product-identity.mjs && npm run audit:image-proxy && npm run audit:bilibili-cache && node scripts/generate-seo-files.js",
+    "prebuild": "npm run audit:vercel-asset-cache && npm run audit:feedback && npm run audit:prerender-retirement && npm run audit:trends-catalog:contract && npm run audit:trends-catalog:build && npm run audit:source-logos && npm run audit:ranking-item-meta && npm run audit:ranking-meta-consumers && npm run audit:ranking-preview-governance && npm run audit:translation-terms && npm run audit:navigation && npm run audit:header-search && npm run audit:ranking-read-capacity && node scripts/audit-ranking-periods.mjs && node scripts/audit-ranking-refresh.mjs && npm run audit:ranking-quick-preview && npm run audit:stream-layout && npm run audit:event-hub && node scripts/audit-worlds-2025-archive.mjs && node scripts/audit-lol-official.mjs && node scripts/audit-ai-evidence.mjs && node scripts/audit-ai-publications.mjs && node scripts/audit-ai-workspace.mjs && node scripts/audit-ai-board.mjs && node scripts/audit-ai-curation.mjs && node scripts/audit-ai-radar-224.mjs && node scripts/audit-ai-radar-226.mjs && node scripts/audit-ai-radar-228.mjs && node scripts/audit-ai-news-editorial-234.mjs && node scripts/audit-ai-qwen-live.mjs && node scripts/audit-ai-editorial-room.mjs && node scripts/audit-ai-quality.mjs && node scripts/audit-ai-intelligence-models.mjs && node scripts/audit-ai-model-workspace.mjs && node scripts/audit-ai-model-paging.mjs && node scripts/audit-ai-model-paging-endpoint.mjs && node scripts/audit-ai-model-deferred.mjs && node scripts/audit-ai-social-monitor.mjs && node scripts/audit-tibo-day8-completion.mjs && node scripts/audit-ai-social-surface-parity.mjs && node scripts/audit-ai-reading-semantics.mjs && node scripts/audit-ai-ranked-topic-merge.mjs && node scripts/audit-ai-reading-presentation.mjs && node scripts/audit-ai-topic-loading.mjs && node scripts/audit-ai-product-identity.mjs && npm run audit:image-proxy && npm run audit:bilibili-cache && node scripts/generate-seo-files.js",
     "build": "vite build",
     "postbuild": "node scripts/generate-route-shells.cjs && npm run audit:seo-shells && npm run audit:home-seo && node scripts/audit-ai-style-output.cjs",
     "preview": "vite preview",
@@ -34,6 +34,7 @@
     "audit:ranking-meta-consumers": "node scripts/audit-ranking-meta-consumers.mjs",
     "audit:ranking-preview-governance": "node scripts/audit-ranking-preview-governance.mjs",
     "audit:feedback": "node scripts/audit-feedback-config.mjs",
+    "audit:prerender-retirement": "node scripts/audit-prerender-retirement.mjs",
     "audit:vercel-asset-cache": "node scripts/audit-vercel-asset-cache.cjs",
     "audit:fallback": "node scripts/audit-api-fallback.mjs",
     "audit:ranking-read-capacity": "node scripts/audit-ranking-read-capacity.mjs",
@@ -74,7 +75,6 @@
     "unplugin-auto-import": "^0.12.2",
     "unplugin-vue-components": "^0.22.12",
     "vite": "^4.5.14",
-    "vite-plugin-prerender": "^1.0.8",
     "vite-plugin-pwa": "^0.14.7"
   },
   "packageManager": "pnpm@11.24.0"
